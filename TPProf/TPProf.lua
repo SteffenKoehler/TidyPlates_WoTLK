@@ -75,7 +75,8 @@ local function Report(label)
 
 	local list, total = {}, 0
 	for i = 1, GetNumAddOns() do
-		if IsAddOnLoaded(i) then
+		-- TPProf selbst nicht mitzählen (enthält die Eichung beim Bericht)
+		if IsAddOnLoaded(i) and GetAddOnInfo(i) ~= "TPProf" then
 			local cpu = GetAddOnCPUUsage(i) * scale
 			if cpu > 0 then
 				list[#list + 1] = {name = (GetAddOnInfo(i)), cpu = cpu}
