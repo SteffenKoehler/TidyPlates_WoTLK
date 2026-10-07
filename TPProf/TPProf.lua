@@ -28,6 +28,34 @@ local function StartMeasure()
 	startTime = GetTime()
 end
 
+-- Einheit eichen: Je nach Client liefert GetAddOnCPUUsage nicht Millisekunden. TPProf
+-- rechnet 5 ms lang (gemessen mit der Stoppuhr debugprofilestop) und vergleicht das mit
+-- der Zeit, die WoW ihm dafür anrechnet. Ergebnis: Millisekunden pro gelieferter Einheit.
+local msPerUnit
+local function Calibrate()
+	if msPerUnit or not debugprofilestop then
+		return msPerUnit or 1
+	end
+	UpdateAddOnCPUUsage()
+	local before = GetAddOnCPUUsage("TPProf")
+	local t0 = debugprofilestop()
+	local x = 0
+	while debugprofilestop() - t0 < 5 do
+		x = x + 1
+	end
+	local elapsed = debugprofilestop() - t0
+	UpdateAddOnCPUUsage()
+	local used = GetAddOnCPUUsage("TPProf") - before
+	if used > 0 then
+		msPerUnit = elapsed / used
+		-- Nahe 1 = schon Millisekunden; sonst gefundenen Faktor nutzen
+		if msPerUnit > 0.5 and msPerUnit < 2 then
+			msPerUnit = 1
+		end
+	end
+	return msPerUnit or 1
+end
+
 local function Report(label)
 	if not IsProfiling() then
 		Print("Profiling ist aus. Erst |cffffff00/tpprof on|r und dann /reload.")
@@ -43,11 +71,12 @@ local function Report(label)
 		return
 	end
 	UpdateAddOnCPUUsage()
+	local scale = Calibrate()
 
 	local list, total = {}, 0
 	for i = 1, GetNumAddOns() do
 		if IsAddOnLoaded(i) then
-			local cpu = GetAddOnCPUUsage(i)
+			local cpu = GetAddOnCPUUsage(i) * scale
 			if cpu > 0 then
 				list[#list + 1] = {name = (GetAddOnInfo(i)), cpu = cpu}
 				total = total + cpu
@@ -62,6 +91,9 @@ local function Report(label)
 		local e = list[i]
 		Print(format("%2d. %-28s %7.1f ms  %5.2f ms/s  %4.1f%%",
 			i, e.name, e.cpu, e.cpu / duration, total > 0 and e.cpu / total * 100 or 0))
+	end
+	if scale ~= 1 then
+		Print(format("(Einheit geeicht: 1 Wert = %.0f ms)", scale))
 	end
 	-- Mit echtem Profiling brauchen die Addons zusammen mehrere ms pro Sekunde
 	if duration > 30 and total / duration < 0.1 then
