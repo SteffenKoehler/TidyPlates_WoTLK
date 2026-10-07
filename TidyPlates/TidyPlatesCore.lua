@@ -20,6 +20,10 @@ local weaktable = {__mode = "k"}
 local massQueue = setmetatable({}, weaktable)
 local functionQueue = setmetatable({}, weaktable)
 local targetQueue = setmetatable({}, weaktable)
+-- Eigene Warteschlangen, damit während der Abarbeitung von targetQueue keine neuen
+-- Schlüssel in dieselbe Tabelle geschrieben werden (in Lua bei pairs() undefiniert)
+local healthQueue = setmetatable({}, weaktable)
+local delegateQueue = setmetatable({}, weaktable)
 
 local ForEachPlate
 local EMPTY_TEXTURE = "Interface\\Addons\\TidyPlates\\Media\\Empty"
@@ -81,7 +85,7 @@ local OnNewNameplate, OnShowNameplate, OnHideNameplate, OnUpdateNameplate, OnRes
 local OnUpdateHealth, OnUpdateLevel, OnUpdateThreatSituation, OnUpdateRaidIcon, OnUpdateHealthRange
 local OnMouseoverNameplate, OnRequestWidgetUpdate, OnRequestDelegateUpdate
 local OnShowCastbar, OnHideCastbar, OnValueChangedCastbar
-local PollPlateState
+local PollPlateState, ProcessHealthUpdate
 
 -- Spell Casting
 local StartCastAnimation, StopCastAnimation, OnUpdateTargetCastbar
@@ -854,9 +858,17 @@ do
 		UpdateIndicator_CustomScaleText()
 	end
 
-	-- OnUpdateHealth
+	-- OnUpdateHealth: Nur vormerken. Mehrere Lebenspunkte-Ticks einer Plakette
+	-- innerhalb eines Frames werden so zu einem Update zusammengefasst.
 	function OnUpdateHealth(source)
 		local plate = source.parentPlate
+		if plate then
+			healthQueue[plate] = true
+		end
+	end
+
+	-- ProcessHealthUpdate: Wird einmal pro Frame aus OnUpdate aufgerufen
+	function ProcessHealthUpdate(plate)
 		if not IsPlateShown(plate) then
 			return
 		end
@@ -1241,6 +1253,18 @@ do
 			end
 		end
 
+		-- Gebündelte Lebenspunkte-Updates (max. eines pro Plakette und Frame)
+		for plate in pairs(healthQueue) do
+			healthQueue[plate] = nil
+			ProcessHealthUpdate(plate)
+		end
+
+		-- Delegate-Updates einzelner Plaketten (z.B. vom Debuff-Widget)
+		for plate in pairs(delegateQueue) do
+			delegateQueue[plate] = nil
+			OnRequestDelegateUpdate(plate)
+		end
+
 		-- Process Mouseover
 		if HasMouseover then
 			if LastMouseover ~= CurrentMouseover then
@@ -1358,6 +1382,12 @@ function TidyPlates:RequestWidgetUpdate()
 end
 function TidyPlates:RequestDelegateUpdate()
 	SetMassQueue(OnRequestDelegateUpdate)
+end
+-- Delegate-Update nur für eine einzelne Plakette (im nächsten Frame)
+function TidyPlates:RequestDelegateUpdateForPlate(plate)
+	if plate then
+		delegateQueue[plate] = true
+	end
 end
 function TidyPlates:ActivateTheme(theme)
 	if theme and type(theme) == "table" then

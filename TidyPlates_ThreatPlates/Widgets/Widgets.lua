@@ -137,11 +137,26 @@ local function ApplyLayout(plate)
 	end
 end
 
+-- Kampflog-Auswertung der Debuffs nur laufen lassen, wenn das Debuff-Widget an ist
+local auraWatcherActive = true -- wird beim Laden oben eingeschaltet
+local function SyncAuraWatcher()
+	local wanted = db.debuffWidget.ON and true or false
+	if wanted ~= auraWatcherActive then
+		if wanted then
+			TidyPlatesWidgets:EnableAuraWatcher()
+		else
+			TidyPlatesWidgets:DisableAuraWatcher()
+		end
+		auraWatcherActive = wanted
+	end
+end
+
 ----------------
 -- INITIALIZE --
 ----------------
 local function OnInitialize(plate)
 	db = TidyPlatesThreat.db.profile
+	SyncAuraWatcher()
 	local w = plate.widgets
 	-- Debuff Widget
 	if db.debuffWidget.ON then

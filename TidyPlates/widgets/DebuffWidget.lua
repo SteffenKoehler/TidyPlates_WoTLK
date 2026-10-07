@@ -4,11 +4,6 @@ local GetSpellInfo = GetSpellInfo
 local PolledHideIn = TidyPlatesWidgets.PolledHideIn
 local AuraMonitor = CreateFrame("Frame")
 
--- Performance Throttling: Begrenzt COMBAT_LOG_EVENT Verarbeitung auf ~30 Events pro Sekunde
--- Verhindert hohe CPU-Last in großen Gruppen/Kämpfen bei sehr hoher Event-Frequenz
-local lastDebuffProcessTime = 0
-local DEBUFF_THROTTLE = 0.033 -- ca. 30 fps / 33ms Mindestabstand
-
 -- TODO: keep an eye on weak tables.
 local WidgetList = setmetatable({}, {__mode = "kv"})
 local weaktable = TidyPlatesUtility.weaktable
@@ -343,19 +338,35 @@ local function UpdateAurasByUnitID(unitid)
 	CallForWidgetUpdate(guid, raidicon, name)
 end
 
+local TargetOfGroupMembersDirty = true
+local function RebuildTargetOfGroupMembers()
+	wipe(TargetOfGroupMembers)
+	for name, unitid in pairs(TidyPlatesUtility.GroupMembers.UnitId) do
+		local targetOf = unitid .. "target"
+		if UnitExists(targetOf) then
+			TargetOfGroupMembers[UnitGUID(targetOf)] = targetOf
+		end
+	end
+	TargetOfGroupMembersDirty = false
+end
+
+-- Liefert true, wenn die Auren direkt über die API (UnitDebuff) aktualisiert wurden
 local function UpdateAuraByLookup(guid)
 	if guid == UnitGUID("target") then
 		UpdateAurasByUnitID("target")
+		return true
 	elseif guid == UnitGUID("mouseover") then
 		UpdateAurasByUnitID("mouseover")
-	elseif TargetOfGroupMembers[guid] then
-		local unit = TargetOfGroupMembers[guid]
-		if unit then
-			local unittarget = UnitGUID(unit .. "target")
-			if guid == unittarget then
-				UpdateAurasByUnitID(unittarget)
-			end
-		end
+		return true
+	end
+	if TargetOfGroupMembersDirty then
+		RebuildTargetOfGroupMembers()
+	end
+	local unit = TargetOfGroupMembers[guid]
+	-- unit ist bereits die Unit-ID des Ziels (z.B. "raid5target")
+	if unit and UnitGUID(unit) == guid then
+		UpdateAurasByUnitID(unit)
+		return true
 	end
 	return false
 end
@@ -387,15 +398,9 @@ end
 -- General Events
 -----------------------------------------------------
 
+-- UNIT_TARGET feuert im Raid sehr oft; die Zuordnung wird erst bei Bedarf neu aufgebaut
 local function EventUnitTarget()
-	wipe(TargetOfGroupMembers)
-
-	for name, unitid in pairs(TidyPlatesUtility.GroupMembers.UnitId) do
-		local targetOf = unitid .. ("target" or "")
-		if UnitExists(targetOf) then
-			TargetOfGroupMembers[UnitGUID(targetOf)] = targetOf
-		end
-	end
+	TargetOfGroupMembersDirty = true
 end
 
 local function EventPlayerTarget()
@@ -444,13 +449,6 @@ local function GetCombatEventResults(...)
 end
 
 local function CombatEventHandler(frame, event, ...)
-	-- Performance Throttling
-	local now = GetTime()
-	if now - lastDebuffProcessTime < DEBUFF_THROTTLE then
-		return
-	end
-	lastDebuffProcessTime = now
-
 	-- General Events, Passthrough
 	if event ~= "COMBAT_LOG_EVENT_UNFILTERED" then
 		if GeneralEvents[event] then
@@ -459,18 +457,26 @@ local function CombatEventHandler(frame, event, ...)
 		return
 	end
 
+	-- Früher Filter statt Drossel: Die allermeisten Kampflog-Einträge (Schaden,
+	-- Heilung, ...) sind keine Aura-Ereignisse und werden hier sofort verworfen.
+	-- Aura-Ereignisse gehen dadurch nie verloren.
+	local _, subevent = ...
+	local CombatLogUpdateFunction = CombatLogEvents[subevent]
+	if not CombatLogUpdateFunction then
+		return
+	end
+
 	-- Combat Log Unfiltered
 	local timestamp, combatevent, sourceGUID, destGUID, destName, destFlags, destRaidFlag, auraType, spellid, stackCount = GetCombatEventResults(...)
 
 	-- Evaluate only for enemy units, for now
 	if (bit.band(destFlags, COMBATLOG_OBJECT_REACTION_FRIENDLY) == 0) then -- FILTER: ENEMY UNIT
-		local CombatLogUpdateFunction = CombatLogEvents[combatevent]
-		-- Evaluate only for certain combat log events
-		if CombatLogUpdateFunction then
+		do
 			-- Evaluate only for debuffs
 			if auraType == "DEBUFF" then -- FILTER: DEBUFF
-				-- Update Auras via API/UnitID Search
-				if not UpdateAuraByLookup(destGUID) then
+				-- Update Auras via API/UnitID Search (aktualisiert das Widget selbst)
+				local updatedViaAPI = UpdateAuraByLookup(destGUID)
+				if not updatedViaAPI then
 					-- Update Auras via Combat Log
 					CombatLogUpdateFunction(timestamp, sourceGUID, destGUID, destName, spellid, stackCount)
 				end
@@ -493,7 +499,10 @@ local function CombatEventHandler(frame, event, ...)
 					end
 				end
 
-				CallForWidgetUpdate(destGUID, raidicon, name)
+				-- Wurde das Widget schon über die API per GUID aktualisiert, nicht doppelt
+				if not (updatedViaAPI and WidgetGUID[destGUID]) then
+					CallForWidgetUpdate(destGUID, raidicon, name)
+				end
 			end
 		end
 	end
@@ -619,7 +628,14 @@ function UpdateWidget(frame)
 	end
 
 	UpdateIconGrid(frame, guid)
-	TidyPlates:RequestDelegateUpdate() -- Delegate Update, For Debuff Widget-Controlled Scale and Opacity Functions
+	-- Delegate Update (für debuff-abhängige Skalierung/Transparenz) nur für die
+	-- betroffene Plakette statt für alle
+	local extended = frame:GetParent()
+	if extended and extended.parentPlate and TidyPlates.RequestDelegateUpdateForPlate then
+		TidyPlates:RequestDelegateUpdateForPlate(extended.parentPlate)
+	else
+		TidyPlates:RequestDelegateUpdate()
+	end
 end
 
 local function UpdateWidgetTarget(frame)
