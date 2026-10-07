@@ -88,6 +88,7 @@ local OnMouseoverNameplate, OnRequestWidgetUpdate, OnRequestDelegateUpdate
 local OnShowCastbar, OnHideCastbar, OnValueChangedCastbar
 local PollPlateState, ProcessHealthUpdate, OnTargetChangedNameplate, LearnGUIDs
 local CorrelateDamage, AssignFromMarkers
+local StartTargetCastFallback, StopTargetCastFallback
 
 -- Spell Casting
 local StartCastAnimation, StopCastAnimation, OnUpdateTargetCastbar
@@ -1050,6 +1051,7 @@ do
 	end
 
 	function OnShowCastbar(cast)
+		StopTargetCastFallback() -- Blizzards Leiste übernimmt wieder
 		cast.castbar:SetMinMaxValues(cast:GetMinMaxValues())
 	end
 
@@ -1335,6 +1337,37 @@ do
 	end
 
 	-- OnUpdateTargetCastbar: Called from hooking into the original nameplate castbar's "OnValueChanged"
+	-- Ersatz-Steuerung der Ziel-Zauberleiste (siehe OnUpdateTargetCastbar). Werte im
+	-- GetTime-Maßstab: Zauber laufen von Start bis Ende, Kanalisieren rückwärts.
+	local fallback = {}
+	local TargetCastTicker = CreateFrame("Frame")
+	TargetCastTicker:Hide()
+	TargetCastTicker:SetScript("OnUpdate", function(self)
+		local plate, now = fallback.plate, GetTime()
+		if not plate or not plate:IsShown() or not plate.extended.unit.isTarget then
+			fallback.plate = nil
+			self:Hide()
+		elseif now >= fallback.endTime then
+			fallback.plate = nil
+			self:Hide()
+			StopCastAnimation(plate)
+		elseif fallback.channel then
+			plate.extended.bars.castbar:SetValue(fallback.startTime + fallback.endTime - now)
+		else
+			plate.extended.bars.castbar:SetValue(now)
+		end
+	end)
+
+	function StartTargetCastFallback(plate, startTime, endTime, channel)
+		fallback.plate, fallback.startTime, fallback.endTime, fallback.channel = plate, startTime, endTime, channel
+		TargetCastTicker:Show()
+	end
+
+	function StopTargetCastFallback()
+		fallback.plate = nil
+		TargetCastTicker:Hide()
+	end
+
 	function OnUpdateTargetCastbar(source)
 		if not source then
 			return
@@ -1348,17 +1381,31 @@ do
 
 		if plate and plate.extended.unit.isTarget then
 			-- Grabs the target's casting information
-			local spell, icon, nonInt, channel, spellid
+			local spell, icon, nonInt, channel, spellid, startMS, endMS
 
-			spell, _, _, icon, _, _, _, spellid, nonInt = UnitCastingInfo("target")
+			spell, _, _, icon, startMS, endMS, _, spellid, nonInt = UnitCastingInfo("target")
 
 			if not spell then
-				spell, _, _, icon, _, _, spellid, nonInt = UnitChannelInfo("target")
+				spell, _, _, icon, startMS, endMS, spellid, nonInt = UnitChannelInfo("target")
 				channel = true
 			end
 
+			StopTargetCastFallback()
 			if spell then
-				StartCastAnimation(plate, spell, spellid, icon, nonInt, channel)
+				-- Blizzards Ziel-Zauberleiste läuft erst beim nächsten Zauberbeginn an. Wird ein
+				-- Gegner mitten im Zauber anvisiert, hat sie keine Werte: dann selbst steuern.
+				local blizz = plate.extended.bars.cast
+				local bmin, bmax = blizz:GetMinMaxValues()
+				if blizz:IsShown() and bmin and bmax and bmax > bmin then
+					StartCastAnimation(plate, spell, spellid, icon, nonInt, channel)
+				elseif startMS and endMS and endMS > startMS then
+					local st, et = startMS / 1000, endMS / 1000
+					if StartCastAnimation(plate, spell, spellid, icon, nonInt, channel, st, et) then
+						StartTargetCastFallback(plate, st, et, channel)
+					end
+				else
+					StopCastAnimation(plate)
+				end
 			else
 				StopCastAnimation(plate)
 			end
