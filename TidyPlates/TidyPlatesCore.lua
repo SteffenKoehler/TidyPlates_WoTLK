@@ -85,7 +85,7 @@ local OnNewNameplate, OnShowNameplate, OnHideNameplate, OnUpdateNameplate, OnRes
 local OnUpdateHealth, OnUpdateLevel, OnUpdateThreatSituation, OnUpdateRaidIcon, OnUpdateHealthRange
 local OnMouseoverNameplate, OnRequestWidgetUpdate, OnRequestDelegateUpdate
 local OnShowCastbar, OnHideCastbar, OnValueChangedCastbar
-local PollPlateState, ProcessHealthUpdate
+local PollPlateState, ProcessHealthUpdate, OnTargetChangedNameplate
 
 -- Spell Casting
 local StartCastAnimation, StopCastAnimation, OnUpdateTargetCastbar
@@ -740,6 +740,27 @@ do
 		GatherData_BasicInfo()
 		ProcessUnitChanges()
 	end
+	-- OnTargetChangedNameplate: Bei einem Zielwechsel brauchen nur das alte und das
+	-- neue Ziel ein Vollupdate. Alle anderen Plaketten ändern nur Transparenz/Größe
+	-- (Blizzard-Alpha für Nicht-Ziele, Ausblenden von Nicht-Zielen).
+	function OnTargetChangedNameplate(plate)
+		if not plate:IsShown() then
+			return
+		end
+		UpdateReferences(plate)
+
+		local alpha = HasTarget and plate.alpha or 1
+		local isTarget = HasTarget and alpha == 1
+		if unit.isTarget or isTarget then
+			OnUpdateNameplate(plate)
+			return
+		end
+
+		unit.alpha = alpha
+		UpdateIndicator_CustomAlpha()
+		UpdateIndicator_CustomScaleText()
+	end
+
 	-- OnUpdateLevel
 	function OnUpdateLevel(plate)
 		if not IsPlateShown(plate) then
@@ -1326,7 +1347,8 @@ do
 		if (not HasTarget) then
 			currentTarget = nil
 		end
-		SetMassQueue(OnUpdateNameplate) -- Could be "SetMassQueue(UpdateTarget), someday...  :-o
+		-- Nur altes/neues Ziel komplett, alle anderen nur Transparenz/Größe
+		SetMassQueue(OnTargetChangedNameplate)
 	end
 
 	function events:RAID_TARGET_UPDATE()
