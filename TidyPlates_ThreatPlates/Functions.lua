@@ -168,7 +168,8 @@ do
 		if TidyPlatesThreat.db.profile.text.truncate then
 			if value >= 1e6 then
 				return format("%.1fm", value / 1e6)
-			elseif value >= 1e4 then
+			elseif value >= 1e4 or (value >= 1e3 and TidyPlatesThreat.db.profile.text.parens) then
+				-- Plater-Format kürzt schon ab 1000 ("4.3k")
 				return format("%.1fk", value / 1e3)
 			else
 				return value
@@ -187,6 +188,8 @@ do
 				if (TidyPlatesThreat.db.profile.text.amount or TidyPlatesThreat.db.profile.text.max) then
 					if TidyPlatesThreat.db.profile.text.deficit and not TidyPlatesThreat.db.profile.text.max and unit.health == unit.healthmax then
 						HpPct = floor(100 * (unit.health / unit.healthmax)) .. "%"
+					elseif TidyPlatesThreat.db.profile.text.parens then
+						HpPct = " (" .. floor(100 * (unit.health / unit.healthmax)) .. "%)" -- Plater: "4.3k (100%)"
 					else
 						HpPct = " - " .. floor(100 * (unit.health / unit.healthmax)) .. "%"
 					end

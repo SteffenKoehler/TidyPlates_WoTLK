@@ -101,7 +101,7 @@ local function CreateStyle(self, event, ...)
 		config.castbar = {
 			texture = MediaFetch("statusbar", db.castbar.texture),
 			width = db.healthbar.width or 120,
-			height = 10,
+			height = db.castbar.height or 10,
 			x = db.castbar.x,
 			y = db.castbar.y,
 			anchor = "CENTER",

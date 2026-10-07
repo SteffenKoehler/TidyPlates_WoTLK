@@ -669,7 +669,8 @@ function TidyPlatesThreat:OnInitialize()
 				full = false,
 				max = false,
 				deficit = false,
-				truncate = true
+				truncate = true,
+				parens = false -- Plater-Format "4.3k (100%)" statt "4300 - 100%"
 			},
 			totemWidget = {
 				ON = true,
@@ -719,6 +720,11 @@ function TidyPlatesThreat:OnInitialize()
 				x = 0,
 				y = 26,
 				anchor = "CENTER"
+			},
+			-- Scharfer Rahmen um Lebens-/Zauberleiste (Plater-Optik), Größe in Bildschirmpixeln
+			platerBorder = {
+				ON = false,
+				size = 1
 			},
 			tankedWidget = {
 				ON = false,

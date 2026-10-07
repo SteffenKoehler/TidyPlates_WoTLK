@@ -1300,12 +1300,21 @@ do
 			visual.spelltext:SetText(spell)
 
 			visual.spellicon:SetTexture(icon)
+			-- Rahmengrafiken nur, wenn der Stil sie zeigt (sonst z.B. Plater-Optik überdeckt)
 			if notInterruptible then
-				visual.castnostop:Show()
 				visual.castborder:Hide()
+				if style.castnostop.show then
+					visual.castnostop:Show()
+				else
+					visual.castnostop:Hide()
+				end
 			else
 				visual.castnostop:Hide()
-				visual.castborder:Show()
+				if style.castborder.show then
+					visual.castborder:Show()
+				else
+					visual.castborder:Hide()
+				end
 			end
 
 			castbar:Show()

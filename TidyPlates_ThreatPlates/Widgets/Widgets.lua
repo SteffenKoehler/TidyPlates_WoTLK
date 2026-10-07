@@ -3,6 +3,170 @@ ThreatPlatesWidgets = ThreatPlatesWidgets or {}
 local db
 local _
 
+-----------------------
+-- Plater Border Widget
+-----------------------
+-- Scharfer, dünner Rahmen um Lebens-/Zauberleiste (Plater-Optik) statt der
+-- mitskalierten Rahmengrafiken. Vier einfarbige Linien außen um den Balken.
+local WHITE = "Interface\\Buttons\\WHITE8X8"
+
+local function SetBorderColor(self, r, g, b, a)
+	if self.r == r and self.g == g and self.b == b and self.a == a then
+		return
+	end
+	self.r, self.g, self.b, self.a = r, g, b, a
+	for i = 1, 4 do
+		self[i]:SetVertexColor(r, g, b, a)
+	end
+end
+
+local function SetBorderSize(self, size)
+	if self.size == size then
+		return
+	end
+	self.size = size
+	local bar, top, bottom, left, right = self.bar, self[1], self[2], self[3], self[4]
+	top:ClearAllPoints()
+	top:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", -size, 0)
+	top:SetPoint("BOTTOMRIGHT", bar, "TOPRIGHT", size, 0)
+	top:SetHeight(size)
+	bottom:ClearAllPoints()
+	bottom:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", -size, 0)
+	bottom:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", size, 0)
+	bottom:SetHeight(size)
+	left:ClearAllPoints()
+	left:SetPoint("TOPRIGHT", bar, "TOPLEFT", 0, 0)
+	left:SetPoint("BOTTOMRIGHT", bar, "BOTTOMLEFT", 0, 0)
+	left:SetWidth(size)
+	right:ClearAllPoints()
+	right:SetPoint("TOPLEFT", bar, "TOPRIGHT", 0, 0)
+	right:SetPoint("BOTTOMLEFT", bar, "BOTTOMRIGHT", 0, 0)
+	right:SetWidth(size)
+end
+
+function ThreatPlatesWidgets.CreatePlaterBorder(bar)
+	local frame = CreateFrame("Frame", nil, bar)
+	frame:SetAllPoints(bar)
+	frame:SetFrameLevel(bar:GetFrameLevel() + 2)
+	frame.bar = bar
+	for i = 1, 4 do
+		local t = frame:CreateTexture(nil, "OVERLAY")
+		t:SetTexture(WHITE)
+		frame[i] = t
+	end
+	frame.SetBorderColor = SetBorderColor
+	frame.SetBorderSize = SetBorderSize
+	frame:SetBorderColor(0, 0, 0, 1)
+	return frame
+end
+
+-- Größe eines Bildschirmpixels in Einheiten des Balkens, damit der Rahmen
+-- unabhängig von UI-Skalierung und Plakettengröße scharf 1 Pixel breit bleibt.
+local screenHeight
+function ThreatPlatesWidgets.PixelSize(frame)
+	if not screenHeight then
+		local res = GetCVar("gxResolution") or ""
+		screenHeight = tonumber(res:match("%d+x(%d+)")) or 768
+	end
+	local scale = frame:GetEffectiveScale()
+	if not scale or scale <= 0 then
+		return 1
+	end
+	return (768 / screenHeight) / scale
+end
+
+local PLATER_FONT = "Fonts\\ARIALN.TTF"
+
+-- Restzeit rechts in der Zauberleiste (Plater: "2.0"). Kanalisierte Zauber laufen
+-- rückwärts; das wird an der Laufrichtung des Balkens erkannt.
+local function CastTimerOnUpdate(self)
+	local bar = self.bar
+	local value = bar:GetValue()
+	local minv, maxv = bar:GetMinMaxValues()
+	if maxv ~= self.lastMax then -- neuer Zauber
+		self.lastMax, self.lastValue, self.channel = maxv, nil, nil
+	end
+	local last = self.lastValue
+	if last and value ~= last then
+		self.channel = value < last
+	end
+	self.lastValue = value
+	local remaining = self.channel and (value - minv) or (maxv - value)
+	if remaining < 0 then
+		remaining = 0
+	end
+	self.text:SetFormattedText("%.1f", remaining)
+end
+
+-- Zauberleiste sichtbar: Namen ausblenden. Er liegt an derselben Stelle, und beim Ziel
+-- (Ebene 127) würde er sonst über der Zauberleiste gezeichnet. SetAlpha reicht nicht,
+-- weil SetTextColor (bei jeder Farbaktualisierung) die Transparenz zurücksetzt.
+local function OnCastShow(self)
+	self.lastMax, self.lastValue, self.channel = nil, nil, nil
+	self.plate.visual.name:Hide()
+end
+
+local function OnCastHide(self)
+	local plate = self.plate
+	if plate.style and plate.style.name and plate.style.name.show then
+		plate.visual.name:Show()
+	end
+end
+
+function ThreatPlatesWidgets.AddCastTimer(border, size, plate)
+	local text = border:CreateFontString(nil, "OVERLAY")
+	text:SetFont(PLATER_FONT, size, "OUTLINE")
+	text:SetPoint("RIGHT", border.bar, "RIGHT", -3, 0)
+	text:SetJustifyH("RIGHT")
+	border.text = text
+	border.plate = plate
+	border:SetScript("OnUpdate", CastTimerOnUpdate)
+	border:SetScript("OnShow", OnCastShow)
+	border:SetScript("OnHide", OnCastHide)
+end
+
+-- Aura-Symbole im Plater-Stil: rechteckig mit 1-px-Rahmen, große Restzeit mittig,
+-- Stapel darüber, enger Abstand. Wird einmal pro Debuff-Widget angewendet.
+function ThreatPlatesWidgets.StylePlaterAuras(widget)
+	if widget.platerStyled then
+		return
+	end
+	widget.platerStyled = true
+	local icons = widget.AuraIconFrames
+	local perRow = math.ceil(#icons / 2)
+	for i, icon in ipairs(icons) do
+		icon:SetWidth(24)
+		icon:SetHeight(18)
+		icon.Icon:SetTexCoord(0.07, 0.93, 0.18, 0.82) -- 4:3 ausschneiden
+		icon.Border:Hide()
+		icon.Glow:Hide()
+		local border = ThreatPlatesWidgets.CreatePlaterBorder(icon)
+		border:SetBorderSize(1)
+
+		icon.TimeLeft:ClearAllPoints()
+		icon.TimeLeft:SetPoint("CENTER", icon, "CENTER", 0, 0)
+		icon.TimeLeft:SetFont(PLATER_FONT, 11, "OUTLINE")
+		icon.TimeLeft:SetJustifyH("CENTER")
+		icon.TimeLeft:SetWidth(24)
+
+		icon.Stacks:ClearAllPoints()
+		icon.Stacks:SetPoint("BOTTOM", icon, "TOP", 0, 1)
+		icon.Stacks:SetFont(PLATER_FONT, 9, "OUTLINE")
+		icon.Stacks:SetJustifyH("CENTER")
+		icon.Stacks:SetWidth(24)
+
+		-- Neu anordnen: zwei Reihen, 2 px Abstand, zweite Reihe mit Platz für Stapelzahlen
+		icon:ClearAllPoints()
+		if i == 1 then
+			icon:SetPoint("LEFT", widget)
+		elseif i == perRow + 1 then
+			icon:SetPoint("BOTTOMLEFT", icons[1], "TOPLEFT", 0, 12)
+		else
+			icon:SetPoint("LEFT", icons[i - 1], "RIGHT", 2, 0)
+		end
+	end
+end
+
 TidyPlatesUtility:EnableGroupWatcher()
 TidyPlatesWidgets:EnableAuraWatcher()
 TidyPlatesWidgets:EnableTankWatch()
@@ -281,6 +445,24 @@ local function OnInitialize(plate)
 		w.ThreatLineWidget = nil
 	end
 
+	-- Plater-Rahmen um Lebens- und Zauberleiste
+	if db.platerBorder.ON then
+		if not w.PlaterHealthBorder then
+			w.PlaterHealthBorder = ThreatPlatesWidgets.CreatePlaterBorder(plate.bars.healthbar)
+			w.PlaterCastBorder = ThreatPlatesWidgets.CreatePlaterBorder(plate.bars.castbar)
+			ThreatPlatesWidgets.AddCastTimer(w.PlaterCastBorder, db.settings.spelltext.size or 10, plate)
+			-- Dunkler Hintergrund, damit der Name darunter beim Zaubern nicht durchscheint
+			plate.bars.castbar:SetBackgroundColor(0.08, 0.08, 0.08, 0.9)
+		end
+		if w.WidgetDebuff then
+			ThreatPlatesWidgets.StylePlaterAuras(w.WidgetDebuff)
+		end
+	elseif w.PlaterHealthBorder then
+		w.PlaterHealthBorder:Hide()
+		w.PlaterCastBorder:Hide()
+		w.PlaterHealthBorder, w.PlaterCastBorder = nil, nil
+	end
+
 	-- Combo Point Widget
 	if db.comboWidget.ON then
 		if not w.ComboPoints then
@@ -295,12 +477,60 @@ local function OnInitialize(plate)
 
 	ApplyLayout(plate)
 end
+-- Plater-Rahmen: nur bei Stilen mit sichtbarem Balken (nicht Nur-Name/Totem-Symbol),
+-- Farbe nach Ziel (weiß) / Mouseover (grau) / sonst schwarz
+local function HasVisibleBar(barstyle)
+	local tex = barstyle and barstyle.texture
+	return tex and not tex:find("Empty$")
+end
+
+local function UpdatePlaterBorder(plate, unit)
+	local w = plate.widgets
+	local hb, cb = w.PlaterHealthBorder, w.PlaterCastBorder
+	if not hb then
+		return
+	end
+	local style = plate.style
+	if HasVisibleBar(style.healthbar) then
+		local size = db.platerBorder.size * ThreatPlatesWidgets.PixelSize(plate.bars.healthbar)
+		hb:SetBorderSize(size)
+		if unit.isTarget then
+			hb:SetBorderColor(1, 1, 1, 1)
+		elseif unit.isMouseover then
+			hb:SetBorderColor(0.6, 0.6, 0.6, 1)
+		else
+			hb:SetBorderColor(0, 0, 0, 1)
+		end
+		hb:Show()
+		if HasVisibleBar(style.castbar) then
+			cb:SetBorderSize(size)
+			cb:Show()
+			-- Stil-Aktualisierungen blenden den Namen wieder ein; während des Zauberns verstecken
+			if plate.bars.castbar:IsShown() then
+				plate.visual.name:Hide()
+			end
+		else
+			cb:Hide()
+		end
+	else
+		hb:Hide()
+		cb:Hide()
+	end
+end
+
 --------------------
 -- CONTEXT UPDATE --
 --------------------
 local function OnContextUpdate(plate, unit)
 	db = TidyPlatesThreat.db.profile
 	local w = plate.widgets
+	-- Plater-Rahmen (Ziel/Mouseover ändern sich hier)
+	if db.platerBorder.ON then
+		if not w.PlaterHealthBorder then
+			OnInitialize(plate)
+		end
+		UpdatePlaterBorder(plate, unit)
+	end
 	-- Debuff Widget
 	if db.debuffWidget.ON then
 		if not w.WidgetDebuff then
@@ -331,6 +561,13 @@ end
 local function OnUpdate(plate, unit)
 	db = TidyPlatesThreat.db.profile
 	local w = plate.widgets
+	-- Plater-Rahmen (Stil/Größe können sich geändert haben)
+	if db.platerBorder.ON then
+		if not w.PlaterHealthBorder then
+			OnInitialize(plate)
+		end
+		UpdatePlaterBorder(plate, unit)
+	end
 	-- Target Art
 	if db.targetWidget.ON then
 		if not w.TargetArt then

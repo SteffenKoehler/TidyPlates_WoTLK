@@ -69,3 +69,137 @@ local function TPTPVERBOSE()
 end
 SLASH_TPTPVERBOSE1 = "/tptpverbose"
 SlashCmdList["TPTPVERBOSE"] = TPTPVERBOSE
+
+--[[Plater-Optik als eigenes Profil]] --
+-- /tptpplater          Profil "Plater" aktivieren (beim ersten Mal als Kopie des aktuellen Profils anlegen)
+-- /tptpplater reset    Plater-Optik im Profil "Plater" erneut anwenden
+-- /tptpplater default  zurück zum Profil "Default"
+-- Stile werden nur beim Laden gebaut, daher jeweils /reload.
+local PLATER_PROFILE = "Plater"
+
+local function ApplyPlaterLook(p)
+	local s = p.settings
+	p.platerBorder.ON = true
+	p.platerBorder.size = 1
+
+	-- Mitskalierte Rahmengrafiken aus, der scharfe Rahmen ersetzt sie
+	s.healthborder.show = false
+	s.elitehealthborder.show = false
+	s.castborder.show = false
+	s.castnostop.show = false
+	s.threatborder.show = false
+	-- Ziel/Mouseover: weiß/grau über den Rahmen statt Leuchtgrafik (Pfeile bleiben)
+	s.target.texture = "Empty"
+	s.highlight.texture = "Empty"
+
+	-- Lebenspunkte-Text "4.3k (100%)"
+	p.text.parens = true
+
+	-- Konstante Größe wie bei Plater: Aggro nur über die Farbe, nicht über die Größe
+	-- (sonst schrumpfen normale Mobs im Kampf um 20 % und je nach Aggro-Stufe)
+	p.threat.useScale = false
+
+	-- Schlichte Schrift mit Kontur
+	for _, key in ipairs({"name", "customtext", "spelltext", "level"}) do
+		s[key].typeface = "Arial Narrow"
+		s[key].flags = "OUTLINE"
+		s[key].shadow = false
+	end
+
+	-- Etwas größer als vorher (150x15), Zauberleiste übernimmt die Breite
+	s.healthbar.width = 170
+	s.healthbar.height = 18
+	local height = s.healthbar.height
+	local width = s.healthbar.width
+	local top, bottom, left, right = height / 2, -height / 2, -width / 2, width / 2
+
+	-- Zauberleiste unter dem Balken, so hoch wie der Name; sie überdeckt beim Zaubern den Namen
+	local castHeight = 16
+	local castY = bottom - 2 - castHeight / 2
+	s.castbar.height = castHeight
+	s.castbar.y = castY
+	s.castborder.y = castY
+	s.castnostop.y = castY
+
+	-- Name unter dem Balken
+	s.name.size = 13
+	s.name.width = width -- volle Breite, damit lange Namen nicht so früh abgeschnitten werden
+	s.name.y = castY
+	s.name.align = "CENTER"
+
+	-- Lebenspunkte-Text mittig im Balken
+	s.customtext.size = 12
+	s.customtext.width = width - 10
+	s.customtext.x = 0
+	s.customtext.y = 0
+	s.customtext.align = "CENTER"
+
+	-- Zaubername links in der Zauberleiste (rechts steht die Restzeit), Symbol links daneben
+	local spellWidth = width - 40
+	s.spelltext.size = 11
+	s.spelltext.width = spellWidth
+	s.spelltext.align = "LEFT"
+	s.spelltext.x = left + 3 + spellWidth / 2
+	s.spelltext.y = castY
+	s.spellicon.scale = castHeight
+	s.spellicon.x = left - castHeight / 2 - 2
+	s.spellicon.y = castY
+
+	-- Stufe klein über der rechten oberen Ecke
+	s.level.show = true
+	s.level.size = 10
+	s.level.width = 30
+	s.level.align = "RIGHT"
+	s.level.vertical = "CENTER"
+	s.level.x = right - 15
+	s.level.y = top + 6
+
+	-- Raid-Symbol links neben dem Balken (darüber sitzen jetzt die Auren)
+	s.raidicon.scale = 20
+	s.raidicon.x = left - 13
+	s.raidicon.y = 0
+
+	-- Auren direkt über dem Balken, mittig (3 Symbole à 24 px + 2 px Abstand).
+	-- Versatz wird mit der Skalierung des Widgets multipliziert, daher umgerechnet.
+	local auraScale = 1.15
+	p.debuffWidget.scale = auraScale
+	p.debuffWidget.anchor = "CENTER"
+	p.debuffWidget.x = 64 - (3 * 24 + 2 * 2) / 2 -- Widget ist 128 breit, Symbole beginnen links
+	p.debuffWidget.y = (top + 3) / auraScale + 9
+end
+
+local function ProfileExists(db, name)
+	for _, profile in ipairs(db:GetProfiles()) do
+		if profile == name then
+			return true
+		end
+	end
+	return false
+end
+
+local function TPTPPLATER(msg)
+	local db = TidyPlatesThreat.db
+	msg = strlower(strtrim(msg or ""))
+	if msg == "default" then
+		db:SetProfile("Default")
+		print("|cff89F559Threat Plates|r: Profil \"Default\" aktiv, lade neu ...")
+		ReloadUI()
+		return
+	end
+
+	local current = db:GetCurrentProfile()
+	local isNew = not ProfileExists(db, PLATER_PROFILE)
+	if current ~= PLATER_PROFILE then
+		db:SetProfile(PLATER_PROFILE)
+		if isNew then
+			db:CopyProfile(current)
+		end
+	end
+	if isNew or msg == "reset" then
+		ApplyPlaterLook(db.profile)
+	end
+	print("|cff89F559Threat Plates|r: Profil \"Plater\" aktiv, lade neu ... (zurück mit /tptpplater default)")
+	ReloadUI()
+end
+SLASH_TPTPPLATER1 = "/tptpplater"
+SlashCmdList["TPTPPLATER"] = TPTPPLATER
