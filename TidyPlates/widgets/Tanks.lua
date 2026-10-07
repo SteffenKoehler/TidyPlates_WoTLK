@@ -107,7 +107,38 @@ local function IsTankUnit(unitid)
 	return isTank == true or isTank == 1
 end
 
+-- Tank-Haltungen/-Gestalten: In selbst gebauten Raids gibt es weder Dungeonfinder-Rollen
+-- noch zwingend Main-Tank-Zuweisungen. Diese Auren erkennt der Client bei allen
+-- Gruppenmitgliedern (Namen werden über GetSpellInfo lokalisiert).
+local TankAuraIDs = {
+	25780, -- Zorn der Gerechtigkeit (Paladin)
+	71,    -- Verteidigungshaltung (Krieger)
+	5487,  -- Bärengestalt (Druide)
+	9634,  -- Terrorbärengestalt (Druide)
+	48263  -- Frostpräsenz (Todesritter)
+}
+local TankAuraNames
+local function HasTankAura(unitid)
+	if not TankAuraNames then
+		TankAuraNames = {}
+		for _, id in ipairs(TankAuraIDs) do
+			local name = GetSpellInfo(id)
+			if name then
+				TankAuraNames[#TankAuraNames + 1] = name
+			end
+		end
+	end
+	for i = 1, #TankAuraNames do
+		if UnitAura(unitid, TankAuraNames[i]) then
+			return true
+		end
+	end
+	return false
+end
+
+local OldTankNames = {}
 local function TankWatcherEvents()
+	OldTankNames, TankNames = TankNames, OldTankNames
 	wipe(TankNames)
 
 	local numRaid = GetNumRaidMembers()
@@ -115,7 +146,8 @@ local function TankWatcherEvents()
 		for index = 1, numRaid do
 			local raidid = "raid" .. index
 			local name = UnitName(raidid)
-			if name and (GetPartyAssignment("MAINTANK", raidid) or GetPartyAssignment("MAINASSIST", raidid) or IsTankUnit(raidid)) then
+			if name and (GetPartyAssignment("MAINTANK", raidid) or GetPartyAssignment("MAINASSIST", raidid)
+				or IsTankUnit(raidid) or HasTankAura(raidid)) then
 				TankNames[name] = true
 			end
 		end
@@ -124,7 +156,7 @@ local function TankWatcherEvents()
 		for index = 1, GetNumPartyMembers() do
 			local partyid = "party" .. index
 			local name = UnitName(partyid)
-			if name and IsTankUnit(partyid) then
+			if name and (IsTankUnit(partyid) or HasTankAura(partyid)) then
 				TankNames[name] = true
 			end
 		end
@@ -134,9 +166,47 @@ local function TankWatcherEvents()
 		end
 	end
 
-	if TidyPlates.RequestDelegateUpdate then
+	-- Plaketten nur aktualisieren, wenn sich die Tank-Liste tatsächlich geändert hat
+	local changed = false
+	for name in pairs(TankNames) do
+		if not OldTankNames[name] then
+			changed = true
+			break
+		end
+	end
+	if not changed then
+		for name in pairs(OldTankNames) do
+			if not TankNames[name] then
+				changed = true
+				break
+			end
+		end
+	end
+	if changed and TidyPlates.RequestDelegateUpdate then
 		TidyPlates:RequestDelegateUpdate()
 	end
+end
+
+-- Auren ändern sich im Raid ständig: Tank-Liste höchstens 2x pro Sekunde neu aufbauen,
+-- und nur, wenn sich bei einem Gruppenmitglied etwas geändert hat
+local TANK_AURA_INTERVAL = 0.5
+local auraDirty, nextAuraCheck = false, 0
+local function TankWatcherOnUpdate(self)
+	if auraDirty and GetTime() >= nextAuraCheck then
+		auraDirty = false
+		nextAuraCheck = GetTime() + TANK_AURA_INTERVAL
+		TankWatcherEvents()
+	end
+end
+
+local function TankWatcherOnEvent(self, event, unitid)
+	if event == "UNIT_AURA" then
+		if unitid and (unitid:find("^raid%d") or unitid:find("^party%d")) then
+			auraDirty = true
+		end
+		return
+	end
+	TankWatcherEvents()
 end
 
 local function EnableTankWatch()
@@ -160,7 +230,9 @@ local function EnableTankWatch()
 	TankWatcher:RegisterEvent("PARTY_CONVERTED_TO_RAID")
 	TankWatcher:RegisterEvent("PLAYER_ROLES_ASSIGNED")
 	TankWatcher:RegisterEvent("UNIT_PET")
-	TankWatcher:SetScript("OnEvent", TankWatcherEvents)
+	TankWatcher:RegisterEvent("UNIT_AURA")
+	TankWatcher:SetScript("OnEvent", TankWatcherOnEvent)
+	TankWatcher:SetScript("OnUpdate", TankWatcherOnUpdate)
 	TankWatcherEvents()
 end
 
@@ -175,6 +247,7 @@ local function DisableTankWatch()
 
 	if TankWatcher then
 		TankWatcher:SetScript("OnEvent", nil)
+		TankWatcher:SetScript("OnUpdate", nil)
 		TankWatcher:UnregisterAllEvents()
 		TankWatcher = nil
 	end
