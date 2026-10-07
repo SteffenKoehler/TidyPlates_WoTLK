@@ -87,7 +87,7 @@ local OnUpdateHealth, OnUpdateLevel, OnUpdateThreatSituation, OnUpdateRaidIcon, 
 local OnMouseoverNameplate, OnRequestWidgetUpdate, OnRequestDelegateUpdate
 local OnShowCastbar, OnHideCastbar, OnValueChangedCastbar
 local PollPlateState, ProcessHealthUpdate, OnTargetChangedNameplate, LearnGUIDs
-local CorrelateDamage
+local CorrelateDamage, AssignFromMarkers
 
 -- Spell Casting
 local StartCastAnimation, StopCastAnimation, OnUpdateTargetCastbar
@@ -638,6 +638,66 @@ do
 		end
 	end
 
+	-- Raid-Marker: Kampflog-Flags (und Einheiten wie raidXtarget) verraten, welche GUID
+	-- welches Symbol trägt. Da jedes Symbol nur einmal vergeben ist, ist die Zuordnung zur
+	-- Plakette mit demselben Symbol (und gleichem Namen) eindeutig - auch bei gleichnamigen
+	-- Mobs mit voller Gesundheit.
+	local MarkerGUID, MarkerName = {}, {} -- [icon] = guid / name
+	local MarkersDirty = false
+	local MarkerByIndex = {"STAR", "CIRCLE", "DIAMOND", "TRIANGLE", "MOON", "SQUARE", "CROSS", "SKULL"}
+	local RAIDTARGET_MASK = 0x0FF00000
+	local MarkerByBit = {}
+	for i = 1, 8 do
+		MarkerByBit[0x00080000 * 2 ^ i] = MarkerByIndex[i] -- 0x00100000 .. 0x08000000
+	end
+
+	local function RecordMarker(icon, guid, name)
+		if icon and guid and MarkerGUID[icon] ~= guid then
+			MarkerGUID[icon] = guid
+			MarkerName[icon] = name
+			MarkersDirty = true
+		end
+	end
+
+	-- force = false: nur wenn seit dem letzten Lauf neue Marker-Informationen kamen
+	function AssignFromMarkers(force)
+		if not (force or MarkersDirty) then
+			return
+		end
+		MarkersDirty = false
+		if not next(MarkerGUID) then
+			return
+		end
+		for plate in pairs(PlatesVisible) do
+			local u = plate.extended.unit
+			-- Symbol direkt aus der Region lesen: unit.raidIcon wird erst im nächsten Frame
+			-- aktualisiert und wäre direkt nach dem Umsetzen eines Markers veraltet
+			local raidicon = plate.extended.regions.raidicon
+			local icon
+			if raidicon:IsShown() then
+				local ux, uy = raidicon:GetTexCoord()
+				icon = MarkerByIndex[floor(ux * 4 + 0.5) + 1 + (uy > 0.1 and 4 or 0)]
+			end
+			if icon then
+				local guid = MarkerGUID[icon]
+				if guid and u.guid ~= guid and u.name == MarkerName[icon] then
+					AssignGUID(plate, guid, true)
+				end
+			end
+		end
+	end
+
+	-- Symbole wurden umverteilt: alte Zuordnungen verwerfen, Kampflog füllt sie neu
+	do
+		local MarkerWatcher = CreateFrame("Frame")
+		MarkerWatcher:RegisterEvent("RAID_TARGET_UPDATE")
+		MarkerWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+		MarkerWatcher:SetScript("OnEvent", function()
+			wipe(MarkerGUID)
+			wipe(MarkerName)
+		end)
+	end
+
 	-- Kampflog: Schaden an Gegnern ohne bekannte Plakette vormerken
 	do
 		local band = bit.band
@@ -650,7 +710,16 @@ do
 		local DamageWatcher = CreateFrame("Frame")
 		DamageWatcher:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 		DamageWatcher:SetScript("OnEvent", function(self, event, ...)
-			local _, subevent, _, _, _, destGUID, destName, destFlags = ...
+			local _, subevent, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags = ...
+			local raid = sourceFlags and band(sourceFlags, RAIDTARGET_MASK)
+			if raid and raid ~= 0 then
+				RecordMarker(MarkerByBit[raid], sourceGUID, sourceName)
+			end
+			raid = destFlags and band(destFlags, RAIDTARGET_MASK)
+			if raid and raid ~= 0 then
+				RecordMarker(MarkerByBit[raid], destGUID, destName)
+			end
+
 			local amount, overkill
 			if subevent == "SWING_DAMAGE" then
 				amount, overkill = select(9, ...)
@@ -1325,7 +1394,8 @@ do
 	-- Name + Lebenspunkte + max. Lebenspunkte, bekommt sie die GUID. Bei mehreren
 	-- Treffern (z.B. Gruppe gleichnamiger Mobs mit voller Gesundheit) wird nichts
 	-- zugeordnet, um falsche Debuffs/Zauberleisten zu vermeiden.
-	local LearnUnits = {"focus", "focustarget", "targettarget", "pettarget"}
+	-- boss1-4: Boss-Einheiten (falls der Server sie liefert, sonst wirkungslos)
+	local LearnUnits = {"focus", "focustarget", "targettarget", "pettarget", "boss1", "boss2", "boss3", "boss4"}
 	local partyTargets, raidTargets = {}, {}
 	for i = 1, 4 do partyTargets[i] = "party" .. i .. "target" end
 	for i = 1, 40 do raidTargets[i] = "raid" .. i .. "target" end
@@ -1335,10 +1405,14 @@ do
 			return
 		end
 		local guid = UnitGUID(uid)
-		if not guid or GUID[guid] then
+		if not guid then
 			return
 		end
 		local name = UnitName(uid)
+		RecordMarker(MarkerByIndex[GetRaidTargetIndex(uid) or 0], guid, name)
+		if GUID[guid] then
+			return
+		end
 		local hp, hpmax = UnitHealth(uid), UnitHealthMax(uid)
 		local match
 		for plate in pairs(PlatesVisible) do
@@ -1356,6 +1430,7 @@ do
 	end
 
 	function LearnGUIDs()
+		AssignFromMarkers(true) -- auch neu aufgetauchte markierte Plaketten erfassen
 		RestoreFromFingerprints()
 		for i = 1, #LearnUnits do
 			LearnGUIDFromUnit(LearnUnits[i])
@@ -1579,6 +1654,8 @@ do
 		end
 		-- Schadens-Abgleich (Kampflog <-> Lebensbalken), jeden Frame, meist leer
 		CorrelateDamage()
+		-- Neue Marker-Information aus dem Kampflog sofort anwenden
+		AssignFromMarkers()
 
 		-- Alpha - Highlight - Poll Loop
 		for plate in pairs(PlatesVisible) do
