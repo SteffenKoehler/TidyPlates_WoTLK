@@ -1,0 +1,6 @@
+## Interface: 30300
+## Title: TPProf
+## Notes: CPU-Messung pro Addon (/tpprof)
+## SavedVariables: TPProfDB
+
+TPProf.lua
