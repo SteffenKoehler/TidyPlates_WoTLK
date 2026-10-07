@@ -414,6 +414,9 @@ local function EventUnitAura(unitid)
 		UpdateAurasByUnitID("target")
 	elseif unitid == "focus" then
 		UpdateAurasByUnitID("focus")
+	elseif unitid == "mouseover" then
+		-- Live-Aktualisierung, solange man über einer Plakette schwebt
+		UpdateAurasByUnitID("mouseover")
 	end
 end
 

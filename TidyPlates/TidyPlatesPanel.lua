@@ -45,7 +45,7 @@ TidyPlatesOptions = {
 	secondary = defaultSecondaryTheme,
 	FriendlyAutomation = L["No Automation"],
 	EnemyAutomation = L["No Automation"],
-	EnableCastWatcher = false,
+	EnableCastWatcher = true,
 	WelcomeShown = false,
 	EnableMinimapButton = false
 }
@@ -491,6 +491,12 @@ function panelevents:PLAYER_LOGIN()
 	UpdateThemeNames()
 	ActivateInterfacePanel()
 	ShowWelcome()
+	-- Nicht-Ziel-Zauberleisten einmalig für jeden Charakter einschalten (neuer Standard).
+	-- Danach bleibt die eigene Wahl im Optionsmenü erhalten.
+	if not TidyPlatesOptions.CastWatcherDefaultOn then
+		TidyPlatesOptions.EnableCastWatcher = true
+		TidyPlatesOptions.CastWatcherDefaultOn = true
+	end
 	LoadTheme("None")
 	ApplyAutomationSettings()
 end

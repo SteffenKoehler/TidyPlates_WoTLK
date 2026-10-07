@@ -852,6 +852,21 @@ do
 		if activetheme.OnUpdate then
 			activetheme.OnUpdate(extended, unit)
 		end
+
+		-- Mouseover über ein Nicht-Ziel: Laufenden Zauber mit exakten Zeiten anzeigen
+		local u = plate.extended.unit
+		if u.isMouseover and not u.isTarget and TidyPlates.StartTimedCastOnNameplate
+			and (not u.guid or u.guid == UnitGUID("mouseover")) then
+			local spell, _, _, icon, startTime, endTime, _, _, notInterruptible = UnitCastingInfo("mouseover")
+			local channel = false
+			if not spell then
+				spell, _, _, icon, startTime, endTime, _, notInterruptible = UnitChannelInfo("mouseover")
+				channel = true
+			end
+			if spell and startTime and endTime then
+				TidyPlates.StartTimedCastOnNameplate(plate, u.guid, spell, nil, icon, notInterruptible, startTime / 1000, endTime / 1000, channel)
+			end
+		end
 	end
 
 	-- OnRequestWidgetUpdate: Updates just the widgets

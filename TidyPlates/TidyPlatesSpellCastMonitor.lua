@@ -50,6 +50,8 @@ CastTicker:SetScript("OnUpdate", function(self)
 			ActiveCasts[plate] = nil
 		elseif now >= cast.endTime then
 			EndCast(plate)
+		elseif cast.channel then
+			plate.extended.bars.castbar:SetValue(cast.endTime - now) -- Kanalisieren läuft rückwärts
 		else
 			plate.extended.bars.castbar:SetValue(now - cast.startTime)
 		end
@@ -58,6 +60,23 @@ CastTicker:SetScript("OnUpdate", function(self)
 		self:Hide()
 	end
 end)
+
+-- Startet eine selbst gesteuerte Zauberleiste auf einer Nicht-Ziel-Plakette.
+-- startTime/endTime in Sekunden (GetTime-Basis).
+local function StartTimedCast(plate, guid, spell, spellid, icon, notInterruptible, startTime, endTime, channel)
+	local unit = plate.extended.unit
+	if unit.isTarget or not endTime or endTime <= GetTime() then
+		return
+	end
+	if StartCastAnimationOnNameplate(plate, spell, spellid, icon, notInterruptible, channel, 0, endTime - startTime) then
+		local cast = ActiveCasts[plate] or {}
+		cast.guid, cast.name = guid, unit.name
+		cast.startTime, cast.endTime, cast.channel = startTime, endTime, channel
+		ActiveCasts[plate] = cast
+		CastTicker:Show()
+	end
+end
+TidyPlates.StartTimedCastOnNameplate = StartTimedCast
 
 -- Beendet die Zauberleiste des Gegners mit dieser GUID (Erfolg/Abbruch/Tod)
 local function StopCastByGUID(guid)
@@ -142,15 +161,8 @@ local function OnSpellCast(...)
 	if FoundPlate then
 		local FoundPlateUnit = FoundPlate.extended.unit
 		if not FoundPlateUnit.isTarget then
-			local duration = castTime / 1000
-			if StartCastAnimationOnNameplate(FoundPlate, spell, spellid, icon, false, false, 0, duration) then
-				local now = GetTime()
-				local cast = ActiveCasts[FoundPlate] or {}
-				cast.guid, cast.name = sourceGUID, FoundPlateUnit.name
-				cast.startTime, cast.endTime = now, now + duration
-				ActiveCasts[FoundPlate] = cast
-				CastTicker:Show()
-			end
+			local now = GetTime()
+			StartTimedCast(FoundPlate, sourceGUID, spell, spellid, icon, false, now, now + castTime / 1000, false)
 		end
 	end
 end
