@@ -98,6 +98,9 @@ local function ApplyPlaterLook(p)
 	-- Konstante Größe wie bei Plater: Aggro nur über die Farbe, nicht über die Größe
 	-- (sonst schrumpfen normale Mobs im Kampf um 20 % und je nach Aggro-Stufe)
 	p.threat.useScale = false
+	-- Keine Aggro-Zacken um die Plakette: die Information steckt schon in der Balkenfarbe,
+	-- und mit Tank-Ansicht auf DD/Heiler zeigen sie sonst bei jedem getankten Mob eine Warnung
+	p.threat.art.ON = false
 
 	-- Plaketten stapeln (ersetzt die WeakAura "Enhanced Stacking Nameplate")
 	p.stacking.ON = true
