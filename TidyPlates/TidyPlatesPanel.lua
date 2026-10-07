@@ -102,7 +102,9 @@ local function LoadTheme(incomingtheme)
 		currentThemeName = incomingtheme
 		return theme
 	else
-		TidyPlatesOptions[activespec] = "None"
+		-- Theme (noch) nicht vorhanden, z.B. weil das Theme-Addon wegen eines Fehlers
+		-- nicht geladen hat: nur für diese Sitzung "None" nutzen, die gespeicherte Wahl
+		-- aber behalten (früher wurde sie dauerhaft mit "None" überschrieben)
 		currentThemeName = "None"
 		TidyPlates:ActivateTheme(TidyPlatesThemeList["None"])
 		return nil
