@@ -101,6 +101,42 @@ local function DebuffFilter(debuff)
 	db = TidyPlatesThreat.db.profile
 	return DebuffFilterModes[db.debuffWidget.mode](debuff, db.debuffWidget.filter)
 end
+-- Position/Größe der Widgets. Läuft bei jedem Anzeigen einer Plakette und bei
+-- jeder Optionsänderung (ForceUpdate -> OnInitialize), daher nicht pro Update nötig.
+local function ApplyLayout(plate)
+	local w = plate.widgets
+	if w.WidgetDebuff then
+		w.WidgetDebuff:SetScale(db.debuffWidget.scale)
+		w.WidgetDebuff:SetPoint(db.debuffWidget.anchor, plate, db.debuffWidget.x, db.debuffWidget.y)
+	end
+	if w.ComboPoints then
+		w.ComboPoints:SetPoint("CENTER", plate, (db.comboWidget.x), db.comboWidget.y)
+	end
+	if w.ThreatLineWidget then
+		w.ThreatLineWidget:SetPoint("CENTER", plate, (db.threatWidget.x), db.threatWidget.y)
+	end
+	if w.SocialArt then
+		w.SocialArt:SetHeight(db.socialWidget.scale)
+		w.SocialArt:SetWidth(db.socialWidget.scale)
+		w.SocialArt:SetPoint("CENTER", plate, db.socialWidget.anchor, db.socialWidget.x, db.socialWidget.y)
+	end
+	if w.ClassIconWidget then
+		w.ClassIconWidget:SetHeight(db.classWidget.scale)
+		w.ClassIconWidget:SetWidth(db.classWidget.scale)
+		w.ClassIconWidget:SetPoint((db.classWidget.anchor), plate, (db.classWidget.x), (db.classWidget.y))
+	end
+	if w.TotemIconWidget then
+		w.TotemIconWidget:SetHeight(db.totemWidget.scale)
+		w.TotemIconWidget:SetWidth(db.totemWidget.scale)
+		w.TotemIconWidget:SetPoint(db.totemWidget.anchor, plate, (db.totemWidget.x), (db.totemWidget.y))
+	end
+	if w.UniqueIconWidget then
+		w.UniqueIconWidget:SetHeight(db.uniqueWidget.scale)
+		w.UniqueIconWidget:SetWidth(db.uniqueWidget.scale)
+		w.UniqueIconWidget:SetPoint(db.uniqueWidget.anchor, plate, (db.uniqueWidget.x), (db.uniqueWidget.y))
+	end
+end
+
 ----------------
 -- INITIALIZE --
 ----------------
@@ -241,6 +277,8 @@ local function OnInitialize(plate)
 		w.ComboPoints:Hide()
 		w.ComboPoints = nil
 	end
+
+	ApplyLayout(plate)
 end
 --------------------
 -- CONTEXT UPDATE --
@@ -253,8 +291,6 @@ local function OnContextUpdate(plate, unit)
 		if not w.WidgetDebuff then
 			OnInitialize(plate)
 		end
-		w.WidgetDebuff:SetScale(db.debuffWidget.scale)
-		w.WidgetDebuff:SetPoint(db.debuffWidget.anchor, plate, db.debuffWidget.x, db.debuffWidget.y)
 		w.WidgetDebuff:UpdateContext(unit)
 	end
 
@@ -263,7 +299,6 @@ local function OnContextUpdate(plate, unit)
 		if not w.ComboPoints then
 			OnInitialize(plate)
 		end
-		w.ComboPoints:SetPoint("CENTER", plate, (db.comboWidget.x), db.comboWidget.y)
 		w.ComboPoints:UpdateContext(unit)
 	end
 
@@ -272,7 +307,6 @@ local function OnContextUpdate(plate, unit)
 		if not w.ThreatLineWidget then
 			OnInitialize(plate)
 		end
-		w.ThreatLineWidget:SetPoint("CENTER", plate, (db.threatWidget.x), db.threatWidget.y)
 		w.ThreatLineWidget:UpdateContext(unit)
 	end
 end
@@ -303,9 +337,6 @@ local function OnUpdate(plate, unit)
 		if not w.SocialArt then
 			OnInitialize(plate)
 		end
-		w.SocialArt:SetHeight(db.socialWidget.scale)
-		w.SocialArt:SetWidth(db.socialWidget.scale)
-		w.SocialArt:SetPoint("CENTER", plate, db.socialWidget.anchor, db.socialWidget.x, db.socialWidget.y)
 		w.SocialArt:Update(unit)
 	end
 	-- Class Icons
@@ -313,9 +344,6 @@ local function OnUpdate(plate, unit)
 		if not w.ClassIconWidget then
 			OnInitialize(plate)
 		end
-		w.ClassIconWidget:SetHeight(db.classWidget.scale)
-		w.ClassIconWidget:SetWidth(db.classWidget.scale)
-		w.ClassIconWidget:SetPoint((db.classWidget.anchor), plate, (db.classWidget.x), (db.classWidget.y))
 		w.ClassIconWidget:Update(unit)
 	end
 	-- Totem Icons
@@ -323,9 +351,6 @@ local function OnUpdate(plate, unit)
 		if not w.TotemIconWidget then
 			OnInitialize(plate)
 		end
-		w.TotemIconWidget:SetHeight(db.totemWidget.scale)
-		w.TotemIconWidget:SetWidth(db.totemWidget.scale)
-		w.TotemIconWidget:SetPoint(db.totemWidget.anchor, plate, (db.totemWidget.x), (db.totemWidget.y))
 		w.TotemIconWidget:Update(unit)
 	end
 	-- Unique Icons
@@ -333,9 +358,6 @@ local function OnUpdate(plate, unit)
 		if not w.UniqueIconWidget then
 			OnInitialize(plate)
 		end
-		w.UniqueIconWidget:SetHeight(db.uniqueWidget.scale)
-		w.UniqueIconWidget:SetWidth(db.uniqueWidget.scale)
-		w.UniqueIconWidget:SetPoint(db.uniqueWidget.anchor, plate, (db.uniqueWidget.x), (db.uniqueWidget.y))
 		w.UniqueIconWidget:Update(unit)
 	end
 	-- Threat Widget

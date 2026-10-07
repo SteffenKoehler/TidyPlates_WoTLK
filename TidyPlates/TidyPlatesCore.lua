@@ -81,6 +81,7 @@ local OnNewNameplate, OnShowNameplate, OnHideNameplate, OnUpdateNameplate, OnRes
 local OnUpdateHealth, OnUpdateLevel, OnUpdateThreatSituation, OnUpdateRaidIcon, OnUpdateHealthRange
 local OnMouseoverNameplate, OnRequestWidgetUpdate, OnRequestDelegateUpdate
 local OnShowCastbar, OnHideCastbar, OnValueChangedCastbar
+local PollPlateState
 
 -- Spell Casting
 local StartCastAnimation, StopCastAnimation, OnUpdateTargetCastbar
@@ -447,6 +448,7 @@ do
 				end
 				return "HIGH", 3
 			end
+			return "LOW", 0
 		end
 	end
 	-- GetUnitReaction: Determines the reaction, and type of unit from the health bar color
@@ -578,6 +580,7 @@ do
 		for key, value in pairs(unit) do
 			if unitcache[key] ~= value then
 				unitchanged = true
+				break
 			end
 		end
 
@@ -956,6 +959,38 @@ do
 		end
 	end
 
+	-- PollPlateState: 3.3.5a liefert kein Event, wenn sich das Aggro-Leuchten oder der
+	-- Kampfstatus einer einzelnen Plakette ändert. Darum wird das hier zyklisch geprüft
+	-- und nur die Plakette aktualisiert, die sich tatsächlich geändert hat.
+	function PollPlateState(plate)
+		local ext = plate.extended
+		local u = ext.unit
+		if not u.name then
+			return
+		end
+		local regs = ext.regions
+
+		local threatSituation = "LOW"
+		if InCombat then
+			threatSituation = GetUnitAggroStatus(regs.threatglow)
+		end
+		local isInCombat = GetUnitCombatStatus(regs.name:GetTextColor())
+
+		if threatSituation ~= u.threatSituation or isInCombat ~= u.isInCombat then
+			-- Vollupdate (inkl. Widgets wie Threat-Art), überschreibt kleinere Updates
+			targetQueue[plate] = OnUpdateNameplate
+		end
+
+		-- Crowd-Control-Farbe zurücksetzen/setzen, wenn der Effekt beginnt oder ausläuft
+		local isCC = TidyPlatesWidgets and TidyPlatesWidgets.IsUnitCrowdControlled and TidyPlatesWidgets.IsUnitCrowdControlled(u) or false
+		if isCC ~= (ext.isCrowdControlled or false) then
+			ext.isCrowdControlled = isCC
+			if not targetQueue[plate] then
+				targetQueue[plate] = OnRequestDelegateUpdate
+			end
+		end
+	end
+
 	-- OnResetNameplate
 	function OnResetNameplate(plate)
 		local extended = plate.extended
@@ -1131,10 +1166,28 @@ do
 	-- OnUpdate: This function is processed every frame!
 	local queuedFunction
 	local HasMouseover, LastMouseover, CurrentMouseover
-	local PollTime, PollIndex = 0, 0
+	local highlightRegion
+	local POLL_INTERVAL = 0.1
+	local NextPoll = 0
+
+	-- Erzwingt die Zustandsabfrage im nächsten Frame (z.B. bei Threat-Events)
+	function TidyPlates:RequestStatePoll()
+		NextPoll = 0
+	end
 
 	function OnUpdate(self)
 		HasMouseover = false
+
+		-- Zustandsabfrage (Aggro/Kampf/CC), gedrosselt auf POLL_INTERVAL
+		local now = GetTime()
+		if now >= NextPoll then
+			NextPoll = now + POLL_INTERVAL
+			for plate in pairs(PlatesVisible) do
+				if plate.extended:IsShown() then
+					PollPlateState(plate)
+				end
+			end
+		end
 
 		-- Alpha - Highlight - Poll Loop
 		for plate in pairs(PlatesVisible) do
@@ -1255,9 +1308,11 @@ do
 	function events:RAID_TARGET_UPDATE()
 		SetMassQueue(OnUpdateNameplate)
 	end
+	-- Statt alle Plaketten neu zu berechnen (feuert im Raid sehr oft), nur sofort
+	-- abfragen; aktualisiert werden dann nur Plaketten, deren Aggro sich geändert hat.
 	function events:UNIT_THREAT_SITUATION_UPDATE()
-		SetMassQueue(OnUpdateThreatSituation)
-	end -- Only fired when a target changes
+		TidyPlates:RequestStatePoll()
+	end
 	function events:UNIT_LEVEL()
 		ForEachPlate(OnUpdateLevel)
 	end

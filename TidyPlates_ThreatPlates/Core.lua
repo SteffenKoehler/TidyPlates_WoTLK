@@ -1029,8 +1029,40 @@ end
 
 local UnitInGroup = TidyPlatesUtility.UnitInGroup
 local TotemNameFallback = TidyPlatesUtility.TotemNameFallback
+-- Style-Cache: UnitType/SetStyle werden pro Plakette und Update bis zu ~10x
+-- aufgerufen (Alpha, Scale, Farbe, Widgets ...). Das Ergebnis wird pro Unit
+-- gemerkt, solange sich weder die relevanten Unit-Daten noch der Frame
+-- (GetTime) noch die Generation (Optionen/Rolle geändert) ändern.
+local GetTime, InCombatLockdown = GetTime, InCombatLockdown
+local StyleMemo = setmetatable({}, {__mode = "k"})
+local StyleGeneration = 0
+
+function TidyPlatesThreat.InvalidateStyleCache()
+	StyleGeneration = StyleGeneration + 1
+end
+
+local function GetStyleMemo(unit)
+	local m = StyleMemo[unit]
+	if not m then
+		m = {}
+		StyleMemo[unit] = m
+	end
+	local now, combat = GetTime(), InCombatLockdown()
+	if m.time ~= now or m.gen ~= StyleGeneration or m.combat ~= combat or m.name ~= unit.name or
+		m.reaction ~= unit.reaction or m.isElite ~= unit.isElite or m.isDangerous ~= unit.isDangerous or
+		m.class ~= unit.class or m.isInCombat ~= unit.isInCombat or m.health ~= unit.health or
+		m.healthmax ~= unit.healthmax
+	then
+		m.time, m.gen, m.combat, m.name = now, StyleGeneration, combat, unit.name
+		m.reaction, m.isElite, m.isDangerous = unit.reaction, unit.isElite, unit.isDangerous
+		m.class, m.isInCombat, m.health, m.healthmax = unit.class, unit.isInCombat, unit.health, unit.healthmax
+		m.hasType, m.hasStyle = false, false
+	end
+	return m
+end
+
 -- Unit Classification
-function TidyPlatesThreat.UnitType(unit)
+local function ComputeUnitType(unit)
 	DB = TidyPlatesThreat.db.profile
 	local totem = TPtotemList[unit.name] or TPtotemList[TotemNameFallback(unit.name)]
 
@@ -1101,7 +1133,17 @@ function TidyPlatesThreat.UnitType(unit)
 	return "Normal"
 end
 
-function TidyPlatesThreat.SetStyle(unit)
+function TidyPlatesThreat.UnitType(unit)
+	local m = GetStyleMemo(unit)
+	if not m.hasType then
+		m.type, m.typeCustom = ComputeUnitType(unit)
+		m.hasType = true
+	end
+	DB = TidyPlatesThreat.db.profile
+	return m.type, m.typeCustom
+end
+
+local function ComputeStyle(unit)
 	DB = TidyPlatesThreat.db.profile
 	local T, custom = TidyPlatesThreat.UnitType(unit)
 	if T == "Totem" then
@@ -1179,6 +1221,19 @@ function TidyPlatesThreat.SetStyle(unit)
 		return "empty"
 	end
 end
+
+function TidyPlatesThreat.SetStyle(unit)
+	local m = GetStyleMemo(unit)
+	if not m.hasStyle then
+		m.style, m.styleCustom = ComputeStyle(unit)
+		m.hasStyle = true
+	end
+	return m.style, m.styleCustom
+end
+
+-- Jede Änderung, die einen ForceUpdate auslöst (Optionen, Rolle, Haltung,
+-- Talente), macht den Style-Cache ungültig.
+hooksecurefunc(TidyPlates, "ForceUpdate", TidyPlatesThreat.InvalidateStyleCache)
 
 local function ShowConfigPanel()
 	TidyPlatesThreat:OpenOptions()

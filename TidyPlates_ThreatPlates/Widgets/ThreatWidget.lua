@@ -25,7 +25,11 @@ local function UpdateThreatWidget(frame, unit)
 		if unit.isMarked and db.threat.marked.art then
 			frame:Hide()
 		else
-			frame.Texture:SetTexture(path .. db.threat.art.theme .. "\\" .. threatLevel)
+			local tex = path .. db.threat.art.theme .. "\\" .. threatLevel
+			if frame.currentTexture ~= tex then
+				frame.Texture:SetTexture(tex)
+				frame.currentTexture = tex
+			end
 			frame:Show()
 		end
 	else
