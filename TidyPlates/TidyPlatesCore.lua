@@ -24,6 +24,7 @@ local targetQueue = setmetatable({}, weaktable)
 -- Schlüssel in dieselbe Tabelle geschrieben werden (in Lua bei pairs() undefiniert)
 local healthQueue = setmetatable({}, weaktable)
 local delegateQueue = setmetatable({}, weaktable)
+local widgetQueue = setmetatable({}, weaktable) -- Widgets nach neuer GUID-Zuordnung auffrischen
 
 local ForEachPlate
 local EMPTY_TEXTURE = "Interface\\Addons\\TidyPlates\\Media\\Empty"
@@ -86,6 +87,7 @@ local OnUpdateHealth, OnUpdateLevel, OnUpdateThreatSituation, OnUpdateRaidIcon, 
 local OnMouseoverNameplate, OnRequestWidgetUpdate, OnRequestDelegateUpdate
 local OnShowCastbar, OnHideCastbar, OnValueChangedCastbar
 local PollPlateState, ProcessHealthUpdate, OnTargetChangedNameplate, LearnGUIDs
+local CorrelateDamage
 
 -- Spell Casting
 local StartCastAnimation, StopCastAnimation, OnUpdateTargetCastbar
@@ -420,6 +422,263 @@ do
 		visual = extended.visual
 		style = extended.style
 	end
+
+	--------------------------------
+	-- GUID-Zuordnung
+	-- Plaketten haben in 3.3.5a keine GUID. Neben Ziel/Mouseover (sicher) gibt es
+	-- zwei Heuristiken, die NUR bei Eindeutigkeit zuordnen:
+	--  1. Fingerabdruck: Beim Verschwinden einer Plakette werden GUID, Name, Stufe,
+	--     Lebenspunkte usw. gemerkt und beim Wiederauftauchen abgeglichen.
+	--  2. Schadens-Abgleich: Kampflog-Schaden an GUID X in Höhe Y wird mit einer
+	--     Plakette abgeglichen, deren Lebenspunkte im selben Moment um Y sanken.
+	-- Ziel/Mouseover sind maßgeblich und korrigieren falsche Zuordnungen.
+	--------------------------------
+	local HiddenFingerprints = {} -- [guid] = {name, level, healthmax, health, isElite, time}
+	local FINGERPRINT_TTL = 30
+
+	-- authoritative = true bei Ziel/Mouseover: darf bestehende Zuordnungen überschreiben
+	local function AssignGUID(plate, guid, authoritative)
+		if not plate or not guid then
+			return false
+		end
+		local u = plate.extended.unit
+		if u.guid == guid then
+			return true
+		end
+
+		local other = GUID[guid]
+		if other and other ~= plate then
+			if not authoritative then
+				return false
+			end
+			local ou = other.extended.unit
+			if ou.guid == guid then
+				ou.guid = nil
+				widgetQueue[other] = true
+			end
+		end
+		if u.guid then
+			if not authoritative then
+				return false
+			end
+			if GUID[u.guid] == plate then
+				GUID[u.guid] = nil
+			end
+		end
+
+		u.guid = guid
+		GUID[guid] = plate
+		HiddenFingerprints[guid] = nil
+		widgetQueue[plate] = true -- Debuffs, Tank-Status, laufende Zauber nachziehen
+		return true
+	end
+
+	-- Fingerabdruck: Darf die (sichtbare) Plakette u der gemerkte Gegner fp sein?
+	-- Lebenspunkte dürfen seit dem Verschwinden nur gesunken sein (DoTs ticken weiter),
+	-- mit kleiner Toleranz für Regeneration, und nicht beliebig stark.
+	local function FingerprintMatches(fp, u, now)
+		if fp.name ~= u.name or fp.level ~= u.level or fp.healthmax ~= u.healthmax or fp.isElite ~= u.isElite then
+			return false
+		end
+		local hp = u.health
+		if not hp or hp <= 0 then
+			return false
+		end
+		local hidden = now - fp.time
+		local maxDrop = fp.healthmax * math.min(0.5, 0.05 + 0.03 * hidden)
+		return hp <= fp.health + fp.healthmax * 0.05 and hp >= fp.health - maxDrop
+	end
+
+	local function RememberFingerprint(u)
+		if not (u.guid and u.name and u.healthmax and u.healthmax > 0 and u.health) then
+			return
+		end
+		-- Unverletzte Gegner sind in Gruppen gleichnamiger Mobs nicht unterscheidbar
+		if u.health >= u.healthmax or u.reaction == "FRIENDLY" or u.type == "PLAYER" then
+			return
+		end
+		local fp = HiddenFingerprints[u.guid] or {}
+		fp.name, fp.level, fp.healthmax, fp.health = u.name, u.level, u.healthmax, u.health
+		fp.isElite, fp.time = u.isElite, GetTime()
+		HiddenFingerprints[u.guid] = fp
+	end
+
+	-- Versucht für alle sichtbaren Plaketten ohne GUID einen gemerkten Gegner zu finden.
+	-- Zugeordnet wird nur, wenn Plakette und Fingerabdruck sich gegenseitig eindeutig sind.
+	local function RestoreFromFingerprints()
+		if not next(HiddenFingerprints) then
+			return
+		end
+		local now = GetTime()
+		for guid, fp in pairs(HiddenFingerprints) do
+			if GUID[guid] or (now - fp.time) > FINGERPRINT_TTL then
+				HiddenFingerprints[guid] = nil
+			end
+		end
+		for plate in pairs(PlatesVisible) do
+			local u = plate.extended.unit
+			if not u.guid and u.name then
+				local found
+				for guid, fp in pairs(HiddenFingerprints) do
+					if FingerprintMatches(fp, u, now) then
+						if found then
+							found = false -- mehrdeutig
+							break
+						end
+						found = guid
+					end
+				end
+				if found then
+					local fp = HiddenFingerprints[found]
+					local unique = true
+					for other in pairs(PlatesVisible) do
+						local ou = other.extended.unit
+						if other ~= plate and not ou.guid and FingerprintMatches(fp, ou, now) then
+							unique = false
+							break
+						end
+					end
+					if unique then
+						AssignGUID(plate, found)
+					end
+				end
+			end
+		end
+	end
+
+	-- Schadens-Abgleich
+	local PendingDamage = {} -- Kampflog: {guid, name, amount, t}
+	local PlateDamage = {}   -- Plaketten: {plate, amount, t}
+	local CORRELATE_WINDOW = 0.35
+	local MAX_PENDING = 200
+
+	local function AddDamageRecord(list, key, keyField, name, amount, now)
+		-- Mehrere Treffer im selben Frame zusammenfassen
+		for i = #list, 1, -1 do
+			local r = list[i]
+			if r.t ~= now then
+				break
+			end
+			if r[keyField] == key then
+				r.amount = r.amount + amount
+				return
+			end
+		end
+		if #list >= MAX_PENDING then
+			return
+		end
+		list[#list + 1] = {[keyField] = key, name = name, amount = amount, t = now}
+	end
+
+	local function RecordCombatDamage(guid, name, amount)
+		AddDamageRecord(PendingDamage, guid, "guid", name, amount, GetTime())
+	end
+
+	local function RecordPlateDamage(plate, amount)
+		AddDamageRecord(PlateDamage, plate, "plate", nil, amount, GetTime())
+	end
+
+	local function PruneDamage(list, now)
+		local j = 0
+		for i = 1, #list do
+			local r = list[i]
+			if not r.done and (now - r.t) <= CORRELATE_WINDOW then
+				j = j + 1
+				list[j] = r
+			end
+		end
+		for i = #list, j + 1, -1 do
+			list[i] = nil
+		end
+	end
+
+	local abs = math.abs
+	function CorrelateDamage()
+		if #PendingDamage == 0 and #PlateDamage == 0 then
+			return
+		end
+		local now = GetTime()
+		PruneDamage(PendingDamage, now)
+		PruneDamage(PlateDamage, now)
+
+		for i = 1, #PendingDamage do
+			local e = PendingDamage[i]
+			if not e.done and not GUID[e.guid] then
+				local match, count = nil, 0
+				for k = 1, #PlateDamage do
+					local d = PlateDamage[k]
+					local du = d.plate.extended.unit
+					if not d.done and d.amount == e.amount and abs(d.t - e.t) <= CORRELATE_WINDOW
+						and not du.guid and du.name == e.name then
+						count = count + 1
+						match = d
+					end
+				end
+				if count == 1 then
+					-- Gegenprobe: kein anderer Gegner mit gleichem Namen und gleichem Schaden
+					local unique = true
+					for k = 1, #PendingDamage do
+						local e2 = PendingDamage[k]
+						if e2 ~= e and e2.guid ~= e.guid and not e2.done and e2.amount == e.amount
+							and e2.name == e.name and abs(e2.t - match.t) <= CORRELATE_WINDOW then
+							unique = false
+							break
+						end
+					end
+					if unique and AssignGUID(match.plate, e.guid) then
+						match.done = true
+						for k = 1, #PendingDamage do
+							if PendingDamage[k].guid == e.guid then
+								PendingDamage[k].done = true
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- Kampflog: Schaden an Gegnern ohne bekannte Plakette vormerken
+	do
+		local band = bit.band
+		local CONTROL_NPC = COMBATLOG_OBJECT_CONTROL_NPC
+		local REACTION_FRIENDLY = COMBATLOG_OBJECT_REACTION_FRIENDLY
+		local SpellDamageEvents = {
+			SPELL_DAMAGE = true, SPELL_PERIODIC_DAMAGE = true, RANGE_DAMAGE = true,
+			DAMAGE_SHIELD = true, DAMAGE_SPLIT = true
+		}
+		local DamageWatcher = CreateFrame("Frame")
+		DamageWatcher:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+		DamageWatcher:SetScript("OnEvent", function(self, event, ...)
+			local _, subevent, _, _, _, destGUID, destName, destFlags = ...
+			local amount, overkill
+			if subevent == "SWING_DAMAGE" then
+				amount, overkill = select(9, ...)
+			elseif SpellDamageEvents[subevent] then
+				amount, overkill = select(12, ...)
+			elseif subevent == "UNIT_DIED" then
+				if destGUID then
+					HiddenFingerprints[destGUID] = nil
+				end
+				return
+			else
+				return
+			end
+			if not InCombat or not destGUID or GUID[destGUID] or not amount then
+				return
+			end
+			if band(destFlags, CONTROL_NPC) == 0 or band(destFlags, REACTION_FRIENDLY) ~= 0 then
+				return
+			end
+			if overkill and overkill > 0 then
+				amount = amount - overkill
+			end
+			if amount > 0 then
+				RecordCombatDamage(destGUID, destName, amount)
+			end
+		end)
+	end
+
 	--------------------------------
 	-- Data Conversion Functions
 	local ClassReference = {}
@@ -499,12 +758,10 @@ do
 		if unit.isTarget then
 			currentTarget = plate
 			OnUpdateTargetCastbar(plate)
-			if not unit.guid then
-				-- UpdateCurrentGUID
-				unit.guid = UnitGUID("target")
-				if unit.guid then
-					GUID[unit.guid] = plate
-				end
+			-- UpdateCurrentGUID: Ziel ist maßgeblich und korrigiert ggf. eine heuristische Zuordnung
+			local targetGUID = UnitGUID("target")
+			if targetGUID and unit.guid ~= targetGUID then
+				AssignGUID(plate, targetGUID, true)
 			end
 			extended:SetFrameLevel(127)
 		else
@@ -648,8 +905,12 @@ do
 		local plate = source.parentPlate
 		UpdateReferences(plate)
 		if unit.guid then
-			GUID[unit.guid] = nil
+			RememberFingerprint(unit) -- für das Wiederauftauchen merken
+			if GUID[unit.guid] == plate then
+				GUID[unit.guid] = nil
+			end
 		end
+		extended.deltaHealth = nil
 
 		bars.castbar:Hide()
 		unit.isCasting = false
@@ -681,6 +942,7 @@ do
 		UpdateReferences(plate)
 		PrepareNameplate(plate)
 		GatherData_BasicInfo()
+		extended.deltaHealth = unit.health -- Ausgangswert für den Schadens-Abgleich
 
 		-- Alternative to reduce initial CPU load
 		CheckNameplateStyle()
@@ -709,6 +971,7 @@ do
 		UpdateReferences(plate)
 		PrepareNameplate(plate)
 		GatherData_BasicInfo()
+		extended.deltaHealth = unit.health -- Ausgangswert für den Schadens-Abgleich
 
 		CheckNameplateStyle()
 		UpdateIndicator_CustomAlpha()
@@ -835,11 +1098,10 @@ do
 
 		if unit.isMouseover then
 			visual.highlight:Show()
-			if (not unit.guid) then
-				unit.guid = UnitGUID("mouseover")
-				if unit.guid then
-					GUID[unit.guid] = plate
-				end
+			-- Mouseover ist maßgeblich und korrigiert ggf. eine heuristische Zuordnung
+			local mouseoverGUID = UnitGUID("mouseover")
+			if mouseoverGUID and unit.guid ~= mouseoverGUID then
+				AssignGUID(plate, mouseoverGUID, true)
 			end
 		else
 			visual.highlight:Hide()
@@ -911,6 +1173,14 @@ do
 		UpdateReferences(plate)
 		unit.health = bars.health:GetValue() or 0
 		_, unit.healthmax = bars.health:GetMinMaxValues()
+
+		-- Lebenspunkte-Abzug für den Schadens-Abgleich merken (nur Plaketten ohne GUID)
+		local lastHealth = extended.deltaHealth
+		extended.deltaHealth = unit.health
+		if lastHealth and unit.health < lastHealth and not unit.guid and InCombat then
+			RecordPlateDamage(plate, lastHealth - unit.health)
+		end
+
 		UpdateIndicator_HealthBar()
 		UpdateIndicator_CustomAlpha()
 		UpdateIndicator_CustomScaleText()
@@ -919,6 +1189,7 @@ do
 	-- OnUpdateHealthRange
 	function OnUpdateHealthRange(source)
 		local plate = source.parentPlate
+		plate.extended.deltaHealth = nil -- max. Lebenspunkte geändert: kein Abzug ableitbar
 		OnUpdateNameplate(plate)
 	end
 
@@ -1080,16 +1351,12 @@ do
 			end
 		end
 		if match then
-			match.extended.unit.guid = guid
-			GUID[guid] = match
-			-- Widgets (Debuffs) mit der neuen GUID aktualisieren
-			if not targetQueue[match] then
-				targetQueue[match] = OnRequestWidgetUpdate
-			end
+			AssignGUID(match, guid)
 		end
 	end
 
 	function LearnGUIDs()
+		RestoreFromFingerprints()
 		for i = 1, #LearnUnits do
 			LearnGUIDFromUnit(LearnUnits[i])
 		end
@@ -1305,11 +1572,13 @@ do
 			end
 		end
 
-		-- GUIDs über Fokus/Pet/Gruppenziele lernen (2x pro Sekunde)
+		-- GUIDs über Fokus/Pet/Gruppenziele und Fingerabdrücke lernen (2x pro Sekunde)
 		if now >= NextGUIDLearn then
 			NextGUIDLearn = now + GUID_LEARN_INTERVAL
 			LearnGUIDs()
 		end
+		-- Schadens-Abgleich (Kampflog <-> Lebensbalken), jeden Frame, meist leer
+		CorrelateDamage()
 
 		-- Alpha - Highlight - Poll Loop
 		for plate in pairs(PlatesVisible) do
@@ -1373,6 +1642,20 @@ do
 		for plate in pairs(delegateQueue) do
 			delegateQueue[plate] = nil
 			OnRequestDelegateUpdate(plate)
+		end
+
+		-- Nach neuer GUID-Zuordnung: Widgets (Debuffs) und Farbe auffrischen,
+		-- laufenden Zauber des Gegners fortsetzen
+		for plate in pairs(widgetQueue) do
+			widgetQueue[plate] = nil
+			if plate:IsShown() then
+				OnRequestWidgetUpdate(plate)
+				OnRequestDelegateUpdate(plate)
+				local u = plate.extended.unit
+				if u.guid and not u.isTarget and TidyPlates.ResumeCastForGUID then
+					TidyPlates.ResumeCastForGUID(plate, u.guid)
+				end
+			end
 		end
 
 		-- Process Mouseover
