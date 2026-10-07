@@ -63,6 +63,11 @@ local function Report(label)
 		Print(format("%2d. %-28s %7.1f ms  %5.2f ms/s  %4.1f%%",
 			i, e.name, e.cpu, e.cpu / duration, total > 0 and e.cpu / total * 100 or 0))
 	end
+	-- Mit echtem Profiling brauchen die Addons zusammen mehrere ms pro Sekunde
+	if duration > 30 and total / duration < 0.1 then
+		Print("|cffff6600Achtung:|r Fast keine CPU-Zeit gemessen - das Profiling ist vermutlich nicht aktiv. "
+			.. "WoW nach /tpprof on einmal komplett beenden und neu starten.")
+	end
 end
 
 local frame = CreateFrame("Frame")
