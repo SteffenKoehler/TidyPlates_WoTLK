@@ -4116,6 +4116,85 @@ local function GetOptions()
 								}
 							}
 						},
+						Castbar = {
+							name = "Zauberleiste: Unterbrechen",
+							type = "group",
+							inline = true,
+							order = 1.5,
+							disabled = function()
+								return not db.platerBorder.ON
+							end,
+							args = {
+								CastToggle = {
+									name = "Nach Unterbrechbarkeit färben",
+									desc = "Färbt die Zauberleiste je nachdem, ob der Zauber unterbrechbar ist und ob deine eigene Unterbrechung (Tritt, Zuschlagen, Gegenzauber ...) bereit ist. Ob ein Zauber unterbrechbar ist, wird beim Ziel/Mouseover gelernt und dann auch für andere Plaketten verwendet. Benötigt den Plater-Rahmen.",
+									type = "toggle",
+									width = "double",
+									order = 1,
+									get = GetValue,
+									set = SetValue,
+									arg = {"platerCast", "ON"}
+								},
+								KickCooldown = {
+									name = "Abklingzeit der eigenen Unterbrechung",
+									desc = "Blassere Farbe, solange deine Unterbrechung bis zum Zauberende nicht bereit ist (oder in der falschen Haltung/Form nicht nutzbar).",
+									type = "toggle",
+									width = "double",
+									order = 2,
+									disabled = function()
+										return not (db.platerBorder.ON and db.platerCast.ON)
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"platerCast", "kickCooldown"}
+								},
+								ShieldIcon = {
+									name = "Schloss bei nicht unterbrechbar",
+									desc = "Schloss-Symbol am Zaubersymbol, das Symbol wird grau.",
+									type = "toggle",
+									order = 3,
+									disabled = function()
+										return not (db.platerBorder.ON and db.platerCast.ON)
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"platerCast", "shieldIcon"}
+								},
+								ColorReady = {
+									name = "Unterbrechbar, bereit",
+									type = "color",
+									order = 4,
+									disabled = function()
+										return not (db.platerBorder.ON and db.platerCast.ON)
+									end,
+									get = GetColor,
+									set = SetColor,
+									arg = {"platerCast", "colorReady"}
+								},
+								ColorCooldown = {
+									name = "Unterbrechbar, Abklingzeit",
+									type = "color",
+									order = 5,
+									disabled = function()
+										return not (db.platerBorder.ON and db.platerCast.ON and db.platerCast.kickCooldown)
+									end,
+									get = GetColor,
+									set = SetColor,
+									arg = {"platerCast", "colorCooldown"}
+								},
+								ColorShield = {
+									name = "Nicht unterbrechbar",
+									type = "color",
+									order = 6,
+									disabled = function()
+										return not (db.platerBorder.ON and db.platerCast.ON)
+									end,
+									get = GetColor,
+									set = SetColor,
+									arg = {"platerCast", "colorShield"}
+								}
+							}
+						},
 						Stacking = {
 							name = "Stapeln",
 							type = "group",

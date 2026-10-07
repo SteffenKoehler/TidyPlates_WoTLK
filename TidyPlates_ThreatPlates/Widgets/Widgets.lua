@@ -79,6 +79,85 @@ local PLATER_FONT = "Fonts\\ARIALN.TTF"
 
 -- Restzeit rechts in der Zauberleiste (Plater: "2.0"). Kanalisierte Zauber laufen
 -- rückwärts; das wird an der Laufrichtung des Balkens erkannt.
+-- Unterbrechungen pro Klasse (Zauber-IDs, Namen werden über GetSpellInfo lokalisiert).
+-- Bekannt ist ein Zauber, wenn GetSpellCooldown(Name) etwas liefert (= im Zauberbuch).
+local _, PlayerClass = UnitClass("player")
+local InterruptIDs = {
+	ROGUE = {1766},              -- Tritt
+	WARRIOR = {6552, 72},        -- Zuschlagen, Schildhieb
+	DEATHKNIGHT = {47528},       -- Gedankenfrost
+	MAGE = {2139},               -- Gegenzauber
+	SHAMAN = {57994},            -- Windstoß
+	PRIEST = {15487},            -- Stille (Schatten)
+	DRUID = {16979, 5211},       -- Wilde Attacke (Bär), Hieb
+	HUNTER = {34490}             -- Unterdrückender Schuss
+}
+local InterruptNames
+local function GetInterruptNames()
+	if not InterruptNames then
+		InterruptNames = {}
+		for _, id in ipairs(InterruptIDs[PlayerClass] or {}) do
+			local name = GetSpellInfo(id)
+			if name then
+				InterruptNames[#InterruptNames + 1] = name
+			end
+		end
+	end
+	return InterruptNames
+end
+
+-- true = eine eigene Unterbrechung ist (spätestens bis Zauberende) bereit,
+-- false = alle auf Abklingzeit/gerade nicht nutzbar, nil = Klasse hat keine
+local function InterruptReady(castRemaining)
+	local known, now = false, GetTime()
+	for _, name in ipairs(GetInterruptNames()) do
+		local start, duration = GetSpellCooldown(name)
+		if start then
+			known = true
+			local usable, noMana = IsUsableSpell(name)
+			-- Globale Abklingzeit (<= 1.5 s) zählt nicht
+			local cd = (start > 0 and duration > 1.5) and (start + duration - now) or 0
+			if (usable or noMana) and cd <= (castRemaining or 0) then
+				return true
+			end
+		end
+	end
+	if known then
+		return false
+	end
+end
+
+-- Farbe der Zauberleiste: nicht unterbrechbar / Unterbrechung bereit / Abklingzeit
+function ThreatPlatesWidgets.PlaterCastColor(unit, castRemaining)
+	local pc = TidyPlatesThreat.db.profile.platerCast
+	local c
+	if unit.spellIsShielded then
+		c = pc.colorShield
+	elseif pc.kickCooldown and InterruptReady(castRemaining) == false then
+		c = pc.colorCooldown
+	else
+		c = pc.colorReady
+	end
+	return c.r, c.g, c.b, 1
+end
+
+local function UpdateCastState(self, remaining)
+	local plate = self.plate
+	local pc = TidyPlatesThreat.db.profile.platerCast
+	if not pc.ON then
+		return
+	end
+	local unit = plate.unit
+	self.bar:SetForegroundColor(ThreatPlatesWidgets.PlaterCastColor(unit, remaining))
+	local shielded = unit.spellIsShielded and pc.shieldIcon
+	if shielded then
+		self.shield:Show()
+	else
+		self.shield:Hide()
+	end
+	plate.visual.spellicon:SetDesaturated(shielded and true or false)
+end
+
 local function CastTimerOnUpdate(self)
 	local bar = self.bar
 	local value = bar:GetValue()
@@ -96,13 +175,19 @@ local function CastTimerOnUpdate(self)
 		remaining = 0
 	end
 	self.text:SetFormattedText("%.1f", remaining)
+	-- Farbe/Schloss 10x pro Sekunde nachführen (Abklingzeit der eigenen Unterbrechung)
+	local now = GetTime()
+	if not self.nextState or now >= self.nextState then
+		self.nextState = now + 0.1
+		UpdateCastState(self, remaining)
+	end
 end
 
 -- Zauberleiste sichtbar: Namen ausblenden. Er liegt an derselben Stelle, und beim Ziel
 -- (Ebene 127) würde er sonst über der Zauberleiste gezeichnet. SetAlpha reicht nicht,
 -- weil SetTextColor (bei jeder Farbaktualisierung) die Transparenz zurücksetzt.
 local function OnCastShow(self)
-	self.lastMax, self.lastValue, self.channel = nil, nil, nil
+	self.lastMax, self.lastValue, self.channel, self.nextState = nil, nil, nil, nil
 	self.plate.visual.name:Hide()
 end
 
@@ -111,6 +196,8 @@ local function OnCastHide(self)
 	if plate.style and plate.style.name and plate.style.name.show then
 		plate.visual.name:Show()
 	end
+	self.shield:Hide()
+	plate.visual.spellicon:SetDesaturated(false)
 end
 
 function ThreatPlatesWidgets.AddCastTimer(border, size, plate)
@@ -120,6 +207,14 @@ function ThreatPlatesWidgets.AddCastTimer(border, size, plate)
 	text:SetJustifyH("RIGHT")
 	border.text = text
 	border.plate = plate
+	-- Schloss am Zaubersymbol für nicht unterbrechbare Zauber
+	local shield = border:CreateTexture(nil, "OVERLAY")
+	shield:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-LOCK")
+	shield:SetWidth(12)
+	shield:SetHeight(14)
+	shield:SetPoint("CENTER", plate.visual.spellicon, "BOTTOMRIGHT", -1, 2)
+	shield:Hide()
+	border.shield = shield
 	border:SetScript("OnUpdate", CastTimerOnUpdate)
 	border:SetScript("OnShow", OnCastShow)
 	border:SetScript("OnHide", OnCastHide)

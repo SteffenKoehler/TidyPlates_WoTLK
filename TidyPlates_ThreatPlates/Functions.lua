@@ -449,6 +449,11 @@ do
 	local c = {r = 1, g = 1, b = 0, a = 1}
 	local function SetCastbarColor(unit)
 		local db = TidyPlatesThreat.db.profile
+		-- Plater: Farbe nach Unterbrechbarkeit und eigener Unterbrechung (laufend aktualisiert
+		-- von der Zauberleiste, siehe Widgets.lua)
+		if db.platerBorder.ON and db.platerCast.ON and ThreatPlatesWidgets and ThreatPlatesWidgets.PlaterCastColor then
+			return ThreatPlatesWidgets.PlaterCastColor(unit)
+		end
 		c.r, c.g, c.b, c.a = 1, 1, 0, 1
 		if db.castbarColor.toggle and not unit.spellIsShielded then
 			c.r, c.g, c.b, c.a = db.castbarColor.r, db.castbarColor.g, db.castbarColor.b, db.castbarColor.a

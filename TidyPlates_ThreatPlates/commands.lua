@@ -80,7 +80,7 @@ local PLATER_PROFILE = "Plater"
 -- in PlaterMigrations nur die neuen Werte nachtragen. Bestehende Plater-Profile werden
 -- dann beim Einloggen bzw. beim Wechsel ins Profil ergänzt, ohne eigene Anpassungen
 -- zu überschreiben (kein /tptpplater reset nötig).
-local PLATER_LOOK_VERSION = 2
+local PLATER_LOOK_VERSION = 3
 
 local function ApplyPlaterLook(p)
 	local s = p.settings
@@ -107,6 +107,8 @@ local function ApplyPlaterLook(p)
 	-- Keine Aggro-Zacken um die Plakette: die Information steckt schon in der Balkenfarbe,
 	-- und mit Tank-Ansicht auf DD/Heiler zeigen sie sonst bei jedem getankten Mob eine Warnung
 	p.threat.art.ON = false
+	-- Zauberleiste nach Unterbrechbarkeit färben
+	p.platerCast.ON = true
 
 	-- Plaketten stapeln (ersetzt die WeakAura "Enhanced Stacking Nameplate")
 	p.stacking.ON = true
@@ -196,6 +198,9 @@ end
 local PlaterMigrations = {
 	[2] = function(p)
 		p.threat.art.ON = false -- keine Aggro-Zacken
+	end,
+	[3] = function(p)
+		p.platerCast.ON = true -- Zauberleiste nach Unterbrechbarkeit färben
 	end
 }
 

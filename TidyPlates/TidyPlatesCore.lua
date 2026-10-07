@@ -8,6 +8,21 @@ _G.TidyPlates = TidyPlates
 -- Stelle sicher, dass TidyPlatesData immer existiert (auch vor ADDON_LOADED)
 TidyPlatesData = TidyPlatesData or {}
 
+-- Merkt sich pro Zauber(name), ob er unterbrechbar ist. Verlässlich weiß der Client das
+-- nur beim Ziel und Mouseover; gespeichert gilt es dann auch für Nicht-Ziel-Zauberleisten
+-- (über das Kampflog ist die Information nicht verfügbar).
+local function LearnCastShield(spell, notInterruptible)
+	if not spell then
+		return
+	end
+	local known = TidyPlatesData.CastShield
+	if not known then
+		known = {}
+		TidyPlatesData.CastShield = known
+	end
+	known[spell] = notInterruptible and true or false
+end
+
 TidyPlates.callbacks = TidyPlates.callbacks or LibStub("CallbackHandler-1.0"):New(TidyPlates)
 
 local _
@@ -1197,6 +1212,7 @@ do
 				channel = true
 			end
 			if spell and startTime and endTime then
+				LearnCastShield(spell, notInterruptible)
 				TidyPlates.StartTimedCastOnNameplate(plate, u.guid, spell, nil, icon, notInterruptible, startTime / 1000, endTime / 1000, channel)
 			end
 		end
@@ -1287,6 +1303,10 @@ do
 			unit.isCasting = true
 			unit.spellName = spell
 			unit.spellID = spellid
+			-- Unbekannt (Kampflog): gespeichertes Wissen über den Zauber verwenden
+			if not notInterruptible and TidyPlatesData.CastShield and TidyPlatesData.CastShield[spell] then
+				notInterruptible = true
+			end
 			unit.spellIsShielded = notInterruptible
 			unit.spellInterruptible = not notInterruptible
 
@@ -1392,6 +1412,7 @@ do
 
 			StopTargetCastFallback()
 			if spell then
+				LearnCastShield(spell, nonInt)
 				-- Blizzards Ziel-Zauberleiste läuft erst beim nächsten Zauberbeginn an. Wird ein
 				-- Gegner mitten im Zauber anvisiert, hat sie keine Werte: dann selbst steuern.
 				local blizz = plate.extended.bars.cast

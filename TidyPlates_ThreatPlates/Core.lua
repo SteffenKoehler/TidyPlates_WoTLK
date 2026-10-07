@@ -745,6 +745,16 @@ function TidyPlatesThreat:OnInitialize()
 				ON = false,
 				size = 1
 			},
+			-- Zauberleiste nach Unterbrechbarkeit färben (zum Plater-Rahmen): unterbrechbar und
+			-- eigene Unterbrechung bereit / auf Abklingzeit / nicht unterbrechbar (+ Schloss)
+			platerCast = {
+				ON = false,
+				kickCooldown = true,
+				shieldIcon = true,
+				colorReady = {r = 1, g = 0.56, b = 0.06},
+				colorCooldown = {r = 0.55, g = 0.42, b = 0.3},
+				colorShield = {r = 0.55, g = 0.55, b = 0.6}
+			},
 			-- Ziel-Markierung zum Plater-Rahmen: Grafik aus NotPlater ("NONE" = keine) und Leuchten
 			platerTarget = {
 				indicator = "Silver",
