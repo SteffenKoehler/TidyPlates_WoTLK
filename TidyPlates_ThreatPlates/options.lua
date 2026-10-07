@@ -1099,7 +1099,9 @@ local function GetOptions()
 												return (GetCVar("ShowVKeyCastbar") == "1")
 											end,
 											set = function(info, val)
-												SetCVar("ShowVKeyCastbar", abs(GetCVar("ShowVKeyCastbar") - 1))
+												-- Wunsch im Profil merken, damit er beim Login wiederhergestellt wird
+												TidyPlatesThreat.db.profile.settings.castbar.enabled = val and true or false
+												SetCVar("ShowVKeyCastbar", val and 1 or 0)
 												Update()
 											end,
 											arg = {"settings", "castbar", "show"}

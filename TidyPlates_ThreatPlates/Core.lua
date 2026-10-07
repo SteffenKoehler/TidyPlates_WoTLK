@@ -789,7 +789,8 @@ function TidyPlatesThreat:OnInitialize()
 					texture = "ThreatPlatesBar",
 					x = 0,
 					y = -15,
-					show = true
+					show = true,
+					enabled = true -- Zauberleiste (CVar showVKeyCastbar) bei jedem Login erzwingen
 				},
 				name = {
 					typeface = "Accidental Presidency",
@@ -1238,6 +1239,15 @@ hooksecurefunc(TidyPlates, "ForceUpdate", TidyPlatesThreat.InvalidateStyleCache)
 local function ShowConfigPanel()
 	TidyPlatesThreat:OpenOptions()
 end
+
+-- Zauberleiste: Die CVar showVKeyCastbar wird von anderen Addons (z.B. ElvUI-
+-- Namensplaketten) auf 0 gesetzt. Threat Plates stellt den eigenen Wunschwert her.
+function TidyPlatesThreat:ApplyCastbarCVar()
+	local wanted = self.db.profile.settings.castbar.enabled and "1" or "0"
+	if GetCVar("showVKeyCastbar") ~= wanted then
+		SetCVar("showVKeyCastbar", wanted)
+	end
+end
 ------------
 -- EVENTS --
 ------------
@@ -1421,6 +1431,14 @@ local function EventHandler(self, event, ...)
 		if PlayerClass == "WARRIOR" or PlayerClass == "DRUID" or PlayerClass == "DEATHKNIGHT" or PlayerClass == "PALADIN" then
 			f:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 		end
+
+		-- ElvUI-Namensplaketten setzen die Zauberleisten-CVar bei Profilwechseln zurück
+		local ElvNP = ElvUI and ElvUI[1] and ElvUI[1].GetModule and ElvUI[1]:GetModule("NamePlates", true)
+		if ElvNP and ElvNP.UpdateCVars then
+			hooksecurefunc(ElvNP, "UpdateCVars", function()
+				TidyPlatesThreat:ApplyCastbarCVar()
+			end)
+		end
 	elseif event == "PLAYER_ENTERING_WORLD" then
 		local iType = select(2, IsInInstance())
 		if iType == "arena" or iType == "pvp" then
@@ -1429,6 +1447,8 @@ local function EventHandler(self, event, ...)
 			DB.threat.ON = DB.OldSetting
 		end
 		DB.cache = {}
+		-- Läuft nach PLAYER_LOGIN, also nach ElvUI, und stellt die Zauberleiste wieder her
+		TidyPlatesThreat:ApplyCastbarCVar()
 		self:RegisterEvent("ACTIVE_TALENT_GROUP_CHANGED")
 	elseif event == "PLAYER_LEAVING_WORLD" then
 		self:UnregisterEvent("ACTIVE_TALENT_GROUP_CHANGED")
