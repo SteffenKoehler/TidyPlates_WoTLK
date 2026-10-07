@@ -33,8 +33,25 @@ function TidyPlatesThreat.IsTanking()
 end
 
 -- Callback Functions
+-- Stile (Layout) werden nur beim Laden gebaut: nach einem Profilwechsel im Optionsmenü
+-- anbieten, die Oberfläche neu zu laden. suppressReloadPrompt bei internen Wechseln.
+StaticPopupDialogs["TPTP_PROFILE_RELOAD"] = {
+	text = "Threat Plates: Profil gewechselt.
+Für das komplette Layout die Oberfläche jetzt neu laden?",
+	button1 = "Neu laden",
+	button2 = "Später",
+	OnAccept = function()
+		ReloadUI()
+	end,
+	timeout = 0,
+	whileDead = 1,
+	hideOnEscape = 1
+}
 function TidyPlatesThreat:ProfChange()
 	TidyPlatesThreat:ConfigRefresh()
+	if not TidyPlatesThreat.suppressReloadPrompt then
+		StaticPopup_Show("TPTP_PROFILE_RELOAD")
+	end
 end
 
 -- Dual Spec Functions
@@ -1495,6 +1512,9 @@ local function EventHandler(self, event, ...)
 		f:UnregisterEvent("ADDON_LOADED")
 	elseif event == "PLAYER_LOGIN" then
 		TidyPlatesThreat:StartUp()
+		if TidyPlatesThreat.EnsurePlaterProfile then
+			TidyPlatesThreat:EnsurePlaterProfile()
+		end
 		CharDB.threat.tanking = TidyPlatesThreat:currentRoleBool(Active()) -- Aligns tanking role with current spec on log in.
 		if GetCVar("nameplateShowEnemyTotems") == "1" then
 			DB.nameplate.toggle["Totem"] = true

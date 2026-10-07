@@ -180,16 +180,37 @@ local function ProfileExists(db, name)
 	return false
 end
 
+-- Legt das Profil "Plater" an, falls es auf diesem Account noch fehlt (Kopie von
+-- "Default" + Plater-Look), ohne den aktuellen Charakter umzustellen. So steht es
+-- jedem Charakter im Profil-Dropdown zur Auswahl.
+function TidyPlatesThreat:EnsurePlaterProfile()
+	local db = self.db
+	if ProfileExists(db, PLATER_PROFILE) then
+		return
+	end
+	local current = db:GetCurrentProfile()
+	self.suppressReloadPrompt = true
+	db:SetProfile(PLATER_PROFILE)
+	if ProfileExists(db, "Default") then
+		db:CopyProfile("Default", true)
+	end
+	ApplyPlaterLook(db.profile)
+	db:SetProfile(current)
+	self.suppressReloadPrompt = nil
+end
+
 local function TPTPPLATER(msg)
 	local db = TidyPlatesThreat.db
 	msg = strlower(strtrim(msg or ""))
 	if msg == "default" then
+		TidyPlatesThreat.suppressReloadPrompt = true -- lädt am Ende ohnehin neu
 		db:SetProfile("Default")
 		print("|cff89F559Threat Plates|r: Profil \"Default\" aktiv, lade neu ...")
 		ReloadUI()
 		return
 	end
 
+	TidyPlatesThreat.suppressReloadPrompt = true -- lädt am Ende ohnehin neu
 	local current = db:GetCurrentProfile()
 	local isNew = not ProfileExists(db, PLATER_PROFILE)
 	if current ~= PLATER_PROFILE then
