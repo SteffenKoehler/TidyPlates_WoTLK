@@ -1,9 +1,17 @@
 # Rising-Gods changes (branch `rising-gods`)
 
 Local changes for WoW 3.3.5a on Rising-Gods, on top of the
-**Hypopheria Remaster** (TidyPlates 6.6.0 / Threat Plates 6.0). The first
-commit of this branch imports the remaster unchanged; every following commit
-contains one round of changes, so `git log -p` shows exactly what changed.
+**Hypopheria Remaster** (TidyPlates 6.6.0 / Threat Plates 6.0):
+
+- Repository: <https://github.com/hypopheria2k/TidyPlates_3.3.5a>
+  (itself based on bkader's TidyPlates_WoTLK)
+- Forum thread: <https://www.rising-gods.de/forum/41-addons/871300-tidyplates-335a-remaster.html>
+
+This branch starts at hypopheria's commit `3ad7272` ("added colorpicker for
+pets", 2026-05-05), which is exactly the version that was installed. Every
+following commit contains one round of changes, so `git log -p` shows
+exactly what changed. Later hypopheria commits (pet color fix, BG scanner,
+chat bubble visibility) are not merged yet.
 
 > Note: WoW 3.3.5a only picks up **new files** (new Lua files, new textures,
 > new addon folders) after a full client restart. `/reload` is enough for
