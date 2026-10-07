@@ -128,7 +128,6 @@ end
 -- Ziel-Markierung im NotPlater-Stil: Eck-/Seitengrafiken um den Balken plus Leuchten
 -- oben und unten. Grafiken und Maße aus NotPlater (MIT-Lizenz, siehe Media\NotPlater\LICENSE.txt).
 local NP_PATH = "Interface\\AddOns\\TidyPlates_ThreatPlates\\Media\\NotPlater\\"
-local NP_GLOW = NP_PATH .. "selection_indicator3"
 -- coords mit 4 Einträgen = Ecken (oben links, unten links, unten rechts, oben rechts),
 -- mit 2 Einträgen = Seiten (links, rechts)
 ThreatPlatesWidgets.TargetIndicators = {
@@ -173,12 +172,16 @@ function ThreatPlatesWidgets.CreatePlaterTarget(bar)
 	frame.glowDown = frame:CreateTexture(nil, "BACKGROUND")
 	frame.glowDown:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, 0)
 	frame.glowDown:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+	-- Leuchten als Farbverlauf statt NotPlaters Grafik (die wird im 3.3.5-Client als
+	-- dunkler Block gezeichnet): blau am Balken, nach außen transparent auslaufend
 	for _, glow in ipairs({frame.glowUp, frame.glowDown}) do
-		glow:SetTexture(NP_GLOW)
-		glow:SetHeight(14)
-		glow:SetVertexColor(0, 0.52, 1)
-		glow:SetAlpha(0.75)
+		glow:SetTexture(WHITE)
+		glow:SetHeight(10)
+		glow:SetBlendMode("ADD")
 	end
+	-- VERTICAL: erste Farbe = unten, zweite = oben
+	frame.glowUp:SetGradientAlpha("VERTICAL", 0, 0.52, 1, 0.6, 0, 0.52, 1, 0)
+	frame.glowDown:SetGradientAlpha("VERTICAL", 0, 0.52, 1, 0, 0, 0.52, 1, 0.6)
 	frame:Hide()
 	return frame
 end
