@@ -125,6 +125,115 @@ function ThreatPlatesWidgets.AddCastTimer(border, size, plate)
 	border:SetScript("OnHide", OnCastHide)
 end
 
+-- Ziel-Markierung im NotPlater-Stil: Eck-/Seitengrafiken um den Balken plus Leuchten
+-- oben und unten. Grafiken und Maße aus NotPlater (MIT-Lizenz, siehe Media\NotPlater\LICENSE.txt).
+local NP_PATH = "Interface\\AddOns\\TidyPlates_ThreatPlates\\Media\\NotPlater\\"
+local NP_GLOW = NP_PATH .. "selection_indicator3"
+-- coords mit 4 Einträgen = Ecken (oben links, unten links, unten rechts, oben rechts),
+-- mit 2 Einträgen = Seiten (links, rechts)
+ThreatPlatesWidgets.TargetIndicators = {
+	["Silver"] = {path = "PETBATTLEHUD", width = 6, height = 6, autoScale = true, x = 1, y = 1,
+		coords = {{336/512, 356/512, 454/512, 474/512}, {336/512, 356/512, 474/512, 495/512},
+			{356/512, 377/512, 474/512, 495/512}, {356/512, 377/512, 454/512, 474/512}}},
+	["Magneto"] = {path = "RelicIconFrame", width = 8, height = 10, autoScale = true, x = 2, y = 2,
+		coords = {{0, .5, 0, .5}, {0, .5, .5, 1}, {.5, 1, .5, 1}, {.5, 1, 0, .5}}},
+	["Gray Bold"] = {path = "UI-Icon-QuestBorder", width = 10, height = 10, autoScale = true, x = 2, y = 2, desaturated = true,
+		coords = {{0, .5, 0, .5}, {0, .5, .5, 1}, {.5, 1, .5, 1}, {.5, 1, 0, .5}}},
+	["Pins"] = {path = "UI-ItemSockets", width = 4, height = 4, x = 2, y = 2, desaturated = true,
+		coords = {{145/256, 161/256, 3/256, 19/256}, {145/256, 161/256, 19/256, 3/256},
+			{161/256, 145/256, 19/256, 3/256}, {161/256, 145/256, 3/256, 19/256}}},
+	["Ornament"] = {path = "PETJOURNAL", width = 18, height = 12, hscale = 1.2, autoScale = true, x = 14, y = 0,
+		coords = {{124/512, 161/512, 71/512, 99/512}, {119/512, 156/512, 29/512, 57/512}}},
+	["Golden"] = {path = "Artifacts", width = 8, height = 12, hscale = 1.2, autoScale = true, x = 0, y = 0,
+		coords = {{137/512, 166/512, 408/512, 466/512}, {167/512, 195/512, 408/512, 466/512}}},
+	["Ornament Gray"] = {path = "challenges-besttime-bg", width = 8, height = 12, hscale = 1.2, autoScale = true, x = 0, y = 0, alpha = 0.7,
+		coords = {{89/512, 123/512, 0, 1}, {123/512, 89/512, 0, 1}}},
+	["Epic"] = {path = "WowUI_Horizontal_Frame", width = 6, height = 12, hscale = 1.2, autoScale = true, x = 3, y = 0, blend = "ADD",
+		coords = {{30/256, 40/256, 15/64, 49/64}, {40/256, 30/256, 15/64, 49/64}}},
+	["Arrow"] = {path = "arrow_single_right_64", width = 20, height = 20, wscale = 1.5, hscale = 2, autoScale = true, x = 28, y = 0, blend = "ADD",
+		coords = {{0, 1, 0, 1}, {1, 0, 0, 1}}},
+	["Arrow Thin"] = {path = "arrow_thin_right_64", width = 20, height = 20, wscale = 1.5, hscale = 2, autoScale = true, x = 28, y = 0, blend = "ADD",
+		coords = {{0, 1, 0, 1}, {1, 0, 0, 1}}},
+	["Double Arrows"] = {path = "arrow_double_right_64", width = 20, height = 20, wscale = 1.5, hscale = 2, autoScale = true, x = 28, y = 0, blend = "ADD",
+		coords = {{0, 1, 0, 1}, {1, 0, 0, 1}}}
+}
+
+function ThreatPlatesWidgets.CreatePlaterTarget(bar)
+	local frame = CreateFrame("Frame", nil, bar)
+	frame:SetAllPoints(bar)
+	frame:SetFrameLevel(bar:GetFrameLevel() + 3)
+	frame.bar = bar
+	frame.parts = {}
+	for i = 1, 4 do
+		frame.parts[i] = frame:CreateTexture(nil, "OVERLAY")
+	end
+	frame.glowUp = frame:CreateTexture(nil, "BACKGROUND")
+	frame.glowUp:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, 0)
+	frame.glowUp:SetPoint("BOTTOMRIGHT", bar, "TOPRIGHT", 0, 0)
+	frame.glowDown = frame:CreateTexture(nil, "BACKGROUND")
+	frame.glowDown:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, 0)
+	frame.glowDown:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+	for _, glow in ipairs({frame.glowUp, frame.glowDown}) do
+		glow:SetTexture(NP_GLOW)
+		glow:SetHeight(14)
+		glow:SetVertexColor(0, 0.52, 1)
+		glow:SetAlpha(0.75)
+	end
+	frame:Hide()
+	return frame
+end
+
+-- Wie NotPlater: Größe aus der Balkenhöhe, Ecken bzw. Seiten außen an den Balken
+local CornerPoints = {"TOPLEFT", "BOTTOMLEFT", "BOTTOMRIGHT", "TOPRIGHT"}
+local CornerSigns = {{-1, 1}, {-1, -1}, {1, -1}, {1, 1}}
+function ThreatPlatesWidgets.ConfigurePlaterTarget(frame, name, glow)
+	local barHeight = frame.bar:GetHeight()
+	if frame.indicator == name and frame.glow == glow and frame.barHeight == barHeight then
+		return
+	end
+	frame.indicator, frame.glow, frame.barHeight = name, glow, barHeight
+
+	local preset = ThreatPlatesWidgets.TargetIndicators[name]
+	local parts = frame.parts
+	for i = 1, 4 do
+		parts[i]:Hide()
+	end
+	if preset and barHeight > 4 then
+		local scale = barHeight / (preset.autoScale and preset.height or 10)
+		local w = preset.width * scale * (preset.wscale or 1)
+		local h = preset.height * scale * (preset.hscale or 1)
+		local x, y = (preset.x or 0) * scale, (preset.y or 0) * scale
+		local count = #preset.coords
+		for i = 1, count do
+			local t = parts[i]
+			t:SetTexture(NP_PATH .. preset.path)
+			t:SetTexCoord(unpack(preset.coords[i]))
+			t:SetBlendMode(preset.blend or "BLEND")
+			t:SetDesaturated(preset.desaturated and true or false)
+			t:SetAlpha(preset.alpha or 1)
+			t:SetWidth(w)
+			t:SetHeight(h)
+			t:ClearAllPoints()
+			if count == 4 then
+				local point, sign = CornerPoints[i], CornerSigns[i]
+				t:SetPoint(point, frame.bar, point, sign[1] * x, sign[2] * y)
+			elseif i == 1 then
+				t:SetPoint("LEFT", frame.bar, "LEFT", -x, y)
+			else
+				t:SetPoint("RIGHT", frame.bar, "RIGHT", x, y)
+			end
+			t:Show()
+		end
+	end
+	if glow then
+		frame.glowUp:Show()
+		frame.glowDown:Show()
+	else
+		frame.glowUp:Hide()
+		frame.glowDown:Hide()
+	end
+end
+
 -- Aura-Symbole im Plater-Stil: rechteckig mit 1-px-Rahmen, große Restzeit mittig,
 -- Stapel darüber, enger Abstand. Wird einmal pro Debuff-Widget angewendet.
 function ThreatPlatesWidgets.StylePlaterAuras(widget)
@@ -450,6 +559,7 @@ local function OnInitialize(plate)
 		if not w.PlaterHealthBorder then
 			w.PlaterHealthBorder = ThreatPlatesWidgets.CreatePlaterBorder(plate.bars.healthbar)
 			w.PlaterCastBorder = ThreatPlatesWidgets.CreatePlaterBorder(plate.bars.castbar)
+			w.PlaterTarget = ThreatPlatesWidgets.CreatePlaterTarget(plate.bars.healthbar)
 			ThreatPlatesWidgets.AddCastTimer(w.PlaterCastBorder, db.settings.spelltext.size or 10, plate)
 			-- Dunkler Hintergrund, damit der Name darunter beim Zaubern nicht durchscheint
 			plate.bars.castbar:SetBackgroundColor(0.08, 0.08, 0.08, 0.9)
@@ -460,7 +570,9 @@ local function OnInitialize(plate)
 	elseif w.PlaterHealthBorder then
 		w.PlaterHealthBorder:Hide()
 		w.PlaterCastBorder:Hide()
-		w.PlaterHealthBorder, w.PlaterCastBorder = nil, nil
+		w.PlaterTarget:Hide()
+		w.PlaterHealthBorder, w.PlaterCastBorder, w.PlaterTarget = nil, nil, nil
+		plate.bars.castbar:SetBackgroundColor(0, 0, 0, 0) -- dunklen Hintergrund wieder entfernen
 	end
 
 	-- Combo Point Widget
@@ -502,6 +614,15 @@ local function UpdatePlaterBorder(plate, unit)
 			hb:SetBorderColor(0, 0, 0, 1)
 		end
 		hb:Show()
+		-- Ziel-Markierung (NotPlater-Grafiken + Leuchten)
+		local pt = w.PlaterTarget
+		local pd = db.platerTarget
+		if unit.isTarget and (pd.indicator ~= "NONE" or pd.glow) then
+			ThreatPlatesWidgets.ConfigurePlaterTarget(pt, pd.indicator, pd.glow)
+			pt:Show()
+		else
+			pt:Hide()
+		end
 		if HasVisibleBar(style.castbar) then
 			cb:SetBorderSize(size)
 			cb:Show()
@@ -515,6 +636,7 @@ local function UpdatePlaterBorder(plate, unit)
 	else
 		hb:Hide()
 		cb:Hide()
+		w.PlaterTarget:Hide()
 	end
 end
 

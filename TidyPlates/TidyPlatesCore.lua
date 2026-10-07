@@ -1573,6 +1573,143 @@ do
 end
 
 --------------------------------------------------------------------------------------------------------------
+-- Stapeln: Gegnerische Plaketten werden nach oben geschoben, statt sich zu überlappen.
+-- Übernommen aus der WeakAura "Cheeta - Enhanced Stacking Nameplate" (gleiche Formeln),
+-- aber über die bekannten sichtbaren Plaketten statt aller WorldFrame-Kinder. Ohne den
+-- Secure-Trick für die Klickfläche im Kampf (der hat offene Fenster geschlossen).
+-- Aktiviert/konfiguriert vom Theme über TidyPlates:SetStacking().
+--------------------------------------------------------------------------------------------------------------
+local UpdateStacking
+do
+	local abs, exp = math.abs, math.exp
+	local cfg = {
+		enabled = false,
+		xspace = 130, yspace = 20,                         -- Mindestabstand zwischen Plaketten
+		speed = 0.7, speedraise = 1, speedlower = 1, speedreset = 1,
+		originpos = 20, upperborder = 30,
+		interval = 0.02,
+		tallBossFix = true,
+		pinTarget = true                                   -- Ziel bleibt an seinem Platz
+	}
+	local delta = cfg.speed * 5
+	local Stacked = {} -- [plate] = {xpos, ypos, position, bottom}
+	local nextRun = 0
+	local worldFrameEnlarged = false
+
+	local function ResetPlate(plate)
+		Stacked[plate] = nil
+		plate:SetClampRectInsets(0, 0, 0, 0)
+		plate:SetClampedToScreen(false)
+	end
+
+	-- Plaketten sehr großer Bosse sollen nicht oben aus dem Bild rutschen (wie in der Aura)
+	local function EnlargeWorldFrame()
+		if worldFrameEnlarged or InCombatLockdown() then
+			return
+		end
+		worldFrameEnlarged = true
+		WorldFrame:ClearAllPoints()
+		WorldFrame:SetWidth(GetScreenWidth() * UIParent:GetEffectiveScale())
+		WorldFrame:SetHeight(768 * 5)
+		WorldFrame:SetPoint("BOTTOM")
+	end
+
+	-- options = nil schaltet das Stapeln ab
+	function TidyPlates:SetStacking(options)
+		if options and options.enabled then
+			for key, value in pairs(options) do
+				cfg[key] = value
+			end
+			delta = cfg.speed * 5
+			if GetCVar("nameplateAllowOverlap") == "0" then
+				SetCVar("nameplateAllowOverlap", 1)
+			end
+			if cfg.tallBossFix then
+				EnlargeWorldFrame()
+			end
+		else
+			cfg.enabled = false
+			for plate in pairs(Stacked) do
+				ResetPlate(plate)
+			end
+		end
+	end
+
+	function UpdateStacking(now)
+		if not cfg.enabled or now < nextRun then
+			return
+		end
+		nextRun = now + cfg.interval
+		local xspace, yspace, originpos, upperborder = cfg.xspace, cfg.yspace, cfg.originpos, cfg.upperborder
+
+		-- Verschwundene oder freundliche Plaketten zurücksetzen
+		for plate in pairs(Stacked) do
+			if not PlatesVisible[plate] or not plate:IsShown() or plate.extended.unit.reaction == "FRIENDLY" then
+				ResetPlate(plate)
+			end
+		end
+		-- Ursprüngliche Position aller gegnerischen Plaketten
+		for plate in pairs(PlatesVisible) do
+			if plate:IsShown() and plate.extended.unit.reaction ~= "FRIENDLY" then
+				local p = Stacked[plate]
+				if not p then
+					p = {xpos = 0, ypos = 0, position = 0}
+					Stacked[plate] = p
+				end
+				local _, _, _, x, y = plate:GetPoint(1)
+				p.xpos, p.ypos = x, y
+				p.isTarget = cfg.pinTarget and plate.extended.unit.isTarget
+			end
+		end
+
+		-- Für jede Plakette den Abstand zur nächsten darunter bestimmen und sanft
+		-- anheben, absenken oder zurücksetzen (Formeln unverändert aus der Aura).
+		-- Ausnahme Ziel: bleibt an seinem Platz über dem Modell, die anderen weichen aus.
+		for plate1, p1 in pairs(Stacked) do
+			local min, reset = 1000, true
+			for plate2, p2 in pairs(Stacked) do
+				if plate1 ~= plate2 and abs(p1.xpos - p2.xpos) < xspace then
+					local ydiff = p1.ypos + p1.position - p2.ypos - p2.position
+					-- Eine Plakette, die das Ziel von unten überlappt, gilt als direkt darüber
+					-- und wird über das Ziel hinweg nach oben geschoben
+					if p2.isTarget and ydiff < 0 and ydiff > -yspace then
+						ydiff = 0
+					end
+					if ydiff >= 0 and ydiff < min then
+						min = ydiff
+					end
+					if abs(p1.ypos - p2.ypos - p2.position) < yspace + 2 * delta then
+						reset = false
+					end
+				end
+			end
+
+			local old = p1.position
+			local new = old
+			if p1.isTarget then
+				-- Zügig (ca. 0,2 s) an den natürlichen Platz zurückgleiten
+				new = old > 3 * delta and old - 3 * delta or 0
+			elseif old >= 2 * delta and reset then
+				new = old - exp(-10 / old) * delta * cfg.speedreset
+			elseif min < yspace then
+				new = old + exp(-min / yspace) * delta * cfg.speedraise
+			elseif old >= 2 * delta and min > yspace + 2 * delta then
+				new = old - exp(-yspace / min) * delta * 0.8 * cfg.speedlower
+			end
+			p1.position = new
+
+			-- Clamp-Rechteck nur neu setzen, wenn es sich spürbar ändert
+			local bottom = -p1.ypos - new - originpos + plate1:GetHeight()
+			if not p1.bottom or abs(bottom - p1.bottom) > 0.5 then
+				p1.bottom = bottom
+				plate1:SetClampedToScreen()
+				plate1:SetClampRectInsets(-10, 10, upperborder, bottom)
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------------------------------------
 -- VII. World Update Functions: Refers new plates to 'ApplyPlateExtension()', and watches for Alpha/Transparency
 -- and Highlight/Mouseover changes, and sends those changes to the appropriate handler.
 -- Also processes the update queue (ie. echos)
@@ -1665,6 +1802,8 @@ do
 		CorrelateDamage()
 		-- Neue Marker-Information aus dem Kampflog sofort anwenden
 		AssignFromMarkers()
+		-- Plaketten stapeln (gedrosselt, nur wenn vom Theme aktiviert)
+		UpdateStacking(now)
 
 		-- Alpha - Highlight - Poll Loop
 		for plate in pairs(PlatesVisible) do

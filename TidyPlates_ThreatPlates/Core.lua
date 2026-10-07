@@ -726,6 +726,19 @@ function TidyPlatesThreat:OnInitialize()
 				ON = false,
 				size = 1
 			},
+			-- Ziel-Markierung zum Plater-Rahmen: Grafik aus NotPlater ("NONE" = keine) und Leuchten
+			platerTarget = {
+				indicator = "Silver",
+				glow = true
+			},
+			-- Stapeln gegnerischer Plaketten (ersetzt die WeakAura "Enhanced Stacking Nameplate");
+			-- Abstände werden aus Balkengröße und Name berechnet
+			stacking = {
+				ON = false,
+				speed = 0.7,
+				tallBossFix = true,
+				pinTarget = true -- Ziel bleibt über dem Modell, andere weichen aus
+			},
 			tankedWidget = {
 				ON = false,
 				scale = 16,
@@ -1263,6 +1276,39 @@ function TidyPlatesThreat:ApplyCastbarCVar()
 		SetCVar("showVKeyCastbar", wanted)
 	end
 end
+
+-- Stapeln an TidyPlates übergeben. Mindestabstand = Balkenbreite + 10 bzw. Höhe von
+-- Balken und Name (über oder unter dem Balken) + 5, damit sich Namen nicht überdecken.
+function TidyPlatesThreat:ApplyStacking()
+	if not (TidyPlates.SetStacking and self.db) then
+		return
+	end
+	local p = self.db.profile
+	if not p.stacking.ON then
+		TidyPlates:SetStacking(nil)
+		return
+	end
+	local s = p.settings
+	local width, height = s.healthbar.width or 120, s.healthbar.height or 10
+	local top, bottom = height / 2, -height / 2
+	if s.name.show then
+		local half = (s.name.size or 12) / 2 + 2
+		top = math.max(top, (s.name.y or 0) + half)
+		bottom = math.min(bottom, (s.name.y or 0) - half)
+	end
+	TidyPlates:SetStacking({
+		enabled = true,
+		xspace = width + 10,
+		yspace = top - bottom + 5,
+		speed = p.stacking.speed,
+		tallBossFix = p.stacking.tallBossFix,
+		pinTarget = p.stacking.pinTarget
+	})
+end
+-- Optionen/Profilwechsel lösen ForceUpdate aus
+hooksecurefunc(TidyPlates, "ForceUpdate", function()
+	TidyPlatesThreat:ApplyStacking()
+end)
 ------------
 -- EVENTS --
 ------------
@@ -1464,6 +1510,7 @@ local function EventHandler(self, event, ...)
 		DB.cache = {}
 		-- Läuft nach PLAYER_LOGIN, also nach ElvUI, und stellt die Zauberleiste wieder her
 		TidyPlatesThreat:ApplyCastbarCVar()
+		TidyPlatesThreat:ApplyStacking()
 		self:RegisterEvent("ACTIVE_TALENT_GROUP_CHANGED")
 	elseif event == "PLAYER_LEAVING_WORLD" then
 		self:UnregisterEvent("ACTIVE_TALENT_GROUP_CHANGED")

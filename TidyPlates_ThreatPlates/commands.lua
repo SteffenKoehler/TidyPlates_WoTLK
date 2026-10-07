@@ -99,6 +99,9 @@ local function ApplyPlaterLook(p)
 	-- (sonst schrumpfen normale Mobs im Kampf um 20 % und je nach Aggro-Stufe)
 	p.threat.useScale = false
 
+	-- Plaketten stapeln (ersetzt die WeakAura "Enhanced Stacking Nameplate")
+	p.stacking.ON = true
+
 	-- Schlichte Schrift mit Kontur
 	for _, key in ipairs({"name", "customtext", "spelltext", "level"}) do
 		s[key].typeface = "Arial Narrow"

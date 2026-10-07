@@ -4025,6 +4025,182 @@ local function GetOptions()
 					order = 60,
 					args = {}
 				},
+				-- Plater-Optik und Stapeln (eigene Erweiterungen, Texte bewusst ohne Übersetzungstabelle)
+				Plater = {
+					name = "Plater",
+					type = "group",
+					order = 70,
+					args = {
+						Intro = {
+							type = "description",
+							order = 0,
+							name = "Einstellungen für die Plater-Optik und das Stapeln der Plaketten. Sie gelten für das aktuelle Profil. Mit /tptpplater wird das Profil \"Plater\" mit allem zusammen angelegt.",
+							fontSize = "medium"
+						},
+						Look = {
+							name = "Optik",
+							type = "group",
+							inline = true,
+							order = 1,
+							args = {
+								BorderToggle = {
+									name = "Plater-Rahmen",
+									desc = "Dünner, scharfer Rahmen um Lebens- und Zauberleiste (Ziel weiß, Mouseover grau), Restzeit in der Zauberleiste, Name wird beim Zaubern ausgeblendet, Auren im Plater-Stil (die Aura-Optik wird erst nach /reload zurückgesetzt).",
+									type = "toggle",
+									order = 1,
+									get = GetValue,
+									set = SetValue,
+									arg = {"platerBorder", "ON"}
+								},
+								BorderSize = {
+									name = "Rahmenstärke (Pixel)",
+									type = "range",
+									order = 2,
+									min = 1,
+									max = 4,
+									step = 1,
+									disabled = function()
+										return not db.platerBorder.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"platerBorder", "size"}
+								},
+								TargetIndicator = {
+									name = "Ziel-Markierung",
+									desc = "Grafik um den Balken des Ziels (aus NotPlater). Standard dort: Silver.",
+									type = "select",
+									order = 2.1,
+									values = {
+										["NONE"] = "Keine",
+										["Silver"] = "Silver",
+										["Magneto"] = "Magneto",
+										["Gray Bold"] = "Gray Bold",
+										["Pins"] = "Pins",
+										["Ornament"] = "Ornament",
+										["Golden"] = "Golden",
+										["Ornament Gray"] = "Ornament Gray",
+										["Epic"] = "Epic",
+										["Arrow"] = "Arrow",
+										["Arrow Thin"] = "Arrow Thin",
+										["Double Arrows"] = "Double Arrows"
+									},
+									disabled = function()
+										return not db.platerBorder.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"platerTarget", "indicator"}
+								},
+								TargetGlow = {
+									name = "Ziel-Leuchten",
+									desc = "Blaues Leuchten über und unter dem Balken des Ziels (wie NotPlater).",
+									type = "toggle",
+									order = 2.2,
+									disabled = function()
+										return not db.platerBorder.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"platerTarget", "glow"}
+								},
+								ParensToggle = {
+									name = "Lebenspunkte als \"4.3k (100%)\"",
+									desc = "Plater-Format: Betrag mit Prozent in Klammern, kürzt schon ab 1000 mit k. Aus = \"4300 - 100%\".",
+									type = "toggle",
+									width = "double",
+									order = 3,
+									get = GetValue,
+									set = SetValue,
+									arg = {"text", "parens"}
+								}
+							}
+						},
+						Stacking = {
+							name = "Stapeln",
+							type = "group",
+							inline = true,
+							order = 2,
+							args = {
+								StackingToggle = {
+									name = "Plaketten stapeln",
+									desc = "Gegnerische Plaketten werden nach oben geschoben, statt sich zu überlappen (ersetzt die WeakAura \"Enhanced Stacking Nameplate\" - diese dann nicht gleichzeitig laden). Abstände werden aus Balkengröße und Name berechnet.",
+									type = "toggle",
+									order = 1,
+									get = GetValue,
+									set = SetValue,
+									arg = {"stacking", "ON"}
+								},
+								PinTarget = {
+									name = "Ziel festhalten",
+									desc = "Die Plakette des Ziels bleibt direkt über dem Modell, die anderen weichen aus.",
+									type = "toggle",
+									order = 2,
+									disabled = function()
+										return not db.stacking.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"stacking", "pinTarget"}
+								},
+								Speed = {
+									name = "Geschwindigkeit",
+									desc = "Wie schnell sich die Plaketten verschieben (Standard 0.7).",
+									type = "range",
+									order = 3,
+									min = 0.2,
+									max = 2,
+									step = 0.1,
+									disabled = function()
+										return not db.stacking.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"stacking", "speed"}
+								},
+								TallBossFix = {
+									name = "Große Bosse sichtbar halten",
+									desc = "Vergrößert den Spielbereich nach oben, damit Plaketten sehr großer Bosse nicht aus dem Bild rutschen. Ausschalten wirkt erst nach /reload.",
+									type = "toggle",
+									width = "double",
+									order = 4,
+									disabled = function()
+										return not db.stacking.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"stacking", "tallBossFix"}
+								}
+							}
+						},
+						Profile = {
+							name = "Plater-Profil",
+							type = "group",
+							inline = true,
+							order = 3,
+							args = {
+								Apply = {
+									name = "Plater-Look anwenden",
+									desc = "Wendet die komplette Plater-Optik (Layout, Größen, Schriften, Rahmen, Stapeln) auf das Profil \"Plater\" an und lädt neu - wie /tptpplater reset.",
+									type = "execute",
+									order = 1,
+									func = function()
+										SlashCmdList["TPTPPLATER"]("reset")
+									end
+								},
+								Default = {
+									name = "Zurück zu \"Default\"",
+									desc = "Wechselt zum Profil \"Default\" und lädt neu - wie /tptpplater default.",
+									type = "execute",
+									order = 2,
+									func = function()
+										SlashCmdList["TPTPPLATER"]("default")
+									end
+								}
+							}
+						}
+					}
+				},
 				About = {
 					name = L["About"],
 					type = "group",
