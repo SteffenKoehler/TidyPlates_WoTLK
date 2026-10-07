@@ -19,7 +19,7 @@ do
 		if style == "unique" then
 			for k_c, k_v in pairs(db.uniqueSettings.list) do
 				if k_v == unit.name or (custom and k_v == "GROUP") then
-					u = db.uniqueSettings[k_c]
+					local u = db.uniqueSettings[k_c]
 					if not u.overrideAlpha then
 						return (u.alpha + nonTargetAlpha), db.blizzFade.toggle
 					elseif db.threat.ON and InCombatLockdown() and db.threat.useAlpha and u.overrideAlpha then
@@ -112,7 +112,7 @@ do
 					local u = db.uniqueSettings[k_c]
 					if not u.overrideScale then
 						return u.scale
-					elseif db.threat.ON and InCombatLockdown and db.threat.useScale and u.overrideScale then
+					elseif db.threat.ON and InCombatLockdown() and db.threat.useScale and u.overrideScale then
 						if unit.isMarked and db.threat.marked.scale then
 							return (db.nameplate.scale["Marked"])
 						elseif not custom then
@@ -262,7 +262,8 @@ do
 
 		-- Pet-Farbe: Überschreibt alle anderen Farbmodi für Begleiter, sodass sie sofort erkennbar sind.
 		-- 3.3.5a: unit.name kann Server-Suffix enthalten, deshalb mit strsplit bereinigen.
-		if TidyPlatesUtility.PetNames then
+		-- Nur freundliche Einheiten, damit gleichnamige Gegner/NPCs nicht eingefärbt werden.
+		if TidyPlatesUtility.PetNames and unit.name and unit.reaction == "FRIENDLY" then
 			local shortName = unit.name
 			-- Entferne optionales Server-Suffix (z.B. "Bear-Mograine" -> "Bear")
 			local dashPos = strfind(shortName, "-")
@@ -295,7 +296,7 @@ do
 			else
 				local tS = db.totemSettings[TPtotemList[unit.name] or TPtotemList[TotemNameFallback(unit.name)]]
 				if tS[2] then
-					c = tS.color
+					local c = tS.color
 					return c.r, c.g, c.b
 				else
 					return unit.red, unit.green, unit.blue
@@ -322,7 +323,7 @@ do
 								if unit.threatValue < 2 then
 									if isTanked(unit) then
 										local S = db.tHPbarColor
-										return S.r, S.b, S.b
+										return S.r, S.g, S.b
 									else
 										local T = db.settings["tank"].threatcolor[unit.threatSituation]
 										return T.r, T.g, T.b

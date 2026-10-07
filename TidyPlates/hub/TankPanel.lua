@@ -107,7 +107,9 @@ local function OnPanelItemChange()
 	)
 	ConvertStringToTable(TidyPlatesHubTankVariables.OpacityFilterList, TidyPlatesHubTankVariables.OpacityFilterLookup)
 	-- Synchronisiere Pet-Farbe ins ThreatPlates-Profil
-	TidyPlatesThreat.db.profile.PetHealthBarColor = TidyPlatesHubTankVariables.PetHealthBarColor
+	if TidyPlatesThreat and TidyPlatesThreat.db then
+		TidyPlatesThreat.db.profile.PetHealthBarColor = TidyPlatesHubTankVariables.PetHealthBarColor
+	end
 end
 
 local TidyPlatesHubRapidPanel = TidyPlatesHubRapidPanel
