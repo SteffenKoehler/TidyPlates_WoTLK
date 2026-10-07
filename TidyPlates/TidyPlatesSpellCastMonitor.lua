@@ -10,11 +10,6 @@ local RaidTargetReference = {
 	SKULL = 0x08000000
 }
 
--- Performance Throttling: Begrenzt COMBAT_LOG_EVENT Verarbeitung auf ~30 Events pro Sekunde
--- Verhindert hohe CPU-Last in großen Gruppen/Kämpfen bei sehr hoher Event-Frequenz
-local lastSpellCastProcessTime = 0
-local SPELLCAST_THROTTLE = 0.033 -- ca. 30 fps / 33ms Mindestabstand
-
 -------------------------------------------------------------------------
 -- Spell Cast Event Watcher.
 -------------------------------------------------------------------------
@@ -24,6 +19,57 @@ local CombatEventHandlers = {}
 -- If you don't define a local reference,
 -- the Tidy Plates table will get passed to the function.
 local StartCastAnimationOnNameplate = TidyPlates.StartCastAnimationOnNameplate
+local StopCastAnimationOnNameplate = TidyPlates.StopCastAnimationOnNameplate
+
+-------------------------------------------------------------------------
+-- Laufende Zauber auf Nicht-Ziel-Plaketten. Für Nicht-Ziele gibt es in 3.3.5a
+-- keine Blizzard-Zauberleiste, daher wird der Fortschritt hier selbst berechnet.
+-------------------------------------------------------------------------
+local ActiveCasts = {} -- [plate] = {guid, name, startTime, endTime}
+local CastTicker = CreateFrame("Frame")
+CastTicker:Hide()
+
+local function EndCast(plate)
+	ActiveCasts[plate] = nil
+	local unit = plate.extended.unit
+	-- Ist die Plakette inzwischen das Ziel, steuert Blizzards Zauberleiste sie
+	if plate:IsShown() and not unit.isTarget then
+		StopCastAnimationOnNameplate(plate)
+	end
+end
+
+CastTicker:SetScript("OnUpdate", function(self)
+	local now = GetTime()
+	for plate, cast in pairs(ActiveCasts) do
+		local unit = plate.extended.unit
+		if not plate:IsShown() or unit.name ~= cast.name then
+			-- Plakette weg oder inzwischen ein anderer Gegner
+			ActiveCasts[plate] = nil
+		elseif unit.isTarget then
+			-- Ziel: Blizzards Zauberleiste übernimmt
+			ActiveCasts[plate] = nil
+		elseif now >= cast.endTime then
+			EndCast(plate)
+		else
+			plate.extended.bars.castbar:SetValue(now - cast.startTime)
+		end
+	end
+	if not next(ActiveCasts) then
+		self:Hide()
+	end
+end)
+
+-- Beendet die Zauberleiste des Gegners mit dieser GUID (Erfolg/Abbruch/Tod)
+local function StopCastByGUID(guid)
+	if not guid then
+		return
+	end
+	for plate, cast in pairs(ActiveCasts) do
+		if cast.guid == guid then
+			EndCast(plate)
+		end
+	end
+end
 
 local function SearchNameplateByGUID(SearchFor)
 	for VisiblePlate in pairs(TidyPlates.NameplatesByVisible) do
@@ -68,10 +114,12 @@ local function OnSpellCast(...)
 	local FoundPlate = nil
 
 	-- Gather Spell Info
-	-- 3.3.5a Fix: GetSpellInfo gibt nur 3 Werte zurück (name, rank, icon)
-	-- castTime existiert in dieser Client Version nicht
-	-- SPELL_CAST_START wird automatisch nur für Zauber mit Cast-Zeit > 0 gefeuert
-	local spell, _, icon = GetSpellInfo(spellid)
+	-- 3.3.5a: GetSpellInfo liefert name, rank, icon, cost, isFunnel, powerType,
+	-- castTime (ms), minRange, maxRange. castTime ist der Basiswert ohne Tempo.
+	local spell, _, icon, _, _, _, castTime = GetSpellInfo(spellid)
+	if not spell or not castTime or castTime <= 0 then
+		return
+	end
 
 	if bit.band(sourceFlags, COMBATLOG_OBJECT_REACTION_HOSTILE) > 0 then
 		if bit.band(sourceFlags, COMBATLOG_OBJECT_CONTROL_PLAYER) > 0 then
@@ -94,7 +142,15 @@ local function OnSpellCast(...)
 	if FoundPlate then
 		local FoundPlateUnit = FoundPlate.extended.unit
 		if not FoundPlateUnit.isTarget then
-			StartCastAnimationOnNameplate(FoundPlate, spell, spellid, icon, false, false)
+			local duration = castTime / 1000
+			if StartCastAnimationOnNameplate(FoundPlate, spell, spellid, icon, false, false, 0, duration) then
+				local now = GetTime()
+				local cast = ActiveCasts[FoundPlate] or {}
+				cast.guid, cast.name = sourceGUID, FoundPlateUnit.name
+				cast.startTime, cast.endTime = now, now + duration
+				ActiveCasts[FoundPlate] = cast
+				CastTicker:Show()
+			end
 		end
 	end
 end
@@ -103,21 +159,39 @@ function CombatEventHandlers.SPELL_CAST_START(...)
 	OnSpellCast(...)
 end
 
+-- Zauber beendet oder fehlgeschlagen: Quelle ist der Zaubernde
+function CombatEventHandlers.SPELL_CAST_SUCCESS(sourceGUID)
+	StopCastByGUID(sourceGUID)
+end
+CombatEventHandlers.SPELL_CAST_FAILED = CombatEventHandlers.SPELL_CAST_SUCCESS
+
+-- Unterbrochen oder gestorben: Ziel ist der Zaubernde
+function CombatEventHandlers.SPELL_INTERRUPT(sourceGUID, sourceName, sourceFlags, spellid, spellname, destGUID)
+	StopCastByGUID(destGUID)
+end
+CombatEventHandlers.UNIT_DIED = CombatEventHandlers.SPELL_INTERRUPT
+
 --------------------------------------
 -- Watch Combat Log Events
 --------------------------------------
 
 local function OnCombatEvent(self, event, ...)
-	-- Performance Throttling
-	local now = GetTime()
-	if now - lastSpellCastProcessTime < SPELLCAST_THROTTLE then
+	-- Früher Filter statt Drossel: unbekannte Ereignisse sofort verwerfen,
+	-- relevante gehen nicht verloren
+	local _, combatevent = ...
+	local handler = CombatEventHandlers[combatevent]
+	if not handler then
 		return
 	end
-	lastSpellCastProcessTime = now
 
-	local _, combatevent, sourceGUID, sourceName, sourceFlags, _, _, _, spellid, spellname = ...
-	if CombatEventHandlers[combatevent] and sourceGUID ~= UnitGUID("player") and sourceGUID ~= UnitGUID("target") and spellid then
-		CombatEventHandlers[combatevent](sourceGUID, sourceName, sourceFlags, spellid, spellname)
+	local _, _, sourceGUID, sourceName, sourceFlags, destGUID, _, _, spellid, spellname = ...
+	if combatevent == "SPELL_CAST_START" then
+		if sourceGUID ~= UnitGUID("player") and sourceGUID ~= UnitGUID("target") and spellid then
+			handler(sourceGUID, sourceName, sourceFlags, spellid, spellname)
+		end
+	elseif next(ActiveCasts) then
+		-- Stop-Ereignisse nur auswerten, wenn überhaupt eine Leiste läuft
+		handler(sourceGUID, sourceName, sourceFlags, spellid, spellname, destGUID)
 	end
 end
 

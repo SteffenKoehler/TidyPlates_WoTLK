@@ -85,7 +85,7 @@ local OnNewNameplate, OnShowNameplate, OnHideNameplate, OnUpdateNameplate, OnRes
 local OnUpdateHealth, OnUpdateLevel, OnUpdateThreatSituation, OnUpdateRaidIcon, OnUpdateHealthRange
 local OnMouseoverNameplate, OnRequestWidgetUpdate, OnRequestDelegateUpdate
 local OnShowCastbar, OnHideCastbar, OnValueChangedCastbar
-local PollPlateState, ProcessHealthUpdate, OnTargetChangedNameplate
+local PollPlateState, ProcessHealthUpdate, OnTargetChangedNameplate, LearnGUIDs
 
 -- Spell Casting
 local StartCastAnimation, StopCastAnimation, OnUpdateTargetCastbar
@@ -908,11 +908,19 @@ do
 	end
 
 	-- Shows the Cast Animation (requires references)
-	function StartCastAnimation(plate, spell, spellid, icon, notInterruptible, channel)
+	-- minOverride/maxOverride: Für Nicht-Ziele gibt es keine Blizzard-Zauberleiste,
+	-- dann wird die Dauer direkt übergeben (siehe TidyPlatesSpellCastMonitor.lua).
+	-- Rückgabe: true, wenn die Zauberleiste angezeigt wird.
+	function StartCastAnimation(plate, spell, spellid, icon, notInterruptible, channel, minOverride, maxOverride)
 		UpdateReferences(plate)
 		if (tonumber(GetCVar("showVKeyCastbar")) == 1) and spell then
 			local castbar = bars.castbar
-			local minval, maxval = castbar.cast:GetMinMaxValues()
+			local minval, maxval
+			if maxOverride then
+				minval, maxval = minOverride or 0, maxOverride
+			else
+				minval, maxval = castbar.cast:GetMinMaxValues()
+			end
 			if not (minval or maxval) or maxval == 0 or minval == maxval then
 				StopCastAnimation(plate)
 				return
@@ -949,6 +957,7 @@ do
 
 			UpdateIndicator_CustomScaleText()
 			UpdateIndicator_CustomAlpha()
+			return true
 		end
 	end
 
@@ -1020,6 +1029,63 @@ do
 			ext.isCrowdControlled = isCC
 			if not targetQueue[plate] then
 				targetQueue[plate] = OnRequestDelegateUpdate
+			end
+		end
+	end
+
+	-- LearnGUIDs: Plaketten haben in 3.3.5a keine GUID. Bisher wurde sie nur über
+	-- Ziel/Mouseover gelernt. Zusätzlich werden hier die Ziele von Fokus, Pet und
+	-- Gruppenmitgliedern genutzt: Passt genau EINE sichtbare Plakette ohne GUID zu
+	-- Name + Lebenspunkte + max. Lebenspunkte, bekommt sie die GUID. Bei mehreren
+	-- Treffern (z.B. Gruppe gleichnamiger Mobs mit voller Gesundheit) wird nichts
+	-- zugeordnet, um falsche Debuffs/Zauberleisten zu vermeiden.
+	local LearnUnits = {"focus", "focustarget", "targettarget", "pettarget"}
+	local partyTargets, raidTargets = {}, {}
+	for i = 1, 4 do partyTargets[i] = "party" .. i .. "target" end
+	for i = 1, 40 do raidTargets[i] = "raid" .. i .. "target" end
+
+	local function LearnGUIDFromUnit(uid)
+		if not UnitExists(uid) or UnitIsFriend("player", uid) then
+			return
+		end
+		local guid = UnitGUID(uid)
+		if not guid or GUID[guid] then
+			return
+		end
+		local name = UnitName(uid)
+		local hp, hpmax = UnitHealth(uid), UnitHealthMax(uid)
+		local match
+		for plate in pairs(PlatesVisible) do
+			local u = plate.extended.unit
+			if not u.guid and u.name == name and u.health == hp and u.healthmax == hpmax then
+				if match then
+					return -- mehrdeutig
+				end
+				match = plate
+			end
+		end
+		if match then
+			match.extended.unit.guid = guid
+			GUID[guid] = match
+			-- Widgets (Debuffs) mit der neuen GUID aktualisieren
+			if not targetQueue[match] then
+				targetQueue[match] = OnRequestWidgetUpdate
+			end
+		end
+	end
+
+	function LearnGUIDs()
+		for i = 1, #LearnUnits do
+			LearnGUIDFromUnit(LearnUnits[i])
+		end
+		local numRaid = GetNumRaidMembers()
+		if numRaid > 0 then
+			for i = 1, numRaid do
+				LearnGUIDFromUnit(raidTargets[i])
+			end
+		else
+			for i = 1, GetNumPartyMembers() do
+				LearnGUIDFromUnit(partyTargets[i])
 			end
 		end
 	end
@@ -1202,6 +1268,8 @@ do
 	local highlightRegion
 	local POLL_INTERVAL = 0.1
 	local NextPoll = 0
+	local GUID_LEARN_INTERVAL = 0.5
+	local NextGUIDLearn = 0
 
 	-- Erzwingt die Zustandsabfrage im nächsten Frame (z.B. bei Threat-Events)
 	function TidyPlates:RequestStatePoll()
@@ -1220,6 +1288,12 @@ do
 					PollPlateState(plate)
 				end
 			end
+		end
+
+		-- GUIDs über Fokus/Pet/Gruppenziele lernen (2x pro Sekunde)
+		if now >= NextGUIDLearn then
+			NextGUIDLearn = now + GUID_LEARN_INTERVAL
+			LearnGUIDs()
 		end
 
 		-- Alpha - Highlight - Poll Loop
