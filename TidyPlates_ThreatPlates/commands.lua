@@ -76,9 +76,15 @@ SlashCmdList["TPTPVERBOSE"] = TPTPVERBOSE
 -- /tptpplater default  zurück zum Profil "Default"
 -- Stile werden nur beim Laden gebaut, daher jeweils /reload.
 local PLATER_PROFILE = "Plater"
+-- Version der Plater-Optik. Kommen neue Einstellungen dazu: Version erhöhen und unten
+-- in PlaterMigrations nur die neuen Werte nachtragen. Bestehende Plater-Profile werden
+-- dann beim Einloggen bzw. beim Wechsel ins Profil ergänzt, ohne eigene Anpassungen
+-- zu überschreiben (kein /tptpplater reset nötig).
+local PLATER_LOOK_VERSION = 2
 
 local function ApplyPlaterLook(p)
 	local s = p.settings
+	p.platerLookVersion = PLATER_LOOK_VERSION
 	p.platerBorder.ON = true
 	p.platerBorder.size = 1
 
@@ -186,6 +192,33 @@ end
 -- Legt das Profil "Plater" an, falls es auf diesem Account noch fehlt (Kopie von
 -- "Default" + Plater-Look), ohne den aktuellen Charakter umzustellen. So steht es
 -- jedem Charakter im Profil-Dropdown zur Auswahl.
+-- Nachträge pro Version (Profile ohne Versionsnummer haben Version 1)
+local PlaterMigrations = {
+	[2] = function(p)
+		p.threat.art.ON = false -- keine Aggro-Zacken
+	end
+}
+
+-- Ist "Plater" aktiv und älter als die aktuelle Version, nur die neuen Werte ergänzen
+function TidyPlatesThreat:UpgradePlaterProfile()
+	local db = self.db
+	if not db or db:GetCurrentProfile() ~= PLATER_PROFILE then
+		return
+	end
+	local p = db.profile
+	local version = p.platerLookVersion or 1
+	if version >= PLATER_LOOK_VERSION then
+		return
+	end
+	for v = version + 1, PLATER_LOOK_VERSION do
+		if PlaterMigrations[v] then
+			PlaterMigrations[v](p)
+		end
+	end
+	p.platerLookVersion = PLATER_LOOK_VERSION
+	return true
+end
+
 function TidyPlatesThreat:EnsurePlaterProfile()
 	local db = self.db
 	if ProfileExists(db, PLATER_PROFILE) then

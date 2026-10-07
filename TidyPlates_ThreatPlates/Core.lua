@@ -47,6 +47,9 @@ StaticPopupDialogs["TPTP_PROFILE_RELOAD"] = {
 	hideOnEscape = 1
 }
 function TidyPlatesThreat:ProfChange()
+	if TidyPlatesThreat.UpgradePlaterProfile then
+		TidyPlatesThreat:UpgradePlaterProfile()
+	end
 	TidyPlatesThreat:ConfigRefresh()
 	if not TidyPlatesThreat.suppressReloadPrompt then
 		StaticPopup_Show("TPTP_PROFILE_RELOAD")
@@ -1513,6 +1516,9 @@ local function EventHandler(self, event, ...)
 		TidyPlatesThreat:StartUp()
 		if TidyPlatesThreat.EnsurePlaterProfile then
 			TidyPlatesThreat:EnsurePlaterProfile()
+			if TidyPlatesThreat:UpgradePlaterProfile() then
+				TidyPlates:ForceUpdate()
+			end
 		end
 		CharDB.threat.tanking = TidyPlatesThreat:currentRoleBool(Active()) -- Aligns tanking role with current spec on log in.
 		if GetCVar("nameplateShowEnemyTotems") == "1" then
