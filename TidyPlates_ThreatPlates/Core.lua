@@ -1277,6 +1277,24 @@ function TidyPlatesThreat:ApplyCastbarCVar()
 	end
 end
 
+-- Zusätzlicher Platz über einer Plakette, solange sie Debuffs zeigt (nur Plater-Auren,
+-- die direkt über dem Balken sitzen): Symbolreihen plus kleiner Rand für Stapelzahlen.
+local ceil = math.ceil
+local function DebuffExtraTop(extended)
+	local w = extended.widgets and extended.widgets.WidgetDebuff
+	if not (w and w.platerStyled and w:IsShown()) then
+		return 0
+	end
+	local icons = w.AuraIconFrames
+	if not (icons[1] and icons[1]:IsShown()) then
+		return 0
+	end
+	local second = icons[ceil(#icons / 2) + 1]
+	local rows = (second and second:IsShown()) and 2 or 1
+	-- Symbole 18 hoch, zweite Reihe 12 darüber, Reihe beginnt 3 über dem Balken
+	return 3 + (rows * 18 + (rows - 1) * 12) * w:GetScale() + 4
+end
+
 -- Stapeln an TidyPlates übergeben. Mindestabstand = Balkenbreite + 10 bzw. Höhe von
 -- Balken und Name (über oder unter dem Balken) + 5, damit sich Namen nicht überdecken.
 function TidyPlatesThreat:ApplyStacking()
@@ -1302,7 +1320,8 @@ function TidyPlatesThreat:ApplyStacking()
 		yspace = top - bottom + 5,
 		speed = p.stacking.speed,
 		tallBossFix = p.stacking.tallBossFix,
-		pinTarget = p.stacking.pinTarget
+		pinTarget = p.stacking.pinTarget,
+		extraTop = DebuffExtraTop
 	})
 end
 -- Optionen/Profilwechsel lösen ForceUpdate aus

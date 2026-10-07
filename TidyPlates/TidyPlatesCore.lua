@@ -1589,7 +1589,8 @@ do
 		originpos = 20, upperborder = 30,
 		interval = 0.02,
 		tallBossFix = true,
-		pinTarget = true                                   -- Ziel bleibt an seinem Platz
+		pinTarget = true,                                  -- Ziel bleibt an seinem Platz
+		extraTop = nil                                     -- function(extended): zusätzlicher Platz über der Plakette (z.B. Debuffs)
 	}
 	local delta = cfg.speed * 5
 	local Stacked = {} -- [plate] = {xpos, ypos, position, bottom}
@@ -1659,6 +1660,7 @@ do
 				local _, _, _, x, y = plate:GetPoint(1)
 				p.xpos, p.ypos = x, y
 				p.isTarget = cfg.pinTarget and plate.extended.unit.isTarget
+				p.extra = cfg.extraTop and cfg.extraTop(plate.extended) or 0
 			end
 		end
 
@@ -1675,10 +1677,12 @@ do
 					if p2.isTarget and ydiff < 0 and ydiff > -yspace then
 						ydiff = 0
 					end
-					if ydiff >= 0 and ydiff < min then
-						min = ydiff
+					-- Zeigt die Plakette darunter Debuffs, braucht sie nach oben mehr Platz:
+					-- ihr Abstand zählt um diesen Betrag kleiner
+					if ydiff >= 0 and ydiff - p2.extra < min then
+						min = ydiff - p2.extra
 					end
-					if abs(p1.ypos - p2.ypos - p2.position) < yspace + 2 * delta then
+					if abs(p1.ypos - p2.ypos - p2.position) < yspace + p2.extra + 2 * delta then
 						reset = false
 					end
 				end
