@@ -3174,6 +3174,17 @@ local function GetOptions()
 											set = SetValue,
 											width = "double",
 											arg = {"threat", "useHPColor"}
+										},
+										AlwaysTank = {
+											name = "Immer Tank-Ansicht",
+											type = "toggle",
+											order = 2,
+											desc = "Zeigt auf allen Charakteren die Tank-Farben (lila = ich habe Aggro, blau = anderer Tank, rot = keine Aggro), unabhängig von Rolle und Talenten.",
+											descStyle = "inline",
+											get = GetValue,
+											set = SetValue,
+											width = "double",
+											arg = {"threat", "alwaysTank"}
 										}
 									}
 								},
@@ -3200,6 +3211,13 @@ local function GetOptions()
 											type = "color",
 											order = 2,
 											arg = {"settings", "tank", "threatcolor", "MEDIUM"},
+											hasAlpha = true
+										},
+										Losing = {
+											name = "|cffff8000Verliere gleich Aggro|r",
+											type = "color",
+											order = 2.5,
+											arg = {"settings", "tank", "threatcolor", "LOSING"},
 											hasAlpha = true
 										},
 										High = {
@@ -3234,6 +3252,13 @@ local function GetOptions()
 											type = "color",
 											order = 2,
 											arg = {"settings", "dps", "threatcolor", "MEDIUM"},
+											hasAlpha = true
+										},
+										Losing = {
+											name = "|cffff8000Verliere gleich Aggro|r",
+											type = "color",
+											order = 2.5,
+											arg = {"settings", "dps", "threatcolor", "LOSING"},
 											hasAlpha = true
 										},
 										High = {

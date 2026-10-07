@@ -10,7 +10,7 @@ local function UpdateThreatWidget(frame, unit)
 	db = TidyPlatesThreat.db.profile
 	local threatLevel
 	local style = TidyPlatesThreat.SetStyle(unit)
-	if TidyPlatesThreat.db.char.threat.tanking then
+	if TidyPlatesThreat.IsTanking() then
 		threatLevel = unit.threatSituation
 	else
 		if unit.threatSituation == "HIGH" then

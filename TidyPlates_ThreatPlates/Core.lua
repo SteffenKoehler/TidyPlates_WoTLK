@@ -26,6 +26,12 @@ local dpsRole = L["|cffff0000dpsing / healing|r"]
 TidyPlatesThemeList = TidyPlatesThemeList or {}
 TidyPlatesThemeList["Threat Plates"] = {}
 
+-- Tank-Ansicht aktiv? Entweder per Profil-Option "Immer Tank-Ansicht" oder über die Rolle
+function TidyPlatesThreat.IsTanking()
+	local db = TidyPlatesThreat.db
+	return db.profile.threat.alwaysTank or db.char.threat.tanking
+end
+
 -- Callback Functions
 function TidyPlatesThreat:ProfChange()
 	TidyPlatesThreat:ConfigRefresh()
@@ -922,19 +928,22 @@ function TidyPlatesThreat:OnInitialize()
 					threatcolor = {
 						LOW = {r = 0, g = 1, b = 0, a = 1},
 						MEDIUM = {r = 1, g = 1, b = 0, a = 1},
+						LOSING = {r = 1, g = 0.5, b = 0, a = 1}, -- habe Aggro, verliere sie gleich
 						HIGH = {r = 1, g = 0, b = 0, a = 1}
 					}
 				},
 				tank = {
 					threatcolor = {
 						LOW = {r = 1, g = 0, b = 0, a = 1},
-						MEDIUM = {r = 1, g = 1, b = 0, a = 1},
+						MEDIUM = {r = 1, g = 1, b = 0, a = 1}, -- ziehe gleich Aggro
+						LOSING = {r = 1, g = 0.5, b = 0, a = 1}, -- habe Aggro, verliere sie gleich
 						HIGH = {r = 0, g = 1, b = 0, a = 1}
 					}
 				}
 			},
 			threat = {
 				ON = true,
+				alwaysTank = true, -- Tank-Ansicht auf allen Charakteren, unabhängig von der Rolle
 				nonCombat = true,
 				hideNonCombat = false,
 				useType = true,
@@ -1182,7 +1191,7 @@ local function ComputeStyle(unit)
 				if DB.threat.toggle[T] and DB.threat.ON and unit.class == "UNKNOWN" and InCombatLockdown() then
 					if DB.threat.nonCombat then
 						if unit.isInCombat or (unit.health < unit.healthmax) then
-							if TidyPlatesThreat.db.char.threat.tanking then
+							if TidyPlatesThreat.IsTanking() then
 								return "tank"
 							else
 								return "dps"
@@ -1195,7 +1204,7 @@ local function ComputeStyle(unit)
 							end
 						end
 					else
-						if TidyPlatesThreat.db.char.threat.tanking then
+						if TidyPlatesThreat.IsTanking() then
 							return "tank"
 						else
 							return "dps"

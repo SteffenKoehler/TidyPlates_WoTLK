@@ -26,7 +26,7 @@ do
 						if unit.isMarked and TidyPlatesThreat.db.profile.threat.marked.alpha then
 							return (db.nameplate.alpha["Marked"] + nonTargetAlpha), db.blizzFade.toggle
 						else
-							if TidyPlatesThreat.db.char.threat.tanking then
+							if TidyPlatesThreat.IsTanking() then
 								return (db.threat["tank"].alpha[unit.threatSituation] + nonTargetAlpha), db.blizzFade.toggle
 							else
 								return (db.threat["dps"].alpha[unit.threatSituation] + nonTargetAlpha), db.blizzFade.toggle
@@ -116,7 +116,7 @@ do
 						if unit.isMarked and db.threat.marked.scale then
 							return (db.nameplate.scale["Marked"])
 						elseif not custom then
-							if TidyPlatesThreat.db.char.threat.tanking then
+							if TidyPlatesThreat.IsTanking() then
 								return (db.threat["tank"].scale[unit.threatSituation] + (TypeScale(unit)))
 							else
 								return (db.threat["dps"].scale[unit.threatSituation] + (TypeScale(unit)))
@@ -282,7 +282,7 @@ do
 			for k_c, k_v in pairs(db.uniqueSettings.list) do
 				if k_v == "GROUP" then
 					if db.uniqueSettings[k_c].useColor == false and (db.uniqueSettings[k_c].allowMarked == false or not unit.isMarked) then
-						style = TidyPlatesThreat.db.char.threat.tanking and "tank" or "dps"
+						style = TidyPlatesThreat.IsTanking() and "tank" or "dps"
 					end
 					break
 				end
@@ -319,7 +319,7 @@ do
 							local R = db.settings.raidicon.hpMarked[unit.raidIcon]
 							return R.r, R.g, R.b
 						elseif not unit.isMarked and db.threat.useHPColor and InCombatLockdown() and db.threat.ON then
-							if TidyPlatesThreat.db.char.threat.tanking then
+							if TidyPlatesThreat.IsTanking() then
 								if unit.threatValue < 2 then
 									if isTanked(unit) then
 										local S = db.tHPbarColor
@@ -343,13 +343,25 @@ do
 				end
 			end
 		elseif (((style == "tank") or (style == "dps")) and db.threat.useHPColor and InCombatLockdown()) then
-			if db.settings.raidicon.hpColor and unit.isMarked and not custom then
-				local R = db.settings.raidicon.hpMarked[unit.raidIcon]
-				return R.r, R.g, R.b
+			-- Bedrohungsfarbe hat Vorrang vor Raidmarkierungen. Reihenfolge:
+			-- 3 = ich habe sicher Aggro, 2 = habe Aggro, verliere sie gleich,
+			-- 1 = ziehe gleich Aggro, sonst: anderer Tank hält ihn -> Tank-Farbe,
+			-- sonst keine Aggro. (Crowd Control färbt bereits der TidyPlates-Kern.)
+			local colors = db.settings[style].threatcolor
+			local threatValue = unit.threatValue or 0
+			local T
+			if threatValue >= 3 then
+				T = colors.HIGH
+			elseif threatValue == 2 then
+				T = colors.LOSING or colors.MEDIUM
+			elseif threatValue == 1 then
+				T = colors.MEDIUM
+			elseif isTanked(unit) then
+				T = db.tHPbarColor
 			else
-				local T = db.settings[style].threatcolor[unit.threatSituation]
-				return T.r, T.g, T.b
+				T = colors.LOW
 			end
+			return T.r, T.g, T.b
 		else
 			if db.settings.raidicon.hpColor and unit.isMarked and not custom then
 				local R = db.settings.raidicon.hpMarked[unit.raidIcon]
