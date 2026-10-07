@@ -7,6 +7,29 @@
 
 ---
 
+> [!NOTE]
+> **Rising-Gods fork (branch `rising-gods`).** This branch builds on the
+> [Hypopheria Remaster](https://github.com/hypopheria2k/TidyPlates_3.3.5a) and adds
+> further performance work, non-target castbars without dropped events, GUID
+> assignment without mouseover (raid markers, fingerprints, damage correlation),
+> a Plater-like threat color scheme and an optional **Plater/NotPlater look** with
+> built-in nameplate stacking. See **[CHANGES.md](CHANGES.md)** for details.
+>
+> - **Install:** copy `TidyPlates`, `TidyPlates_ThreatPlates` (and optionally
+>   `TPProf`) into `Interface/AddOns/` and **restart the client completely** -
+>   WoW 3.3.5a only picks up new files after a restart, `/reload` is not enough.
+> - **Profiles:** the `Default` profile contains all optimizations and the color
+>   scheme. The `Plater` profile is created automatically and adds the Plater
+>   look on top: `/tptp` -> *Profiles* -> select `Plater` and reload, or type
+>   `/tptpplater`.
+> - Disable ElvUI's nameplate module and nameplate stacking WeakAuras when using
+>   this.
+> - The combat log throttling described below (sections "Combat Log Throttling"
+>   and "Performance Throttling") was **removed** in this branch because it
+>   dropped events; the load is reduced by other means instead (see CHANGES.md).
+>
+> The text below is the upstream README of the Hypopheria Remaster.
+
 > [!IMPORTANT]
 > The original repository has been abandoned for years. This fork revives the addon with critical bug fixes, performance optimizations, and a fully working configuration interface.
 > 
