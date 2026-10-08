@@ -581,28 +581,42 @@ local function UpdateWidgetTime(frame, expiration)
 	end
 end
 
+-- Ablauf-Schleier (Spiralen/Cooldown-Modelle werden an Plaketten in 3.3.5a nicht gezeichnet)
+local SHADE_INTERVAL = 0.033
+local function ShadeOnUpdate(frame, elapsed)
+	local tick = frame.shadeTick + elapsed
+	if tick < SHADE_INTERVAL then
+		frame.shadeTick = tick
+		return
+	end
+	frame.shadeTick = 0
+	local frac = (GetTime() - frame.shadeStart) / frame.shadeDuration
+	if frac <= 0.02 or frac >= 1 then
+		frame.Shade:Hide()
+		frame.ShadeEdge:Hide()
+	else
+		frame.Shade:SetHeight(frame:GetHeight() * frac)
+		frame.Shade:Show()
+		frame.ShadeEdge:Show()
+	end
+end
+
 local function UpdateIcon(frame, texture, expiration, stacks, duration)
 	if frame and texture and expiration then
 		-- Icon
 		frame.Icon:SetTexture(texture)
 
-		-- Abklingzeit-Spirale (wie auf Aktionsbuttons), wenn das Theme sie wünscht
-		-- (widget.showSpiral) und die Dauer bekannt ist. Texte liegen eine Ebene darüber.
-		local cd = frame.Cooldown
+		-- Ablauf-Anzeige, wenn das Theme sie wünscht (widget.showSpiral) und die Dauer
+		-- bekannt ist: dunkler Schleier wächst mit der abgelaufenen Zeit von oben nach
+		-- unten, goldene Kante an seiner Unterseite
 		if frame:GetParent().showSpiral and duration and duration > 0 then
-			local level = frame:GetFrameLevel()
-			if cd:GetFrameLevel() ~= level + 1 then
-				cd:SetFrameLevel(level + 1)
-				frame.TextFrame:SetFrameLevel(level + 2)
-			end
-			if frame.cdExpiration ~= expiration or frame.cdDuration ~= duration then
-				frame.cdExpiration, frame.cdDuration = expiration, duration
-				cd:SetCooldown(expiration - duration, duration)
-			end
-			cd:Show()
+			frame.shadeStart, frame.shadeDuration = expiration - duration, duration
+			frame.shadeTick = SHADE_INTERVAL
+			frame:SetScript("OnUpdate", ShadeOnUpdate)
 		else
-			frame.cdExpiration = nil
-			cd:Hide()
+			frame:SetScript("OnUpdate", nil)
+			frame.Shade:Hide()
+			frame.ShadeEdge:Hide()
 		end
 
 		-- Stacks
@@ -819,15 +833,21 @@ local function CreateAuraIconFrame(parent)
 	frame.Glow = frame:CreateTexture(nil, "ARTWORK")
 	frame.Glow:SetAllPoints(frame.Border)
 	frame.Glow:SetTexture(AuraGlowArt)
-	-- Abklingzeit-Spirale über dem Symbol (nur sichtbar, wenn das Theme sie einschaltet);
-	-- keine fremden Zeitanzeigen (OmniCC/ElvUI) daran, die Restzeit zeigt das Widget selbst
-	local cd = CreateFrame("Cooldown", nil, frame)
-	cd:SetAllPoints(frame)
-	cd.noOCC = true
-	cd.noCooldownCount = true
-	cd:Hide()
-	frame.Cooldown = cd
-	-- Texte auf eigener Ebene über der Spirale
+	-- Ablauf-Schleier mit goldener Kante (nur aktiv, wenn das Theme ihn einschaltet)
+	local shade = frame:CreateTexture(nil, "OVERLAY")
+	shade:SetTexture(0, 0, 0, 0.6)
+	shade:SetPoint("TOPLEFT", frame, "TOPLEFT")
+	shade:SetPoint("TOPRIGHT", frame, "TOPRIGHT")
+	shade:Hide()
+	frame.Shade = shade
+	local edge = frame:CreateTexture(nil, "OVERLAY")
+	edge:SetTexture(1, 0.82, 0.2, 1)
+	edge:SetHeight(1)
+	edge:SetPoint("TOPLEFT", shade, "BOTTOMLEFT")
+	edge:SetPoint("TOPRIGHT", shade, "BOTTOMRIGHT")
+	edge:Hide()
+	frame.ShadeEdge = edge
+	-- Texte auf eigener Ebene über dem Schleier
 	local textFrame = CreateFrame("Frame", nil, frame)
 	textFrame:SetAllPoints(frame)
 	textFrame:SetFrameLevel(frame:GetFrameLevel() + 2)

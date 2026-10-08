@@ -3685,8 +3685,8 @@ local function GetOptions()
 											arg = {"debuffWidget", "ON"}
 										},
 										Spiral = {
-											name = "Abklingzeit-Spirale",
-											desc = "Dunkelt das Debuff-Symbol wie eine Uhr ab, je weniger Zeit übrig ist (wie bei Abklingzeiten auf der Aktionsleiste).",
+											name = "Ablauf anzeigen",
+											desc = "Ein dunkler Schleier mit goldener Kante wächst von oben über das Debuff-Symbol, je mehr Zeit abgelaufen ist.",
 											type = "toggle",
 											order = 2,
 											disabled = function()
