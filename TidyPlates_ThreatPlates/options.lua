@@ -194,6 +194,8 @@ local function GetSpellName(number)
 end
 
 local function Update()
+	-- Stile aus den geänderten Werten neu bauen, damit Größen/Positionen sofort wirken
+	TidyPlatesThreat:RebuildStyles()
 	TidyPlates:ReloadTheme()
 	TidyPlates:ForceUpdate()
 end
@@ -4131,11 +4133,11 @@ local function GetOptions()
 										},
 										Reset = {
 											name = "Optik zurücksetzen",
-											desc = "Setzt die Plater-Optik im Profil \"Plater\" auf die Ausgangswerte zurück (Layout, Größen, Schriften) und lädt neu - wie /tptpplater reset. Nur im Profil \"Plater\" möglich; Profile wechselst du unter \"Profile\".",
+											desc = "Setzt die Plater-Optik im Profil \"Plater\" auf die Ausgangswerte zurück (Layout, Größen, Schriften) - wie /tptpplater reset. Nur im Profil \"Plater\" möglich; Profile wechselst du unter \"Profile\".",
 											type = "execute",
 											order = 10,
 											confirm = true,
-											confirmText = "Plater-Optik auf die Ausgangswerte zurücksetzen und neu laden?",
+											confirmText = "Plater-Optik auf die Ausgangswerte zurücksetzen?",
 											disabled = function()
 												return TidyPlatesThreat.db:GetCurrentProfile() ~= "Plater"
 											end,
@@ -4304,11 +4306,11 @@ local function GetOptions()
 										},
 										Reset = {
 											name = "Optik zurücksetzen",
-											desc = "Setzt die Classic-Optik im Profil \"Classic\" auf die Ausgangswerte zurück (Layout, Größen, Schriften) und lädt neu - wie /tptpclassic reset. Nur im Profil \"Classic\" möglich; Profile wechselst du unter \"Profile\".",
+											desc = "Setzt die Classic-Optik im Profil \"Classic\" auf die Ausgangswerte zurück (Layout, Größen, Schriften) - wie /tptpclassic reset. Nur im Profil \"Classic\" möglich; Profile wechselst du unter \"Profile\".",
 											type = "execute",
 											order = 20,
 											confirm = true,
-											confirmText = "Classic-Optik auf die Ausgangswerte zurücksetzen und neu laden?",
+											confirmText = "Classic-Optik auf die Ausgangswerte zurücksetzen?",
 											disabled = function()
 												return TidyPlatesThreat.db:GetCurrentProfile() ~= "Classic"
 											end,

@@ -1014,9 +1014,13 @@ end
 ----------------
 -- INITIALIZE --
 ----------------
+-- Alle Plaketten, die Widgets bekommen haben (für ResetAll beim Profilwechsel)
+local KnownPlates = setmetatable({}, {__mode = "k"})
+
 local function OnInitialize(plate)
 	db = TidyPlatesThreat.db.profile
 	SyncAuraWatcher()
+	KnownPlates[plate] = true
 	local w = plate.widgets
 	-- Debuff Widget
 	if db.debuffWidget.ON then
@@ -1375,6 +1379,33 @@ local function OnUpdate(plate, unit)
 		end
 		w.ThreatArtWidget:Update(unit)
 	end
+end
+
+-- Profilwechsel ohne /reload: alle Widgets verwerfen; sie werden beim nächsten Update
+-- (OnUpdate/OnContextUpdate rufen bei fehlendem Widget OnInitialize) neu erzeugt. Das
+-- Debuff-Widget meldet sich beim Hide selbst ab; die Plater-Aura-Optik ist pro Widget
+-- nicht umkehrbar, deshalb neu statt umbauen.
+function ThreatPlatesWidgets.ResetAll()
+	for plate in pairs(KnownPlates) do
+		local w = plate.widgets
+		if w then
+			for key, widget in pairs(w) do
+				if key == "ClassicLook" then
+					ThreatPlatesWidgets.HideClassicLook(widget)
+				elseif type(widget) == "table" and widget.Hide then
+					widget:Hide()
+				end
+				w[key] = nil
+			end
+		end
+		if plate.bars and plate.bars.castbar then
+			plate.bars.castbar:SetBackgroundColor(0, 0, 0, 0)
+		end
+		if plate.visual and plate.visual.spellicon then
+			plate.visual.spellicon:SetDesaturated(false)
+		end
+	end
+	ThreatPlatesWidgets.classicStackingApplied = nil
 end
 
 local f = CreateFrame("Frame")

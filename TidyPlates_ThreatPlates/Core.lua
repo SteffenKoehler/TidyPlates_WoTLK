@@ -46,14 +46,36 @@ StaticPopupDialogs["TPTP_PROFILE_RELOAD"] = {
 	whileDead = 1,
 	hideOnEscape = 1
 }
+-- Stile neu aus dem aktuellen Profil bauen (die Style-Dateien registrieren sich in
+-- StyleBuilders). Die Plaketten übernehmen sie beim nächsten ForceUpdate.
+function TidyPlatesThreat:RebuildStyles()
+	if not (self.db and self.StyleBuilders) then
+		return
+	end
+	for _, build in pairs(self.StyleBuilders) do
+		build()
+	end
+end
+
+-- Profil ohne /reload übernehmen: Stile neu bauen, Widgets aller Plaketten verwerfen
+-- (werden beim nächsten Update mit den neuen Einstellungen neu erzeugt), alles neu zeichnen
+function TidyPlatesThreat:ApplyProfileLive()
+	self:RebuildStyles()
+	if ThreatPlatesWidgets and ThreatPlatesWidgets.ResetAll then
+		ThreatPlatesWidgets.ResetAll()
+	end
+	if self.ApplyCastbarCVar then
+		self:ApplyCastbarCVar()
+	end
+	TidyPlates:ForceUpdate()
+end
+
 function TidyPlatesThreat:ProfChange()
 	if TidyPlatesThreat.UpgradePlaterProfile then
 		TidyPlatesThreat:UpgradePlaterProfile()
 	end
 	TidyPlatesThreat:ConfigRefresh()
-	if not TidyPlatesThreat.suppressReloadPrompt then
-		StaticPopup_Show("TPTP_PROFILE_RELOAD")
-	end
+	TidyPlatesThreat:ApplyProfileLive()
 end
 
 -- Dual Spec Functions
@@ -1560,9 +1582,8 @@ local function EventHandler(self, event, ...)
 		if TidyPlatesThreat.EnsurePlaterProfile then
 			TidyPlatesThreat:EnsurePlaterProfile()
 			if TidyPlatesThreat:UpgradePlaterProfile() then
-				TidyPlates:ForceUpdate()
-				-- Stile sind beim Login schon gebaut: neue Layout-Werte erst nach /reload sichtbar
-				StaticPopup_Show("TPTP_PROFILE_RELOAD")
+				-- Stile sind beim Login schon gebaut: mit den neuen Werten neu bauen
+				TidyPlatesThreat:ApplyProfileLive()
 			end
 		end
 		CharDB.threat.tanking = TidyPlatesThreat:currentRoleBool(Active()) -- Aligns tanking role with current spec on log in.

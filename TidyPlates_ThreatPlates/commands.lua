@@ -75,7 +75,7 @@ SlashCmdList["TPTPVERBOSE"] = TPTPVERBOSE
 -- /tptpplater reset    Plater-Optik im Profil "Plater" erneut anwenden
 -- /tptpplater default  zurück zum Profil "Default"
 -- /tptpclassic [reset|default|info]  dasselbe für die Classic-Optik (Profil "Classic", weiter unten)
--- Stile werden nur beim Laden gebaut, daher jeweils /reload.
+-- Wirkt sofort: Stile und Widgets werden beim Profilwechsel neu gebaut (ApplyProfileLive).
 local PLATER_PROFILE = "Plater"
 -- Version der Plater-Optik. Kommen neue Einstellungen dazu: Version erhöhen und unten
 -- in PlaterMigrations nur die neuen Werte nachtragen. Bestehende Plater-Profile werden
@@ -426,15 +426,13 @@ end
 
 -- /tptpplater bzw. /tptpclassic: Profil aktivieren (beim ersten Mal als Kopie des aktuellen
 -- Profils anlegen), "reset" = Optik erneut anwenden, "default" = zurück zum Profil "Default".
--- Stile werden nur beim Laden gebaut, daher jeweils /reload.
+-- Wirkt sofort (Stile/Widgets werden neu gebaut, kein /reload nötig).
 local function LookCommand(look, command, msg)
 	local db = TidyPlatesThreat.db
 	msg = strlower(strtrim(msg or ""))
-	TidyPlatesThreat.suppressReloadPrompt = true -- lädt am Ende ohnehin neu
 	if msg == "default" then
 		db:SetProfile("Default")
-		print("|cff89F559Threat Plates|r: Profil \"Default\" aktiv, lade neu ...")
-		ReloadUI()
+		print("|cff89F559Threat Plates|r: Profil \"Default\" aktiv.")
 		return
 	end
 
@@ -448,9 +446,9 @@ local function LookCommand(look, command, msg)
 	end
 	if isNew or msg == "reset" then
 		look.apply(db.profile)
+		TidyPlatesThreat:ApplyProfileLive() -- Optik wurde nach dem Profilwechsel geändert
 	end
-	print("|cff89F559Threat Plates|r: Profil \"" .. look.profile .. "\" aktiv, lade neu ... (zurück mit " .. command .. " default)")
-	ReloadUI()
+	print("|cff89F559Threat Plates|r: Profil \"" .. look.profile .. "\" aktiv (zurück mit " .. command .. " default).")
 end
 
 SLASH_TPTPPLATER1 = "/tptpplater"

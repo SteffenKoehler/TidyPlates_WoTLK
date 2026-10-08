@@ -117,6 +117,12 @@ Classic-Optik, Zauberleiste (interrupt colors), Stapeln and Quest-Symbol.
 Profiles are switched via the regular profile dropdown; each look page has
 an "Optik zurücksetzen" button (enabled only in the matching profile).
 
+No `/reload` needed: the style files register builders
+(`TidyPlatesThreat.StyleBuilders`); a profile change rebuilds all styles,
+discards the widgets of every plate (recreated on the next update) and
+redraws (`TidyPlatesThreat:ApplyProfileLive`). Option changes rebuild the
+styles as well, so sizes and positions apply immediately.
+
 ## Credits
 
 - Target indicator textures: [NotPlater](https://github.com/RichSteini/NotPlater)
