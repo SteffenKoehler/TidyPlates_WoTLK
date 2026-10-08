@@ -129,8 +129,15 @@ the WeakAura** when using this, otherwise both move the plates.
 | `/tptpclassic` / `reset` / `default` | Same for the Classic look (profile "Classic") |
 | `/tptpclassic info` | Print the measured geometry of the original plate |
 | `/tpprof on` / `off` | Toggle CPU profiling (then `/reload`) |
-| `/tpprof kampf` | CPU report after every fight |
+| `/tpprof kampf` | Chat report after every fight (FPS, plates, CPU) |
 | `/tpprof` | CPU report since the last start |
+| `/tpprof log` / `clear` | Show / clear the saved fight and error log |
+
+TPProf always saves every fight (≥ 5 s: date, zone, group, profile, FPS
+min/avg, visible plates max/avg, Lua memory, enemy targets, top 15 CPU if
+profiling is on) and every Lua error with time, zone and stack to `TPProfDB`
+(`WTF\Account\<account>\SavedVariables\TPProf.lua`, written on `/reload` or
+logout), so results can be read outside the game.
 
 Options: `/tptp` → tab **Erweiterungen** with the sub-pages Plater-Optik,
 Classic-Optik, Zauberleiste (interrupt colors), Stapeln and Quest-Symbol.
