@@ -187,7 +187,7 @@ end
 -- Classic-Widget, Name über dem Balken, Lebenspunkte-Text wie im Default-Profil.
 -- Gleiche Versionsregel wie bei Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 5
+local CLASSIC_LOOK_VERSION = 6
 
 -- Version 2 (Vorbild Classic-Client): Name auf Balkenbreite gekürzt, dünne orange Zauber-
 -- leiste direkt unter dem Rahmen, Zaubername klein links darunter (Restzeit rechts), kein
@@ -257,8 +257,8 @@ local function ApplyClassicLook(p)
 
 	-- Blizzard-Balkengrafik, Breite etwas größer als das Original. Höhe im Seitenverhältnis
 	-- der Original-Leiste, damit der Rahmen nicht verzerrt (falls schon vermessen).
-	s.healthbar.texture = "Blizzard Nameplate"
-	s.castbar.texture = "Blizzard Nameplate"
+	s.healthbar.texture = "Flat"
+	s.castbar.texture = "Flat"
 	local width = 150
 	local height = 12
 	local art = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
@@ -365,7 +365,12 @@ local ClassicMigrations = {
 		ApplyClassicV2(p)
 	end,
 	-- schlichter Rahmen jetzt als Tooltip-Rahmen (etwas breiter): Name/Zauberleiste nachziehen
-	[5] = ApplyClassicV2
+	[5] = ApplyClassicV2,
+	[6] = function(p)
+		-- "Blizzard Nameplate" hat dunkle Streifen oben/unten: komplett flache Füllung
+		p.settings.healthbar.texture = "Flat"
+		p.settings.castbar.texture = "Flat"
+	end
 }
 
 -- Eigene Optik-Profile: Name, Anwenden, Version (Feld im Profil) und Nachträge

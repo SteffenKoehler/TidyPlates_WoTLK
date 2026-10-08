@@ -184,6 +184,8 @@ local MediaRegister = TidyPlatesUtility.MediaRegister
 MediaRegister("statusbar", "ThreatPlatesBar", [[Interface\Addons\TidyPlates_ThreatPlates\Media\Artwork\TP_BarTexture.tga]])
 -- Flache Füllung der originalen Namensplaketten (ohne den Hell-Dunkel-Verlauf von "Blizzard")
 MediaRegister("statusbar", "Blizzard Nameplate", [[Interface\TargetingFrame\UI-TargetingFrame-BarFill]])
+-- Komplett flache Füllung (einfarbig, keine dunklen Kanten oben/unten)
+MediaRegister("statusbar", "Flat", [[Interface\Buttons\WHITE8X8]])
 MediaRegister("font", "Accidental Presidency", [[Interface\Addons\TidyPlates_ThreatPlates\Media\Fonts\Accidental Presidency.ttf]])
 
 -- Functions
