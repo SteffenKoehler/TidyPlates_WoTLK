@@ -1546,6 +1546,61 @@ do
 		regions.threatglow, regions.healthborder, regions.castborder, regions.castnostop, regions.spellicon, regions.highlight, regions.name, regions.level, regions.skullicon, regions.raidicon, regions.eliteicon = plate:GetRegions()
 	end
 
+	-- Blizzard-Optik für Themes (TidyPlates.BlizzardArt): Pfad und Ausschnitt der Original-
+	-- grafiken sowie ihre Lage relativ zur Original-Lebens- bzw. Zauberleiste (Anteile von
+	-- Balkenbreite/-höhe ab der linken unteren Ecke). Muss vor dem Unsichtbarmachen und vor
+	-- dem Ändern der Hitbox-Größe laufen; gemessen wird, bis es einmal gelingt.
+	local function MeasureRect(region, bar)
+		local l, r, t, b = region:GetLeft(), region:GetRight(), region:GetTop(), region:GetBottom()
+		local bl, bb, bw, bh = bar:GetLeft(), bar:GetBottom(), bar:GetWidth(), bar:GetHeight()
+		if not (l and r and t and b and bl and bb and bw and bh) or bw < 1 or bh < 1 then
+			return
+		end
+		return {left = (l - bl) / bw, right = (r - bl) / bw, top = (t - bb) / bh, bottom = (b - bb) / bh}
+	end
+
+	-- Erster Schlüssel ist Pflicht (Rahmen), die übrigen werden nur übernommen, wenn messbar
+	local function MeasureGroup(regions, bar, keys)
+		local geo = {width = bar:GetWidth(), height = bar:GetHeight()}
+		for index, key in ipairs(keys) do
+			local rect = MeasureRect(regions[key], bar)
+			if not rect and index == 1 then
+				return
+			end
+			geo[key] = rect
+		end
+		return geo
+	end
+
+	local function CaptureBlizzardArt(regions, bars)
+		local art = TidyPlates.BlizzardArt
+		if not art then
+			art = {}
+			for _, key in ipairs({"threatglow", "healthborder", "castborder", "castnostop", "highlight", "eliteicon", "skullicon"}) do
+				local region = regions[key]
+				art[key] = {texture = region:GetTexture(), coords = {region:GetTexCoord()}}
+			end
+			art.levelFont = {regions.level:GetFont()}
+			art.levelPoint = regions.level:GetPoint(1)
+			TidyPlates.BlizzardArt = art
+		end
+		if not art.health then
+			art.health = MeasureGroup(regions, bars.health, {"healthborder", "threatglow", "highlight", "eliteicon", "skullicon", "level"})
+		end
+		if not art.cast then
+			art.cast = MeasureGroup(regions, bars.cast, {"castborder", "castnostop", "spellicon"})
+		end
+	end
+
+	-- Zauberleiste nachmessen, falls sie beim Erzeugen noch keine Lage hatte. Rahmen und
+	-- Symbol hängen an der Zauberleiste selbst, die Hitbox-Größe spielt hier keine Rolle.
+	function TidyPlates.MeasureBlizzardCast(extended)
+		local art = TidyPlates.BlizzardArt
+		if art and not art.cast then
+			art.cast = MeasureGroup(extended.regions, extended.bars.cast, {"castborder", "castnostop"})
+		end
+	end
+
 	function ApplyPlateExtension(plate)
 		Plates[plate] = true
 		plate.extended = CreateFrame("Frame", nil, plate)
@@ -1567,6 +1622,8 @@ do
 
 		-- Set Frame Levels and Parent
 		GetNameplateRegions(plate, regions, bars.cast)
+
+		CaptureBlizzardArt(regions, bars)
 
 		-- This block makes the Blizz nameplate invisible
 		regions.threatglow:SetTexCoord(0, 0, 0, 0)

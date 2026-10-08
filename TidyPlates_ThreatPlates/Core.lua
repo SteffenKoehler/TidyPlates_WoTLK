@@ -760,6 +760,14 @@ function TidyPlatesThreat:OnInitialize()
 				indicator = "Silver",
 				glow = true
 			},
+			-- Classic-Optik: originale Blizzard-Grafiken (Goldrahmen mit Stufen-Feld, Zauberleisten-
+			-- Rahmen, Elite-Drache), Lage an der Original-Plakette vermessen. Ziel = Leuchten,
+			-- Mouseover = Blizzard-Aufhellung
+			classicLook = {
+				ON = false,
+				targetGlow = true,
+				glowColor = {r = 1, g = 0.9, b = 0.55, a = 0.9}
+			},
 			-- Stapeln gegnerischer Plaketten (ersetzt die WeakAura "Enhanced Stacking Nameplate");
 			-- Abstände werden aus Balkengröße und Name berechnet
 			stacking = {
@@ -1338,6 +1346,15 @@ function TidyPlatesThreat:ApplyStacking()
 	local s = p.settings
 	local width, height = s.healthbar.width or 120, s.healthbar.height or 10
 	local top, bottom = height / 2, -height / 2
+	local xspace = width + 10
+	-- Classic: der Blizzard-Rahmen (mit Stufen-Feld) ist größer als der Balken
+	local art = p.classicLook.ON and TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
+	if art then
+		local b = art.healthborder
+		xspace = math.max(xspace, (b.right - b.left) * width + 4)
+		top = math.max(top, (b.top - 0.5) * height)
+		bottom = math.min(bottom, (b.bottom - 0.5) * height)
+	end
 	if s.name.show then
 		local half = (s.name.size or 12) / 2 + 2
 		top = math.max(top, (s.name.y or 0) + half)
@@ -1345,7 +1362,7 @@ function TidyPlatesThreat:ApplyStacking()
 	end
 	TidyPlates:SetStacking({
 		enabled = true,
-		xspace = width + 10,
+		xspace = xspace,
 		yspace = top - bottom + 5,
 		speed = p.stacking.speed,
 		tallBossFix = p.stacking.tallBossFix,

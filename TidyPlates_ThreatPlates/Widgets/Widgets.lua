@@ -143,11 +143,14 @@ end
 
 local function UpdateCastState(self, remaining)
 	local plate = self.plate
+	local unit = plate.unit
+	if self.SetShielded then -- Classic: Schild-Rahmen bei nicht unterbrechbaren Zaubern
+		self:SetShielded(unit.spellIsShielded)
+	end
 	local pc = TidyPlatesThreat.db.profile.platerCast
 	if not pc.ON then
 		return
 	end
-	local unit = plate.unit
 	self.bar:SetForegroundColor(ThreatPlatesWidgets.PlaterCastColor(unit, remaining))
 	local shielded = unit.spellIsShielded and pc.shieldIcon
 	if shielded then
@@ -188,7 +191,12 @@ end
 -- weil SetTextColor (bei jeder Farbaktualisierung) die Transparenz zurücksetzt.
 local function OnCastShow(self)
 	self.lastMax, self.lastValue, self.channel, self.nextState = nil, nil, nil, nil
-	self.plate.visual.name:Hide()
+	if self.Place then
+		self:Place()
+	end
+	if not self.keepName then
+		self.plate.visual.name:Hide()
+	end
 end
 
 local function OnCastHide(self)
@@ -329,6 +337,193 @@ function ThreatPlatesWidgets.ConfigurePlaterTarget(frame, name, glow)
 	else
 		frame.glowUp:Hide()
 		frame.glowDown:Hide()
+	end
+end
+
+-----------------------
+-- Classic Look Widget
+-----------------------
+-- Originale Blizzard-Grafiken: Goldrahmen mit Stufen-Feld, Elite-Drache, Mouseover-Aufhellung,
+-- Leuchten (fürs Ziel) und Zauberleisten-Rahmen. Ausschnitt und Lage hat der TidyPlates-Kern
+-- an der Original-Plakette gemessen (TidyPlates.BlizzardArt); hier werden sie auf die
+-- eigenen Balken umgerechnet (Anteile von Balkenbreite/-höhe ab der linken unteren Ecke).
+function ThreatPlatesWidgets.ClassicArt()
+	local art = TidyPlates.BlizzardArt
+	return art and art.health and art
+end
+
+local function ClassicTexture(parent, layer, art, blend)
+	local t = parent:CreateTexture(nil, layer)
+	if art and art.texture then
+		t:SetTexture(art.texture)
+		t:SetTexCoord(unpack(art.coords))
+		t.valid = true
+	end
+	if blend then
+		t:SetBlendMode(blend)
+	end
+	t:Hide()
+	return t
+end
+
+-- Nicht messbare Teile (rect = nil) bleiben verborgen bzw. an der Stil-Position
+local function PlaceRect(t, bar, rect, width, height)
+	t.hasRect = rect and true
+	if not rect then
+		return
+	end
+	t:ClearAllPoints()
+	t:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", rect.left * width, rect.top * height)
+	t:SetPoint("BOTTOMRIGHT", bar, "BOTTOMLEFT", rect.right * width, rect.bottom * height)
+end
+
+local function ShowIf(t, condition)
+	if condition and t.valid and t.hasRect then
+		t:Show()
+	else
+		t:Hide()
+	end
+end
+
+-- Zauberleisten-Rahmen; nicht unterbrechbar = Blizzards Schild-Rahmen
+local function SetClassicShielded(self, shielded)
+	shielded = shielded and self.shieldBorder.valid
+	ShowIf(self.border, self.placed and not shielded)
+	ShowIf(self.shieldBorder, self.placed and shielded)
+end
+
+local function PlaceClassicCast(self)
+	local plate = self.plate
+	local art = TidyPlates.BlizzardArt
+	if art and not art.cast and TidyPlates.MeasureBlizzardCast then
+		TidyPlates.MeasureBlizzardCast(plate)
+	end
+	local geo = art and art.cast
+	if not geo then
+		self.placed = nil
+		self:SetShielded(false)
+		return
+	end
+	local bar = plate.bars.castbar
+	local w, h = bar:GetWidth(), bar:GetHeight()
+	if self.w ~= w or self.h ~= h then
+		self.w, self.h = w, h
+		PlaceRect(self.border, bar, geo.castborder, w, h)
+		PlaceRect(self.shieldBorder, bar, geo.castnostop, w, h)
+	end
+	-- Zaubersymbol an Blizzards Platz (der Kern setzt es bei Stilwechseln zurück)
+	if geo.spellicon then
+		PlaceRect(plate.visual.spellicon, bar, geo.spellicon, w, h)
+	end
+	self.placed = true
+	self:SetShielded(plate.unit and plate.unit.spellIsShielded)
+end
+
+function ThreatPlatesWidgets.CreateClassicLook(plate)
+	local art = TidyPlates.BlizzardArt
+	local hb = plate.bars.healthbar
+	-- Auf der Lebensleiste selbst (über der Füllung, unter Name/Stufe/Text der Plakette)
+	local look = {
+		border = ClassicTexture(hb, "OVERLAY", art.healthborder),
+		elite = ClassicTexture(hb, "OVERLAY", art.eliteicon),
+		highlight = ClassicTexture(hb, "OVERLAY", art.highlight, "ADD"),
+		glow = ClassicTexture(hb, "BACKGROUND", art.threatglow, "ADD")
+	}
+	-- Zauberleiste: eigene Ebene über der Leiste, Restzeit/Farbe wie bei Plater
+	local cb = plate.bars.castbar
+	local cast = CreateFrame("Frame", nil, cb)
+	cast:SetAllPoints(cb)
+	cast:SetFrameLevel(cb:GetFrameLevel() + 1)
+	cast.bar = cb
+	cast.keepName = true -- Name steht über dem Balken, nicht an der Zauberleiste
+	cast.border = ClassicTexture(cast, "ARTWORK", art.castborder)
+	cast.shieldBorder = ClassicTexture(cast, "ARTWORK", art.castnostop)
+	cast.SetShielded = SetClassicShielded
+	cast.Place = PlaceClassicCast
+	ThreatPlatesWidgets.AddCastTimer(cast, TidyPlatesThreat.db.profile.settings.spelltext.size or 10, plate)
+	look.cast = cast
+	-- Stapel-Abstände kennen erst jetzt die Rahmengröße
+	if not ThreatPlatesWidgets.classicStackingApplied then
+		ThreatPlatesWidgets.classicStackingApplied = true
+		TidyPlatesThreat:ApplyStacking()
+	end
+	return look
+end
+
+function ThreatPlatesWidgets.HideClassicLook(look)
+	look.border:Hide()
+	look.elite:Hide()
+	look.highlight:Hide()
+	look.glow:Hide()
+	look.cast:SetScript("OnUpdate", nil)
+	look.cast:SetScript("OnShow", nil)
+	look.cast:SetScript("OnHide", nil)
+	look.cast:Hide()
+end
+
+local function HasBar(barstyle)
+	local tex = barstyle and barstyle.texture
+	return tex and not tex:find("Empty$")
+end
+
+function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
+	local art = TidyPlates.BlizzardArt
+	local geo = art.health
+	local style = plate.style
+	if not HasBar(style.healthbar) then -- Nur-Name, Totem-Symbol
+		look.border:Hide()
+		look.elite:Hide()
+		look.highlight:Hide()
+		look.glow:Hide()
+		return
+	end
+	local bar = plate.bars.healthbar
+	local w, h = bar:GetWidth(), bar:GetHeight()
+	if look.w ~= w or look.h ~= h then
+		look.w, look.h = w, h
+		PlaceRect(look.border, bar, geo.healthborder, w, h)
+		PlaceRect(look.elite, bar, geo.eliteicon, w, h)
+		PlaceRect(look.highlight, bar, geo.highlight, w, h)
+		PlaceRect(look.glow, bar, geo.threatglow, w, h)
+	end
+	ShowIf(look.border, true)
+	ShowIf(look.elite, unit.isElite)
+	ShowIf(look.highlight, unit.isMouseover and not unit.isTarget)
+	if cfg.targetGlow and unit.isTarget then
+		local c = cfg.glowColor
+		look.glow:SetVertexColor(c.r, c.g, c.b, c.a)
+		ShowIf(look.glow, true)
+	else
+		look.glow:Hide()
+	end
+
+	-- Stufe ins Feld des Rahmens, Totenkopf (Boss) an dieselbe Stelle. Der Kern setzt Lage
+	-- und Schrift bei Stilwechseln zurück, daher bei jeder Aktualisierung.
+	PlaceRect(plate.visual.skullicon, bar, geo.skullicon, w, h)
+	local rect = geo.level
+	if rect then
+		local fx, fy = w / geo.width, h / geo.height
+		local point = art.levelPoint or "CENTER"
+		local x
+		if point:find("LEFT") then
+			point, x = "LEFT", rect.left
+		elseif point:find("RIGHT") then
+			point, x = "RIGHT", rect.right
+		else
+			point, x = "CENTER", (rect.left + rect.right) / 2
+		end
+		local level = plate.visual.level
+		level:ClearAllPoints()
+		level:SetPoint(point, bar, "BOTTOMLEFT", x * w, (rect.top + rect.bottom) / 2 * h)
+		level:SetJustifyH(point)
+		local font, size, flags = unpack(art.levelFont)
+		if font and size then
+			level:SetFont(font, size * math.min(fx, fy), flags)
+		end
+	end
+
+	if plate.bars.castbar:IsShown() then
+		look.cast:Place()
 	end
 end
 
@@ -662,15 +857,27 @@ local function OnInitialize(plate)
 			-- Dunkler Hintergrund, damit der Name darunter beim Zaubern nicht durchscheint
 			plate.bars.castbar:SetBackgroundColor(0.08, 0.08, 0.08, 0.9)
 		end
-		if w.WidgetDebuff then
-			ThreatPlatesWidgets.StylePlaterAuras(w.WidgetDebuff)
-		end
 	elseif w.PlaterHealthBorder then
 		w.PlaterHealthBorder:Hide()
 		w.PlaterCastBorder:Hide()
 		w.PlaterTarget:Hide()
 		w.PlaterHealthBorder, w.PlaterCastBorder, w.PlaterTarget = nil, nil, nil
 		plate.bars.castbar:SetBackgroundColor(0, 0, 0, 0) -- dunklen Hintergrund wieder entfernen
+	end
+
+	-- Classic-Optik (Blizzard-Grafiken); ohne Vermessung der Original-Plakette noch nicht möglich
+	if db.classicLook.ON and ThreatPlatesWidgets.ClassicArt() then
+		if not w.ClassicLook then
+			w.ClassicLook = ThreatPlatesWidgets.CreateClassicLook(plate)
+		end
+	elseif w.ClassicLook then
+		ThreatPlatesWidgets.HideClassicLook(w.ClassicLook)
+		w.ClassicLook = nil
+	end
+
+	-- Auren im Plater-Stil (auch zur Classic-Optik)
+	if (db.platerBorder.ON or db.classicLook.ON) and w.WidgetDebuff then
+		ThreatPlatesWidgets.StylePlaterAuras(w.WidgetDebuff)
 	end
 
 	-- Combo Point Widget
@@ -738,6 +945,21 @@ local function UpdatePlaterBorder(plate, unit)
 	end
 end
 
+-- Classic-Optik: Ziel-Leuchten/Mouseover hängen am Kontext, Stufe/Rahmen am Stil
+local function UpdateClassic(plate, unit)
+	if not db.classicLook.ON then
+		return
+	end
+	local w = plate.widgets
+	if not w.ClassicLook then
+		if not ThreatPlatesWidgets.ClassicArt() then
+			return
+		end
+		OnInitialize(plate)
+	end
+	ThreatPlatesWidgets.UpdateClassicLook(plate, unit, w.ClassicLook, db.classicLook)
+end
+
 --------------------
 -- CONTEXT UPDATE --
 --------------------
@@ -751,6 +973,7 @@ local function OnContextUpdate(plate, unit)
 		end
 		UpdatePlaterBorder(plate, unit)
 	end
+	UpdateClassic(plate, unit)
 	-- Debuff Widget
 	if db.debuffWidget.ON then
 		if not w.WidgetDebuff then
@@ -788,6 +1011,7 @@ local function OnUpdate(plate, unit)
 		end
 		UpdatePlaterBorder(plate, unit)
 	end
+	UpdateClassic(plate, unit)
 	-- Target Art
 	if db.targetWidget.ON then
 		if not w.TargetArt then

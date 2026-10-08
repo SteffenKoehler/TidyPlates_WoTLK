@@ -451,7 +451,7 @@ do
 		local db = TidyPlatesThreat.db.profile
 		-- Plater: Farbe nach Unterbrechbarkeit und eigener Unterbrechung (laufend aktualisiert
 		-- von der Zauberleiste, siehe Widgets.lua)
-		if db.platerBorder.ON and db.platerCast.ON and ThreatPlatesWidgets and ThreatPlatesWidgets.PlaterCastColor then
+		if (db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON and ThreatPlatesWidgets and ThreatPlatesWidgets.PlaterCastColor then
 			return ThreatPlatesWidgets.PlaterCastColor(unit)
 		end
 		c.r, c.g, c.b, c.a = 1, 1, 0, 1

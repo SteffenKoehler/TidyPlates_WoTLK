@@ -4034,7 +4034,7 @@ local function GetOptions()
 						Intro = {
 							type = "description",
 							order = 0,
-							name = "Einstellungen für die Plater-Optik und das Stapeln der Plaketten. Sie gelten für das aktuelle Profil. Mit /tptpplater wird das Profil \"Plater\" mit allem zusammen angelegt.",
+							name = "Einstellungen für die Plater-Optik und das Stapeln der Plaketten. Sie gelten für das aktuelle Profil. Mit /tptpplater wird das Profil \"Plater\" mit allem zusammen angelegt, mit /tptpclassic das Profil \"Classic\" (Blizzard-Grafiken).",
 							fontSize = "medium"
 						},
 						Look = {
@@ -4122,12 +4122,12 @@ local function GetOptions()
 							inline = true,
 							order = 1.5,
 							disabled = function()
-								return not db.platerBorder.ON
+								return not (db.platerBorder.ON or db.classicLook.ON)
 							end,
 							args = {
 								CastToggle = {
 									name = "Nach Unterbrechbarkeit färben",
-									desc = "Färbt die Zauberleiste je nachdem, ob der Zauber unterbrechbar ist und ob deine eigene Unterbrechung (Tritt, Zuschlagen, Gegenzauber ...) bereit ist. Ob ein Zauber unterbrechbar ist, wird beim Ziel/Mouseover gelernt und dann auch für andere Plaketten verwendet. Benötigt den Plater-Rahmen.",
+									desc = "Färbt die Zauberleiste je nachdem, ob der Zauber unterbrechbar ist und ob deine eigene Unterbrechung (Tritt, Zuschlagen, Gegenzauber ...) bereit ist. Ob ein Zauber unterbrechbar ist, wird beim Ziel/Mouseover gelernt und dann auch für andere Plaketten verwendet. Benötigt den Plater-Rahmen oder die Classic-Optik.",
 									type = "toggle",
 									width = "double",
 									order = 1,
@@ -4142,7 +4142,7 @@ local function GetOptions()
 									width = "double",
 									order = 2,
 									disabled = function()
-										return not (db.platerBorder.ON and db.platerCast.ON)
+										return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
 									end,
 									get = GetValue,
 									set = SetValue,
@@ -4154,7 +4154,7 @@ local function GetOptions()
 									type = "toggle",
 									order = 3,
 									disabled = function()
-										return not (db.platerBorder.ON and db.platerCast.ON)
+										return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
 									end,
 									get = GetValue,
 									set = SetValue,
@@ -4165,7 +4165,7 @@ local function GetOptions()
 									type = "color",
 									order = 4,
 									disabled = function()
-										return not (db.platerBorder.ON and db.platerCast.ON)
+										return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
 									end,
 									get = GetColor,
 									set = SetColor,
@@ -4176,7 +4176,7 @@ local function GetOptions()
 									type = "color",
 									order = 5,
 									disabled = function()
-										return not (db.platerBorder.ON and db.platerCast.ON and db.platerCast.kickCooldown)
+										return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON and db.platerCast.kickCooldown)
 									end,
 									get = GetColor,
 									set = SetColor,
@@ -4187,7 +4187,7 @@ local function GetOptions()
 									type = "color",
 									order = 6,
 									disabled = function()
-										return not (db.platerBorder.ON and db.platerCast.ON)
+										return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
 									end,
 									get = GetColor,
 									set = SetColor,
@@ -4249,6 +4249,55 @@ local function GetOptions()
 									get = GetValue,
 									set = SetValue,
 									arg = {"stacking", "tallBossFix"}
+								}
+							}
+						},
+						Classic = {
+							name = "Classic-Optik",
+							type = "group",
+							inline = true,
+							order = 2.5,
+							args = {
+								ClassicToggle = {
+									name = "Blizzard-Grafiken",
+									desc = "Originale Blizzard-Rahmen (Goldrahmen mit Stufen-Feld, Elite-Drache, Zauberleisten-Rahmen mit Schild). Lage wird an der Original-Plakette gemessen. Am besten über /tptpclassic, das stellt auch Größen und Schriften passend ein.",
+									type = "toggle",
+									order = 1,
+									get = GetValue,
+									set = SetValue,
+									arg = {"classicLook", "ON"}
+								},
+								TargetGlow = {
+									name = "Ziel leuchtet",
+									type = "toggle",
+									order = 2,
+									disabled = function()
+										return not db.classicLook.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"classicLook", "targetGlow"}
+								},
+								GlowColor = {
+									name = "Farbe",
+									type = "color",
+									order = 3,
+									hasAlpha = true,
+									disabled = function()
+										return not (db.classicLook.ON and db.classicLook.targetGlow)
+									end,
+									get = GetColorAlpha,
+									set = SetColorAlpha,
+									arg = {"classicLook", "glowColor"}
+								},
+								Apply = {
+									name = "Classic-Look anwenden",
+									desc = "Wendet die komplette Classic-Optik auf das Profil \"Classic\" an und lädt neu - wie /tptpclassic reset.",
+									type = "execute",
+									order = 4,
+									func = function()
+										SlashCmdList["TPTPCLASSIC"]("reset")
+									end
 								}
 							}
 						},

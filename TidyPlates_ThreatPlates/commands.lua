@@ -74,6 +74,7 @@ SlashCmdList["TPTPVERBOSE"] = TPTPVERBOSE
 -- /tptpplater          Profil "Plater" aktivieren (beim ersten Mal als Kopie des aktuellen Profils anlegen)
 -- /tptpplater reset    Plater-Optik im Profil "Plater" erneut anwenden
 -- /tptpplater default  zurück zum Profil "Default"
+-- /tptpclassic [reset|default|info]  dasselbe für die Classic-Optik (Profil "Classic", weiter unten)
 -- Stile werden nur beim Laden gebaut, daher jeweils /reload.
 local PLATER_PROFILE = "Plater"
 -- Version der Plater-Optik. Kommen neue Einstellungen dazu: Version erhöhen und unten
@@ -182,6 +183,113 @@ local function ApplyPlaterLook(p)
 	p.debuffWidget.y = (top + 3) / auraScale + 9
 end
 
+-- Classic-Optik: originale Blizzard-Grafiken (Goldrahmen mit Stufen-Feld) über dem
+-- Classic-Widget, Name über dem Balken, Lebenspunkte-Text wie im Default-Profil.
+-- Gleiche Versionsregel wie bei Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
+local CLASSIC_PROFILE = "Classic"
+local CLASSIC_LOOK_VERSION = 1
+
+local function ApplyClassicLook(p)
+	local s = p.settings
+	p.classicLookVersion = CLASSIC_LOOK_VERSION
+	p.classicLook.ON = true
+	p.platerBorder.ON = false
+
+	-- Threat-Plates-eigene Rahmen, Elite-Symbol und Ziel-Pfeile aus; Rahmen, Drache und
+	-- Leuchten kommen vom Classic-Widget
+	s.healthborder.show = false
+	s.elitehealthborder.show = false
+	s.castborder.show = false
+	s.castnostop.show = false
+	s.threatborder.show = false
+	s.eliteicon.show = false
+	s.target.texture = "Empty"
+	s.highlight.texture = "Empty"
+	p.targetWidget.ON = false
+
+	-- Wie bei Plater: konstante Größe, keine Aggro-Zacken, Kick-Farben, Stapeln
+	p.threat.useScale = false
+	p.threat.art.ON = false
+	p.platerCast.ON = true
+	p.platerCast.shieldIcon = false -- nicht unterbrechbar zeigt der Blizzard-Schildrahmen
+	p.stacking.ON = true
+
+	-- Blizzard-Balkengrafik, Breite etwas größer als das Original. Höhe im Seitenverhältnis
+	-- der Original-Leiste, damit der Rahmen nicht verzerrt (falls schon vermessen).
+	s.healthbar.texture = "Blizzard"
+	s.castbar.texture = "Blizzard"
+	local width = 150
+	local height = 12
+	local art = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
+	if art and art.width > 0 then
+		height = math.floor(width * art.height / art.width + 0.5)
+	end
+	s.healthbar.width = width
+	s.healthbar.height = height
+	local top, bottom, left = height / 2, -height / 2, -width / 2
+
+	-- Schriften wie Blizzard (Friz Quadrata mit Schatten), Lebenspunkte-Text mit Kontur
+	for _, key in ipairs({"name", "spelltext", "level"}) do
+		s[key].typeface = "Friz Quadrata TT"
+		s[key].flags = "NONE"
+		s[key].shadow = true
+	end
+	s.customtext.typeface = "Arial Narrow"
+	s.customtext.flags = "OUTLINE"
+	s.customtext.shadow = false
+
+	-- Name weiß über dem Rahmen
+	s.name.show = true
+	s.name.size = 12
+	s.name.width = width + 30
+	s.name.align = "CENTER"
+	s.name.vertical = "CENTER"
+	s.name.x = 0
+	s.name.y = top + 11
+
+	-- Lebenspunkte-Text mittig im Balken (Format bleibt wie im Default-Profil)
+	s.customtext.size = 10
+	s.customtext.width = width - 10
+	s.customtext.x = 0
+	s.customtext.y = 0
+	s.customtext.align = "CENTER"
+
+	-- Stufe: Lage bestimmt das Classic-Widget (Feld im Rahmen)
+	s.level.show = true
+	s.level.size = 10
+	s.level.width = 30
+
+	-- Zauberleiste unter dem Balken, Zaubername mittig, Symbol links (das Widget setzt
+	-- Rahmen und Symbol an Blizzards Platz, sobald die Zauberleiste vermessen ist)
+	local castHeight = height
+	local castY = bottom - 8 - castHeight / 2
+	s.castbar.height = castHeight
+	s.castbar.y = castY
+	s.castborder.y = castY
+	s.castnostop.y = castY
+	s.spelltext.size = 9
+	s.spelltext.width = width - 40
+	s.spelltext.align = "CENTER"
+	s.spelltext.x = 0
+	s.spelltext.y = castY
+	s.spellicon.scale = castHeight + 6
+	s.spellicon.x = left - castHeight / 2 - 5
+	s.spellicon.y = castY
+
+	-- Raid-Symbol links neben dem Rahmen
+	s.raidicon.scale = 20
+	s.raidicon.x = left - 22
+	s.raidicon.y = 0
+
+	-- Auren im Plater-Stil mittig über dem Namen
+	local auraScale = 1.15
+	local nameTop = s.name.y + s.name.size / 2
+	p.debuffWidget.scale = auraScale
+	p.debuffWidget.anchor = "CENTER"
+	p.debuffWidget.x = 64 - (3 * 24 + 2 * 2) / 2
+	p.debuffWidget.y = (nameTop + 2) / auraScale + 9
+end
+
 local function ProfileExists(db, name)
 	for _, profile in ipairs(db:GetProfiles()) do
 		if profile == name then
@@ -191,9 +299,6 @@ local function ProfileExists(db, name)
 	return false
 end
 
--- Legt das Profil "Plater" an, falls es auf diesem Account noch fehlt (Kopie von
--- "Default" + Plater-Look), ohne den aktuellen Charakter umzustellen. So steht es
--- jedem Charakter im Profil-Dropdown zur Auswahl.
 -- Nachträge pro Version (Profile ohne Versionsnummer haben Version 1)
 local PlaterMigrations = {
 	[2] = function(p)
@@ -203,68 +308,123 @@ local PlaterMigrations = {
 		p.platerCast.ON = true -- Zauberleiste nach Unterbrechbarkeit färben
 	end
 }
+local ClassicMigrations = {}
 
--- Ist "Plater" aktiv und älter als die aktuelle Version, nur die neuen Werte ergänzen
+-- Eigene Optik-Profile: Name, Anwenden, Version (Feld im Profil) und Nachträge
+local Looks = {
+	{profile = PLATER_PROFILE, apply = ApplyPlaterLook, version = PLATER_LOOK_VERSION, key = "platerLookVersion", migrations = PlaterMigrations},
+	{profile = CLASSIC_PROFILE, apply = ApplyClassicLook, version = CLASSIC_LOOK_VERSION, key = "classicLookVersion", migrations = ClassicMigrations}
+}
+
+-- Ist ein Optik-Profil aktiv und älter als die aktuelle Version, nur die neuen Werte ergänzen
 function TidyPlatesThreat:UpgradePlaterProfile()
 	local db = self.db
-	if not db or db:GetCurrentProfile() ~= PLATER_PROFILE then
-		return
-	end
-	local p = db.profile
-	local version = p.platerLookVersion or 1
-	if version >= PLATER_LOOK_VERSION then
-		return
-	end
-	for v = version + 1, PLATER_LOOK_VERSION do
-		if PlaterMigrations[v] then
-			PlaterMigrations[v](p)
-		end
-	end
-	p.platerLookVersion = PLATER_LOOK_VERSION
-	return true
-end
-
-function TidyPlatesThreat:EnsurePlaterProfile()
-	local db = self.db
-	if ProfileExists(db, PLATER_PROFILE) then
+	if not db then
 		return
 	end
 	local current = db:GetCurrentProfile()
-	self.suppressReloadPrompt = true
-	db:SetProfile(PLATER_PROFILE)
-	if ProfileExists(db, "Default") then
-		db:CopyProfile("Default", true)
+	for _, look in ipairs(Looks) do
+		if current == look.profile then
+			local p = db.profile
+			local version = p[look.key] or 1
+			if version >= look.version then
+				return
+			end
+			for v = version + 1, look.version do
+				if look.migrations[v] then
+					look.migrations[v](p)
+				end
+			end
+			p[look.key] = look.version
+			return true
+		end
 	end
-	ApplyPlaterLook(db.profile)
-	db:SetProfile(current)
-	self.suppressReloadPrompt = nil
 end
 
-local function TPTPPLATER(msg)
+-- Legt die Optik-Profile an, falls sie auf diesem Account noch fehlen (Kopie von
+-- "Default" + Optik), ohne den aktuellen Charakter umzustellen. So stehen sie
+-- jedem Charakter im Profil-Dropdown zur Auswahl.
+function TidyPlatesThreat:EnsurePlaterProfile()
+	local db = self.db
+	for _, look in ipairs(Looks) do
+		if not ProfileExists(db, look.profile) then
+			local current = db:GetCurrentProfile()
+			self.suppressReloadPrompt = true
+			db:SetProfile(look.profile)
+			if ProfileExists(db, "Default") then
+				db:CopyProfile("Default", true)
+			end
+			look.apply(db.profile)
+			db:SetProfile(current)
+			self.suppressReloadPrompt = nil
+		end
+	end
+end
+
+-- /tptpplater bzw. /tptpclassic: Profil aktivieren (beim ersten Mal als Kopie des aktuellen
+-- Profils anlegen), "reset" = Optik erneut anwenden, "default" = zurück zum Profil "Default".
+-- Stile werden nur beim Laden gebaut, daher jeweils /reload.
+local function LookCommand(look, command, msg)
 	local db = TidyPlatesThreat.db
 	msg = strlower(strtrim(msg or ""))
+	TidyPlatesThreat.suppressReloadPrompt = true -- lädt am Ende ohnehin neu
 	if msg == "default" then
-		TidyPlatesThreat.suppressReloadPrompt = true -- lädt am Ende ohnehin neu
 		db:SetProfile("Default")
 		print("|cff89F559Threat Plates|r: Profil \"Default\" aktiv, lade neu ...")
 		ReloadUI()
 		return
 	end
 
-	TidyPlatesThreat.suppressReloadPrompt = true -- lädt am Ende ohnehin neu
 	local current = db:GetCurrentProfile()
-	local isNew = not ProfileExists(db, PLATER_PROFILE)
-	if current ~= PLATER_PROFILE then
-		db:SetProfile(PLATER_PROFILE)
+	local isNew = not ProfileExists(db, look.profile)
+	if current ~= look.profile then
+		db:SetProfile(look.profile)
 		if isNew then
 			db:CopyProfile(current)
 		end
 	end
 	if isNew or msg == "reset" then
-		ApplyPlaterLook(db.profile)
+		look.apply(db.profile)
 	end
-	print("|cff89F559Threat Plates|r: Profil \"Plater\" aktiv, lade neu ... (zurück mit /tptpplater default)")
+	print("|cff89F559Threat Plates|r: Profil \"" .. look.profile .. "\" aktiv, lade neu ... (zurück mit " .. command .. " default)")
 	ReloadUI()
 end
+
 SLASH_TPTPPLATER1 = "/tptpplater"
-SlashCmdList["TPTPPLATER"] = TPTPPLATER
+SlashCmdList["TPTPPLATER"] = function(msg)
+	LookCommand(Looks[1], "/tptpplater", msg)
+end
+
+-- Vermessung der Original-Plakette ausgeben (zum Feinjustieren der Classic-Optik)
+local function PrintClassicInfo()
+	local art = TidyPlates.BlizzardArt
+	if not art then
+		print("|cff89F559Threat Plates|r: Noch keine Plakette vermessen.")
+		return
+	end
+	local function rect(r)
+		return r and format("L %.2f R %.2f O %.2f U %.2f", r.left, r.right, r.top, r.bottom) or "-"
+	end
+	local h, c = art.health, art.cast
+	print(format("|cff89F559Classic|r Leiste %s, Stufe am Punkt %s", h and format("%.1f x %.1f", h.width, h.height) or "nicht vermessen", tostring(art.levelPoint)))
+	if h then
+		for _, key in ipairs({"healthborder", "threatglow", "highlight", "eliteicon", "skullicon", "level"}) do
+			print("  " .. key .. ": " .. rect(h[key]) .. "  " .. tostring(art[key] and art[key].texture or ""))
+		end
+	end
+	print("  Zauberleiste " .. (c and format("%.1f x %.1f", c.width, c.height) or "nicht vermessen"))
+	if c then
+		for _, key in ipairs({"castborder", "castnostop", "spellicon"}) do
+			print("  " .. key .. ": " .. rect(c[key]) .. "  " .. tostring(art[key] and art[key].texture or ""))
+		end
+	end
+end
+
+SLASH_TPTPCLASSIC1 = "/tptpclassic"
+SlashCmdList["TPTPCLASSIC"] = function(msg)
+	if strlower(strtrim(msg or "")) == "info" then
+		PrintClassicInfo()
+		return
+	end
+	LookCommand(Looks[2], "/tptpclassic", msg)
+end

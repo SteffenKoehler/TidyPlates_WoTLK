@@ -71,6 +71,18 @@ Target and mouseover are authoritative. Additionally, only when unique:
 - Target indicators from NotPlater (Silver, Magneto, Golden, Epic, arrows,
   ...) and a blue target glow.
 
+## Classic look (profile "Classic")
+
+- Original Blizzard art: gold border with level box, elite dragon, mouseover
+  highlight, castbar border (shield border for uninterruptible casts).
+- The TidyPlates core records texture, tex coords and position of the
+  original regions relative to the original health/cast bar when the first
+  plate is created (`TidyPlates.BlizzardArt`); the widget scales them onto
+  the bars.
+- Target = soft glow (Blizzard glow texture, color configurable), name above
+  the bar, health text as in "Default", Plater-style auras above the name,
+  interrupt castbar colors and stacking as in the Plater look.
+
 ## Stacking
 
 Ported from the WeakAura *Cheeta - Enhanced Stacking Nameplate* (same
@@ -86,12 +98,15 @@ the WeakAura** when using this, otherwise both move the plates.
 | `/tptpplater` | Create/activate profile "Plater" (copy of the current profile) and reload |
 | `/tptpplater reset` | Re-apply the Plater look to the profile and reload |
 | `/tptpplater default` | Switch back to profile "Default" and reload |
+| `/tptpclassic` / `reset` / `default` | Same for the Classic look (profile "Classic") |
+| `/tptpclassic info` | Print the measured geometry of the original plate |
 | `/tpprof on` / `off` | Toggle CPU profiling (then `/reload`) |
 | `/tpprof kampf` | CPU report after every fight |
 | `/tpprof` | CPU report since the last start |
 
 Options: `/tptp` → tab **Plater** (border, border size, target indicator,
-target glow, health text format, stacking, pin target, speed, tall boss fix).
+target glow, health text format, stacking, pin target, speed, tall boss fix,
+Classic look toggle, target glow and color).
 
 ## Credits
 
