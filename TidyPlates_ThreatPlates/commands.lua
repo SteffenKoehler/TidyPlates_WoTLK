@@ -187,7 +187,7 @@ end
 -- Classic-Widget, Name über dem Balken, Lebenspunkte-Text wie im Default-Profil.
 -- Gleiche Versionsregel wie bei Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 6
+local CLASSIC_LOOK_VERSION = 7
 
 -- Version 2 (Vorbild Classic-Client): Name auf Balkenbreite gekürzt, dünne orange Zauber-
 -- leiste direkt unter dem Rahmen, Zaubername klein links darunter (Restzeit rechts), kein
@@ -213,18 +213,44 @@ local function ApplyClassicV2(p)
 	local auraScale = p.debuffWidget.scale or 1.15
 	p.debuffWidget.y = (s.name.y + s.name.size / 2 + 2) / auraScale + 9
 
-	local castHeight = 5
-	local castY = borderBottom - 1 - castHeight / 2
+	local castHeight, castY
+	if gold then
+		-- Gold: dünne Leiste direkt unter dem Rahmen, Zaubername klein darunter
+		castHeight = 5
+		castY = borderBottom - 1 - castHeight / 2
+		s.spelltext.size = 9
+		s.spelltext.width = width - 30
+		s.spelltext.align = "LEFT"
+		s.spelltext.x = left + (width - 30) / 2
+		s.spelltext.y = castY - castHeight / 2 - 7
+		s.spellicon.show = false
+	else
+		-- Schlicht: Zauberleiste im selben Rahmen wie der Balken, 9 px hoch, Zaubername links
+		-- in der Leiste (Restzeit rechts), Zaubersymbol links daneben so hoch wie der Rahmen
+		local inset = math.floor((6 + 2 * (p.classicLook.lineSize or 2)) / 3 + 0.5)
+		castHeight = 9
+		castY = bottom - inset - 2 - inset - castHeight / 2
+		local textWidth = width - 34
+		s.spelltext.size = 9
+		s.spelltext.flags = "OUTLINE"
+		s.spelltext.shadow = false
+		s.spelltext.width = textWidth
+		s.spelltext.align = "LEFT"
+		s.spelltext.x = left + 3 + textWidth / 2
+		s.spelltext.y = castY
+		local icon = castHeight + 2 * inset
+		s.spellicon.show = true
+		s.spellicon.scale = icon
+		s.spellicon.x = left - inset - 2 - icon / 2
+		s.spellicon.y = castY
+		-- Combo-Punkte unter die Zauberleiste (lagen mitten auf dem Lebensbalken)
+		p.comboWidget.x = 0
+		p.comboWidget.y = castY - castHeight / 2 - inset - 7
+	end
 	s.castbar.height = castHeight
 	s.castbar.y = castY
 	s.castborder.y = castY
 	s.castnostop.y = castY
-	s.spelltext.size = 9
-	s.spelltext.width = width - 30
-	s.spelltext.align = "LEFT"
-	s.spelltext.x = left + (width - 30) / 2
-	s.spelltext.y = castY - castHeight / 2 - 7
-	s.spellicon.show = false
 
 	p.questIcon.ON = true
 end
@@ -370,7 +396,9 @@ local ClassicMigrations = {
 		-- "Blizzard Nameplate" hat dunkle Streifen oben/unten: komplett flache Füllung
 		p.settings.healthbar.texture = "Flat"
 		p.settings.castbar.texture = "Flat"
-	end
+	end,
+	-- auffälligere Zauberleiste (Rahmen, Name in der Leiste, Symbol), Combo-Punkte darunter
+	[7] = ApplyClassicV2
 }
 
 -- Eigene Optik-Profile: Name, Anwenden, Version (Feld im Profil) und Nachträge

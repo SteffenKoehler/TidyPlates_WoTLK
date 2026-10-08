@@ -4304,6 +4304,30 @@ local function GetOptions()
 											set = SetValue,
 											arg = {"classicLook", "castBorder"}
 										},
+										KickHighlight = {
+											name = "Kick bereit: Rahmen hervorheben",
+											desc = "Der Rahmen der Zauberleiste leuchtet in der gewählten Farbe, solange der Zauber unterbrechbar ist und deine Unterbrechung bis zum Zauberende bereit ist (schlichter Rahmen).",
+											type = "toggle",
+											width = "double",
+											order = 8.5,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD" and not db.classicLook.castBorder)
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "kickHighlight"}
+										},
+										KickReadyColor = {
+											name = "Farbe",
+											type = "color",
+											order = 8.6,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.kickHighlight and db.classicLook.frameStyle ~= "GOLD" and not db.classicLook.castBorder)
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"classicLook", "kickReadyColor"}
+										},
 										Reset = {
 											name = "Optik zurücksetzen",
 											desc = "Setzt die Classic-Optik im Profil \"Classic\" auf die Ausgangswerte zurück (Layout, Größen, Schriften) - wie /tptpclassic reset. Nur im Profil \"Classic\" möglich; Profile wechselst du unter \"Profile\".",

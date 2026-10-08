@@ -147,6 +147,10 @@ local function UpdateCastState(self, remaining)
 	if self.SetShielded then -- Classic: Schild-Rahmen bei nicht unterbrechbaren Zaubern
 		self:SetShielded(unit.spellIsShielded)
 	end
+	if self.SetKickReady then -- Classic: heller Rahmen, wenn du jetzt unterbrechen kannst
+		local cl = TidyPlatesThreat.db.profile.classicLook
+		self:SetKickReady(cl.kickHighlight and not unit.spellIsShielded and InterruptReady(remaining) == true)
+	end
 	local pc = TidyPlatesThreat.db.profile.platerCast
 	if not pc.ON then
 		return
@@ -397,6 +401,7 @@ end
 local function PlaceThinCast(self)
 	local bar = self.bar
 	self.placed = nil
+	self.simple:Hide()
 	self.border:Hide()
 	self.shieldBorder:Hide()
 	self.thin:SetBorderSize(ThreatPlatesWidgets.PixelSize(bar))
@@ -408,10 +413,15 @@ end
 
 local function PlaceClassicCast(self)
 	local plate = self.plate
-	if not TidyPlatesThreat.db.profile.classicLook.castBorder then
+	local cl = TidyPlatesThreat.db.profile.classicLook
+	if not cl.castBorder then
+		if cl.frameStyle ~= "GOLD" then
+			return self:PlaceSimple()
+		end
 		return PlaceThinCast(self)
 	end
 	self.thin:Hide()
+	self.simple:Hide()
 	local art = TidyPlates.BlizzardArt
 	if art and not art.cast and TidyPlates.MeasureBlizzardCast then
 		TidyPlates.MeasureBlizzardCast(plate)
@@ -513,6 +523,47 @@ function ThreatPlatesWidgets.ClassicSimpleExtent(height, lineSize)
 	return inset + SIMPLE_GAP + math.floor(outer * SIMPLE_BOX_RATIO + 0.5)
 end
 
+-- Zauberleiste im schlichten Stil: gleicher Rahmen wie der Balken, Zaubername links in der
+-- Leiste (Stil), Restzeit rechts in der Leiste. Wird bei jedem Zauberbeginn gesetzt.
+local function PlaceSimpleCast(self)
+	local bar = self.bar
+	local cfg = TidyPlatesThreat.db.profile.classicLook
+	self.placed = nil
+	self.border:Hide()
+	self.shieldBorder:Hide()
+	self.thin:Hide()
+	local edge, inset = SimpleEdge(cfg.lineSize)
+	local frame = self.simple
+	if frame.inset ~= inset then
+		frame.inset = inset
+		frame:ClearAllPoints()
+		frame:SetPoint("TOPLEFT", bar, "TOPLEFT", -inset, inset)
+		frame:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", inset, -inset)
+	end
+	SimpleBackdrop(frame, edge, inset)
+	frame:Show()
+	bar:SetBackgroundColor(0, 0, 0, 0) -- dunkler Hintergrund kommt vom Rahmen
+	self.text:ClearAllPoints()
+	self.text:SetPoint("RIGHT", bar, "RIGHT", -3, 0)
+	self.kickReady = nil
+	self:SetKickReady(false)
+end
+
+-- Rahmen der Zauberleiste hell, solange der Zauber unterbrechbar und dein Kick bereit ist
+local function SetSimpleKickReady(self, ready)
+	local frame = self.simple
+	if not frame:IsShown() or self.kickReady == ready then
+		return
+	end
+	self.kickReady = ready
+	if ready then
+		local c = TidyPlatesThreat.db.profile.classicLook.kickReadyColor
+		SetSimpleColor(frame, c.r, c.g, c.b)
+	else
+		SetSimpleColor(frame, 0.3, 0.3, 0.3)
+	end
+end
+
 local function UpdateSimpleLook(plate, unit, look, cfg)
 	HideGoldParts(look)
 	local bar = plate.bars.healthbar
@@ -588,6 +639,12 @@ function ThreatPlatesWidgets.CreateClassicLook(plate)
 	cast.Place = PlaceClassicCast
 	cast.thin = ThreatPlatesWidgets.CreatePlaterBorder(cb)
 	cast.thin:Hide()
+	-- Schlicht: Tooltip-Rahmen wie beim Lebensbalken, eine Ebene unter der Leiste
+	cast.simple = CreateFrame("Frame", nil, cb)
+	cast.simple:SetFrameLevel(math.max(0, cb:GetFrameLevel() - 1))
+	cast.simple:Hide()
+	cast.PlaceSimple = PlaceSimpleCast
+	cast.SetKickReady = SetSimpleKickReady
 	ThreatPlatesWidgets.AddCastTimer(cast, TidyPlatesThreat.db.profile.settings.spelltext.size or 10, plate)
 	look.cast = cast
 	-- Stapel-Abstände kennen erst jetzt die Rahmengröße
@@ -605,6 +662,7 @@ function ThreatPlatesWidgets.HideClassicLook(look)
 	look.cast:SetScript("OnHide", nil)
 	look.cast:Hide()
 	look.cast.thin:Hide()
+	look.cast.simple:Hide()
 end
 
 local function HasBar(barstyle)

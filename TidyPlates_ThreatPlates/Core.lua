@@ -796,6 +796,8 @@ function TidyPlatesThreat:OnInitialize()
 				glowColor = {r = 1, g = 0.9, b = 0.55, a = 0.9},
 				levelSize = 0.85, -- Stufe relativ zur Blizzard-Schriftgröße
 				castBorder = false, -- Blizzard-Zauberleistenrahmen (sonst dünne Leiste mit 1-px-Rahmen)
+				kickHighlight = true, -- Rahmen der Zauberleiste hell, wenn du jetzt unterbrechen kannst
+				kickReadyColor = {r = 1, g = 1, b = 1},
 				nonTargetScale = 0.75 -- Größe der Plaketten, die nicht das Ziel sind (1 = aus)
 			},
 			-- Quest-Symbol bei Mobs, die ein offenes Tötungs-Questziel sind (Abgleich mit dem Questlog)
