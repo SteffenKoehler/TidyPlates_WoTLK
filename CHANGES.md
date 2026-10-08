@@ -112,7 +112,7 @@ Target and mouseover are authoritative. Additionally, only when unique:
   headers are not detected.
 - Combo points (classic frame): five separate segments with a 2 px gap, same
   colors as the original art (1 blue ... 5 red).
-- Debuff timer on the aura icons (option "Ablauf anzeigen", any look):
+- Debuff timer on the aura icons (option "Ablauf anzeigen", any look, default "Uhr"):
   "Balken (grau)" greys out and darkens the elapsed part from the top with a
   golden edge; "Uhr" draws a dark clock sector from 12 o'clock with a golden
   hand (built from rectangles and a triangle texture, because cooldown models

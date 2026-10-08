@@ -730,7 +730,7 @@ function TidyPlatesThreat:OnInitialize()
 				anchor = "CENTER",
 				filter = {},
 				spiral = true, -- Ablauf auf den Symbolen anzeigen
-				timerStyle = "BAR" -- "BAR" (grauer Balken) oder "CLOCK" (Uhr)
+				timerStyle = "CLOCK" -- "CLOCK" (Uhr) oder "BAR" (grauer Balken)
 			},
 			uniqueWidget = {
 				ON = true,
