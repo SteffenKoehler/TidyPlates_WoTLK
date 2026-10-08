@@ -488,7 +488,9 @@ end
 -- aus dem 3.3.5-Client mit dunklem Hintergrund um den Balken und ein eigenes Stufen-Kästchen
 -- im selben Stil rechts daneben. Rahmenfarbe: Ziel / Mouseover / sonst dunkelgrau.
 local TOOLTIP_EDGE = "Interface\\Tooltips\\UI-Tooltip-Border"
-local SIMPLE_GAP = 1 -- Abstand zwischen Rahmen und Stufen-Kästchen (außen)
+-- Abstand zwischen Rahmen und Stufen-Kästchen (außen). Negativ, weil die Tooltip-Kante
+-- einen durchsichtigen Rand hat: so liegen die sichtbaren Linien ~1 px auseinander (Forever)
+local SIMPLE_GAP = -3
 local SIMPLE_BOX_RATIO = 1.45 -- Breite des Kästchens relativ zu seiner Höhe
 
 -- Setzt einen einzelnen Ankerpunkt nur, wenn er abweicht. true = neu gesetzt.
@@ -594,8 +596,18 @@ function ThreatPlatesWidgets.ClassicSimpleExtent(height, lineSize)
 	return inset + SIMPLE_GAP + math.floor(outer * SIMPLE_BOX_RATIO + 0.5)
 end
 
--- Zauberleiste im schlichten Stil: gleicher Rahmen wie der Balken, Zaubername links in der
--- Leiste (Stil), Restzeit rechts in der Leiste. Wird bei jedem Zauberbeginn gesetzt.
+-- Kleine Schrift für Zaubername/Restzeit unter der Leiste (nur setzen, wenn sie abweicht)
+local CAST_ICON_SIZE = 10
+local CAST_FONT_SIZE = 9
+local function SmallCastFont(fontString)
+	local font, size, flags = fontString:GetFont()
+	if font and (not size or math.abs(size - CAST_FONT_SIZE) > 0.5 or flags ~= "OUTLINE") then
+		fontString:SetFont(font, CAST_FONT_SIZE, "OUTLINE")
+	end
+end
+
+-- Zauberleiste im schlichten Stil (wie WoW Forever): gleicher Rahmen wie der Balken.
+-- Wird bei jedem Zauberbeginn und jeder Aktualisierung gesetzt.
 local function PlaceSimpleCast(self)
 	local bar = self.bar
 	local cfg = TidyPlatesThreat.db.profile.classicLook
@@ -618,15 +630,35 @@ local function PlaceSimpleCast(self)
 	-- Lage direkt unter dem Lebensbalken; Platz für die Combo-Punkte nur, solange sie
 	-- angezeigt werden. Symbol und Zaubername hängen an der Leiste. (Der Kern setzt die
 	-- Stil-Lage bei Stilwechseln zurück, daher bei jedem Aufruf.)
+	-- Wie bei WoW Forever: Leiste direkt am Rahmen des Lebensbalkens angesetzt, so breit
+	-- wie Balken + Stufen-Kästchen, etwa halb so hoch wie der Balken; Symbol und Name klein
+	-- darunter links, Restzeit darunter rechts. Platz für die Combo-Punkte nur, solange sie
+	-- angezeigt werden.
 	local plate = self.plate
+	local hb = plate.bars.healthbar
+	local h = hb:GetHeight()
 	local combo = plate.widgets and plate.widgets.ComboPoints
-	local gap = (combo and combo:IsShown()) and 6 or 2
-	Anchor(bar, "TOP", plate.bars.healthbar, "BOTTOM", 0, -(inset + gap + inset))
-	Anchor(plate.visual.spellicon, "RIGHT", bar, "LEFT", -(inset + 2), 0)
+	local gap = (combo and combo:IsShown()) and 6 or SIMPLE_GAP
+	local boxWidth = math.floor((h + 2 * inset) * SIMPLE_BOX_RATIO + 0.5)
+	local castHeight = math.max(4, math.floor(h * 0.5 + 0.5))
+	Anchor(bar, "TOPLEFT", hb, "BOTTOMLEFT", 0, -(inset + gap + inset))
+	local width = hb:GetWidth() + SIMPLE_GAP + boxWidth
+	if math.abs(bar:GetWidth() - width) > 0.1 or math.abs(bar:GetHeight() - castHeight) > 0.1 then
+		bar:SetWidth(width)
+		bar:SetHeight(castHeight)
+	end
+	local icon = plate.visual.spellicon
+	Anchor(icon, "TOPLEFT", bar, "BOTTOMLEFT", 0, -(inset + 1))
+	if icon:GetWidth() ~= CAST_ICON_SIZE or icon:GetHeight() ~= CAST_ICON_SIZE then
+		icon:SetWidth(CAST_ICON_SIZE)
+		icon:SetHeight(CAST_ICON_SIZE)
+	end
 	local name = plate.visual.spelltext
-	Anchor(name, "LEFT", bar, "LEFT", 3, 0)
+	Anchor(name, "LEFT", icon, "RIGHT", 2, 0)
 	name:SetJustifyH("LEFT")
-	Anchor(self.text, "RIGHT", bar, "RIGHT", -3, 0)
+	SmallCastFont(name)
+	Anchor(self.text, "TOPRIGHT", bar, "BOTTOMRIGHT", 0, -(inset + 1))
+	SmallCastFont(self.text)
 	-- Kick-Zustand beibehalten (läuft bei jeder Aktualisierung der Plakette; vorher wurde
 	-- der Rahmen hier jedes Mal dunkel und erst 0,1 s später wieder hell). Ein neuer
 	-- Zauber wird im ersten Frame der Zauberleiste neu bewertet.
