@@ -489,8 +489,8 @@ end
 -- im selben Stil rechts daneben. Rahmenfarbe: Ziel / Mouseover / sonst dunkelgrau.
 local TOOLTIP_EDGE = "Interface\\Tooltips\\UI-Tooltip-Border"
 -- Abstand zwischen Rahmen und Stufen-Kästchen (außen). Negativ, weil die Tooltip-Kante
--- einen durchsichtigen Rand hat: so liegen die sichtbaren Linien ~1 px auseinander (Forever)
-local SIMPLE_GAP = -3
+-- einen durchsichtigen Rand hat: so liegen die sichtbaren Linien ~3 px auseinander
+local SIMPLE_GAP = -1
 local SIMPLE_BOX_RATIO = 1.45 -- Breite des Kästchens relativ zu seiner Höhe
 
 -- Setzt einen einzelnen Ankerpunkt nur, wenn er abweicht. true = neu gesetzt.
