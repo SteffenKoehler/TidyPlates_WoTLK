@@ -594,8 +594,17 @@ local function ShadeOnUpdate(frame, elapsed)
 	if frac <= 0.02 or frac >= 1 then
 		frame.Shade:Hide()
 		frame.ShadeEdge:Hide()
+		frame.Grey:Hide()
 	else
-		frame.Shade:SetHeight(frame:GetHeight() * frac)
+		local height = frame:GetHeight() * frac
+		frame.Shade:SetHeight(height)
+		-- Graue Kopie des Symbols auf den abgelaufenen (oberen) Teil zuschneiden; die
+		-- Ausschnitt-Koordinaten des Symbols (Themes schneiden Ränder ab) übernehmen
+		local grey = frame.Grey
+		local left, top, _, bottom, right = frame.Icon:GetTexCoord()
+		grey:SetTexCoord(left, right, top, top + (bottom - top) * frac)
+		grey:SetHeight(height)
+		grey:Show()
 		frame.Shade:Show()
 		frame.ShadeEdge:Show()
 	end
@@ -607,16 +616,19 @@ local function UpdateIcon(frame, texture, expiration, stacks, duration)
 		frame.Icon:SetTexture(texture)
 
 		-- Ablauf-Anzeige, wenn das Theme sie wünscht (widget.showSpiral) und die Dauer
-		-- bekannt ist: dunkler Schleier wächst mit der abgelaufenen Zeit von oben nach
-		-- unten, goldene Kante an seiner Unterseite
+		-- bekannt ist: der abgelaufene Teil wächst von oben nach unten (ausgegraut, leicht
+		-- abgedunkelt), goldene Kante an seiner Unterseite
 		if frame:GetParent().showSpiral and duration and duration > 0 then
 			frame.shadeStart, frame.shadeDuration = expiration - duration, duration
 			frame.shadeTick = SHADE_INTERVAL
 			frame:SetScript("OnUpdate", ShadeOnUpdate)
+			frame.Grey:SetTexture(texture)
+			frame.Grey:SetDesaturated(true)
 		else
 			frame:SetScript("OnUpdate", nil)
 			frame.Shade:Hide()
 			frame.ShadeEdge:Hide()
+			frame.Grey:Hide()
 		end
 
 		-- Stacks
@@ -833,9 +845,16 @@ local function CreateAuraIconFrame(parent)
 	frame.Glow = frame:CreateTexture(nil, "ARTWORK")
 	frame.Glow:SetAllPoints(frame.Border)
 	frame.Glow:SetTexture(AuraGlowArt)
-	-- Ablauf-Schleier mit goldener Kante (nur aktiv, wenn das Theme ihn einschaltet)
+	-- Ablauf-Anzeige (nur aktiv, wenn das Theme sie einschaltet): abgelaufener Teil
+	-- ausgegraut (entsättigte Kopie des Symbols) und leicht abgedunkelt, goldene Kante
+	local grey = frame:CreateTexture(nil, "BORDER")
+	grey:SetDesaturated(true)
+	grey:SetPoint("TOPLEFT", frame, "TOPLEFT")
+	grey:SetPoint("TOPRIGHT", frame, "TOPRIGHT")
+	grey:Hide()
+	frame.Grey = grey
 	local shade = frame:CreateTexture(nil, "OVERLAY")
-	shade:SetTexture(0, 0, 0, 0.6)
+	shade:SetTexture(0, 0, 0, 0.35)
 	shade:SetPoint("TOPLEFT", frame, "TOPLEFT")
 	shade:SetPoint("TOPRIGHT", frame, "TOPRIGHT")
 	shade:Hide()
