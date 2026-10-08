@@ -4269,6 +4269,33 @@ local function GetOptions()
 									set = SetValue,
 									arg = {"classicLook", "ON"}
 								},
+								FrameStyle = {
+									name = "Rahmen",
+									desc = "Schlicht: dünne Linie, dunkler Hintergrund und eigenes Stufen-Kästchen wie im Classic-Era-Client. Gold: originaler Blizzard-Goldrahmen aus WotLK.",
+									type = "select",
+									order = 1.1,
+									values = {SIMPLE = "Schlicht (Classic Era)", GOLD = "Gold (Blizzard WotLK)"},
+									disabled = function()
+										return not db.classicLook.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"classicLook", "frameStyle"}
+								},
+								LineSize = {
+									name = "Linienstärke (Pixel)",
+									type = "range",
+									order = 1.2,
+									min = 1,
+									max = 4,
+									step = 1,
+									disabled = function()
+										return not (db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD")
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"classicLook", "lineSize"}
+								},
 								TargetBorder = {
 									name = "Ziel: Rahmen einfärben",
 									desc = "Rahmen und Stufen-Feld des Ziels werden in der gewählten Farbe hervorgehoben (wie im Classic-Client gelb-grün).",
@@ -4281,12 +4308,23 @@ local function GetOptions()
 									set = SetValue,
 									arg = {"classicLook", "targetBorder"}
 								},
+								LineTargetColor = {
+									name = "Farbe (schlicht)",
+									type = "color",
+									order = 2.5,
+									disabled = function()
+										return not (db.classicLook.ON and db.classicLook.targetBorder and db.classicLook.frameStyle ~= "GOLD")
+									end,
+									get = GetColor,
+									set = SetColor,
+									arg = {"classicLook", "lineTargetColor"}
+								},
 								TargetColor = {
-									name = "Farbe",
+									name = "Farbe (Gold)",
 									type = "color",
 									order = 3,
 									disabled = function()
-										return not (db.classicLook.ON and db.classicLook.targetBorder)
+										return not (db.classicLook.ON and db.classicLook.targetBorder and db.classicLook.frameStyle == "GOLD")
 									end,
 									get = GetColor,
 									set = SetColor,

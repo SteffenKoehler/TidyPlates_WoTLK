@@ -765,6 +765,9 @@ function TidyPlatesThreat:OnInitialize()
 			-- Mouseover = Blizzard-Aufhellung
 			classicLook = {
 				ON = false,
+				frameStyle = "SIMPLE", -- "SIMPLE" = dünne Linie + Stufen-Kästchen (Classic Era), "GOLD" = Blizzard-Goldrahmen
+				lineSize = 2, -- Linienstärke beim schlichten Rahmen (Bildschirmpixel)
+				lineTargetColor = {r = 0.8, g = 0.9, b = 0.25}, -- Linie beim Ziel (schlichter Rahmen)
 				targetBorder = true, -- Rahmen (mit Stufen-Feld) beim Ziel einfärben
 				targetColor = {r = 0.45, g = 1, b = 0.15},
 				targetGlow = false,
@@ -1357,9 +1360,12 @@ function TidyPlatesThreat:ApplyStacking()
 	local width, height = s.healthbar.width or 120, s.healthbar.height or 10
 	local top, bottom = height / 2, -height / 2
 	local xspace = width + 10
-	-- Classic: der Blizzard-Rahmen (mit Stufen-Feld) ist größer als der Balken
-	local art = p.classicLook.ON and TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
-	if art then
+	-- Classic: der Blizzard-Rahmen (mit Stufen-Feld) bzw. Linie + Stufen-Kästchen sind größer als der Balken
+	local art = p.classicLook.ON and p.classicLook.frameStyle == "GOLD" and TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
+	if p.classicLook.ON and p.classicLook.frameStyle ~= "GOLD" and ThreatPlatesWidgets and ThreatPlatesWidgets.ClassicSimpleExtent then
+		xspace = width + ThreatPlatesWidgets.ClassicSimpleExtent(height) + 8
+		top, bottom = top + 2, bottom - 2
+	elseif art then
 		local b = art.healthborder
 		xspace = math.max(xspace, (b.right - b.left) * width + 4)
 		top = math.max(top, (b.top - 0.5) * height)

@@ -438,7 +438,7 @@ local function PlaceClassicCast(self)
 end
 
 -- Der Kern ruft beim Ausblenden einer Plakette Hide() für jedes Widget auf
-local function HideClassicParts(look)
+local function HideGoldParts(look)
 	look.border:Hide()
 	look.elite:Hide()
 	look.highlight:Hide()
@@ -446,8 +446,92 @@ local function HideClassicParts(look)
 	look.targetBorder:Hide()
 end
 
+local function HideSimpleParts(look)
+	look.bg:Hide()
+	look.line:Hide()
+	look.box:Hide()
+end
+
+local function HideClassicParts(look)
+	HideGoldParts(look)
+	HideSimpleParts(look)
+end
+
+-- Schlichter Rahmen (wie die Plaketten des Classic-Era-Clients): fast schwarzer Hintergrund,
+-- dünne Linie um den Balken und ein eigenes Stufen-Kästchen rechts daneben
+local SIMPLE_GAP = 3 -- Abstand zwischen Balken und Stufen-Kästchen
+local SIMPLE_BOX_RATIO = 1.8 -- Breite des Kästchens relativ zur Balkenhöhe
+
+local function CreateSimpleParts(look, hb)
+	local bg = hb:CreateTexture(nil, "BACKGROUND")
+	bg:SetTexture(WHITE)
+	bg:SetVertexColor(0.04, 0.04, 0.04, 0.9)
+	bg:SetAllPoints(hb)
+	bg:Hide()
+	look.bg = bg
+	look.line = ThreatPlatesWidgets.CreatePlaterBorder(hb)
+	look.line:Hide()
+	-- Kästchen auf der Ebene des Balkens, damit die Stufe (Plakette, eine Ebene höher) darüber liegt
+	local box = CreateFrame("Frame", nil, hb)
+	box:SetFrameLevel(hb:GetFrameLevel())
+	box:SetPoint("LEFT", hb, "RIGHT", SIMPLE_GAP, 0)
+	local boxBg = box:CreateTexture(nil, "BACKGROUND")
+	boxBg:SetTexture(WHITE)
+	boxBg:SetVertexColor(0.04, 0.04, 0.04, 0.9)
+	boxBg:SetAllPoints(box)
+	box.line = ThreatPlatesWidgets.CreatePlaterBorder(box)
+	box:Hide()
+	look.box = box
+end
+
+function ThreatPlatesWidgets.ClassicSimpleExtent(height)
+	return SIMPLE_GAP + math.floor(height * SIMPLE_BOX_RATIO + 0.5)
+end
+
+local function UpdateSimpleLook(plate, unit, look, cfg)
+	HideGoldParts(look)
+	local bar = plate.bars.healthbar
+	local h = bar:GetHeight()
+	local box = look.box
+	box:SetWidth(math.floor(h * SIMPLE_BOX_RATIO + 0.5))
+	box:SetHeight(h)
+
+	local size = (cfg.lineSize or 1) * ThreatPlatesWidgets.PixelSize(bar)
+	look.line:SetBorderSize(size)
+	box.line:SetBorderSize(size)
+	local r, g, b = 0, 0, 0
+	if cfg.targetBorder and unit.isTarget then
+		local c = cfg.lineTargetColor
+		r, g, b = c.r, c.g, c.b
+	elseif unit.isMouseover then
+		r, g, b = 0.6, 0.6, 0.6
+	end
+	look.line:SetBorderColor(r, g, b, 1)
+	box.line:SetBorderColor(r, g, b, 1)
+	look.bg:Show()
+	look.line:Show()
+	box:Show()
+
+	-- Stufe mittig im Kästchen (Schwierigkeitsfarbe vom Kern), Elite mit "+";
+	-- Totenkopf (Boss) an derselben Stelle
+	local level = plate.visual.level
+	level:ClearAllPoints()
+	level:SetPoint("CENTER", box, "CENTER", 0.5, 0)
+	level:SetJustifyH("CENTER")
+	local font = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.levelFont and TidyPlates.BlizzardArt.levelFont[1]
+	level:SetFont(font or STANDARD_TEXT_FONT, math.max(7, h * 0.85) * (cfg.levelSize or 1), "OUTLINE")
+	if unit.isElite and unit.level then
+		level:SetText(unit.level .. "+")
+	end
+	local skull = plate.visual.skullicon
+	skull:ClearAllPoints()
+	skull:SetPoint("CENTER", box, "CENTER", 0, 0)
+	skull:SetWidth(h)
+	skull:SetHeight(h)
+end
+
 function ThreatPlatesWidgets.CreateClassicLook(plate)
-	local art = TidyPlates.BlizzardArt
+	local art = TidyPlates.BlizzardArt or {}
 	local hb = plate.bars.healthbar
 	-- Auf der Lebensleiste selbst (über der Füllung, unter Name/Stufe/Text der Plakette)
 	local look = {
@@ -458,6 +542,7 @@ function ThreatPlatesWidgets.CreateClassicLook(plate)
 		targetBorder = ClassicTexture(hb, "OVERLAY", art.healthborder, "ADD"),
 		Hide = HideClassicParts
 	}
+	CreateSimpleParts(look, hb)
 	-- Zauberleiste: eigene Ebene über der Leiste, Restzeit/Farbe wie bei Plater
 	local cb = plate.bars.castbar
 	local cast = CreateFrame("Frame", nil, cb)
@@ -495,14 +580,31 @@ local function HasBar(barstyle)
 	return tex and not tex:find("Empty$")
 end
 
+-- Classic-Optik möglich? Schlicht immer, Gold erst nach Vermessung der Original-Plakette
+function ThreatPlatesWidgets.ClassicAvailable(cfg)
+	return cfg.frameStyle ~= "GOLD" or ThreatPlatesWidgets.ClassicArt()
+end
+
 function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
-	local art = TidyPlates.BlizzardArt
-	local geo = art.health
 	local style = plate.style
 	if not HasBar(style.healthbar) then -- Nur-Name, Totem-Symbol
 		HideClassicParts(look)
 		return
 	end
+	if cfg.frameStyle ~= "GOLD" then
+		UpdateSimpleLook(plate, unit, look, cfg)
+		if plate.bars.castbar:IsShown() then
+			look.cast:Place()
+		end
+		return
+	end
+	HideSimpleParts(look)
+	local art = ThreatPlatesWidgets.ClassicArt()
+	if not art then -- Gold gewählt, Original-Plakette noch nicht vermessen
+		HideGoldParts(look)
+		return
+	end
+	local geo = art.health
 	local bar = plate.bars.healthbar
 	local w, h = bar:GetWidth(), bar:GetHeight()
 	if look.w ~= w or look.h ~= h then
@@ -1026,7 +1128,7 @@ local function OnInitialize(plate)
 	end
 
 	-- Classic-Optik (Blizzard-Grafiken); ohne Vermessung der Original-Plakette noch nicht möglich
-	if db.classicLook.ON and ThreatPlatesWidgets.ClassicArt() then
+	if db.classicLook.ON and ThreatPlatesWidgets.ClassicAvailable(db.classicLook) then
 		if not w.ClassicLook then
 			w.ClassicLook = ThreatPlatesWidgets.CreateClassicLook(plate)
 		end
@@ -1123,7 +1225,7 @@ local function UpdateClassic(plate, unit)
 	end
 	local w = plate.widgets
 	if not w.ClassicLook then
-		if not ThreatPlatesWidgets.ClassicArt() then
+		if not ThreatPlatesWidgets.ClassicAvailable(db.classicLook) then
 			return
 		end
 		OnInitialize(plate)

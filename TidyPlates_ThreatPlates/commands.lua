@@ -187,7 +187,7 @@ end
 -- Classic-Widget, Name über dem Balken, Lebenspunkte-Text wie im Default-Profil.
 -- Gleiche Versionsregel wie bei Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 3
+local CLASSIC_LOOK_VERSION = 4
 
 -- Version 2 (Vorbild Classic-Client): Name auf Balkenbreite gekürzt, dünne orange Zauber-
 -- leiste direkt unter dem Rahmen, Zaubername klein links darunter (Restzeit rechts), kein
@@ -195,15 +195,23 @@ local CLASSIC_LOOK_VERSION = 3
 local function ApplyClassicV2(p)
 	local s = p.settings
 	local width, height = s.healthbar.width or 150, s.healthbar.height or 12
-	local bottom, left = -height / 2, -width / 2
-	-- Unterkante des Blizzard-Rahmens, falls schon vermessen
-	local borderBottom = bottom - 4
+	local top, bottom, left = height / 2, -height / 2, -width / 2
+	local gold = p.classicLook.frameStyle == "GOLD"
+	-- Unterkante des Rahmens: schlichte Linie bzw. Blizzard-Goldrahmen (falls schon vermessen)
+	local borderBottom = bottom - 3
 	local art = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
-	if art and art.healthborder then
-		borderBottom = math.min(bottom, (art.healthborder.bottom - 0.5) * height)
+	if gold then
+		borderBottom = bottom - 4
+		if art and art.healthborder then
+			borderBottom = math.min(bottom, (art.healthborder.bottom - 0.5) * height)
+		end
 	end
 
+	-- Name gekürzt auf Balkenbreite, beim schlichten Rahmen näher am Balken
 	s.name.width = width
+	s.name.y = top + (gold and 11 or 8)
+	local auraScale = p.debuffWidget.scale or 1.15
+	p.debuffWidget.y = (s.name.y + s.name.size / 2 + 2) / auraScale + 9
 
 	local castHeight = 5
 	local castY = borderBottom - 1 - castHeight / 2
@@ -223,6 +231,7 @@ end
 
 local function ApplyClassicLook(p)
 	local s = p.settings
+	p.classicLook.frameStyle = "SIMPLE"
 	p.classicLookVersion = CLASSIC_LOOK_VERSION
 	p.classicLook.ON = true
 	p.platerBorder.ON = false
@@ -349,6 +358,11 @@ local ClassicMigrations = {
 		-- flache Balkenfüllung statt "Blizzard" (oben hell, unten schwarz)
 		p.settings.healthbar.texture = "Blizzard Nameplate"
 		p.settings.castbar.texture = "Blizzard Nameplate"
+	end,
+	[4] = function(p)
+		-- schlichter Rahmen wie im Classic-Era-Client (Gold bleibt als Option)
+		p.classicLook.frameStyle = "SIMPLE"
+		ApplyClassicV2(p)
 	end
 }
 
