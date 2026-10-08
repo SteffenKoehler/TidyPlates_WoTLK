@@ -3693,6 +3693,17 @@ local function GetOptions()
 												return not db.debuffWidget.ON
 											end,
 											arg = {"debuffWidget", "spiral"}
+										},
+										TimerStyle = {
+											name = "Darstellung",
+											desc = "Balken: abgelaufener Teil von oben ausgegraut, goldene Kante. Uhr: dunkler Ausschnitt ab 12 Uhr im Uhrzeigersinn mit goldenem Zeiger.",
+											type = "select",
+											order = 3,
+											values = {BAR = "Balken (grau)", CLOCK = "Uhr"},
+											disabled = function()
+												return not (db.debuffWidget.ON and db.debuffWidget.spiral)
+											end,
+											arg = {"debuffWidget", "timerStyle"}
 										}
 									}
 								},

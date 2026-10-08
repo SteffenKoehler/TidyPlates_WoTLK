@@ -729,7 +729,8 @@ function TidyPlatesThreat:OnInitialize()
 				scale = 1,
 				anchor = "CENTER",
 				filter = {},
-				spiral = true -- Abklingzeit-Spirale auf den Symbolen
+				spiral = true, -- Ablauf auf den Symbolen anzeigen
+				timerStyle = "BAR" -- "BAR" (grauer Balken) oder "CLOCK" (Uhr)
 			},
 			uniqueWidget = {
 				ON = true,

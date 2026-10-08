@@ -583,6 +583,140 @@ end
 
 -- Ablauf-Schleier (Spiralen/Cooldown-Modelle werden an Plaketten in 3.3.5a nicht gezeichnet)
 local SHADE_INTERVAL = 0.033
+-- Uhr: Die abgelaufene Zeit wird als dunkler Kreisausschnitt ab 12 Uhr im Uhrzeigersinn
+-- gezeichnet. Cooldown-Modelle gehen an Plaketten nicht, deshalb aus Teilen: volle Viertel
+-- als Rechtecke, das angeschnittene Viertel aus einem Dreieck (Grafik ClockTriangle =
+-- obere linke Hälfte deckend, je Viertel gespiegelt) plus ggf. einem Rechteck. Dazu ein
+-- goldener Zeiger (ClockHand, über Texturkoordinaten gedreht).
+-- Jedes Viertel wird lokal betrachtet: v zeigt in Startrichtung des Viertels (Q1 oben,
+-- Q2 rechts, Q3 unten, Q4 links), u in Drehrichtung; a/b = Ausdehnung entlang u/v.
+local CLOCK_TRIANGLE = "Interface\\AddOns\\TidyPlates\\media\\ClockTriangle"
+local CLOCK_HAND = "Interface\\AddOns\\TidyPlates\\media\\ClockHand"
+local CLOCK_ALPHA = 0.6
+local HALF_PI, TWO_PI = math.pi / 2, math.pi * 2
+local msin, mcos, mtan, matan2, mfloor = math.sin, math.cos, math.tan, math.atan2, math.floor
+-- Dreieck je Viertel spiegeln (links, rechts, oben, unten)
+local TRI_COORDS = {{0, 1, 0, 1}, {1, 0, 0, 1}, {1, 0, 1, 0}, {0, 1, 1, 0}}
+
+-- Lokales Rechteck [u0,u1] x [v0,v1] des Viertels q auf das Symbol legen
+local function PlaceClockRect(tex, frame, q, cx, cy, u0, u1, v0, v1)
+	local xa, ya, xb, yb
+	if q == 1 then
+		xa, ya, xb, yb = cx + u0, cy + v0, cx + u1, cy + v1
+	elseif q == 2 then
+		xa, ya, xb, yb = cx + v0, cy - u0, cx + v1, cy - u1
+	elseif q == 3 then
+		xa, ya, xb, yb = cx - u0, cy - v0, cx - u1, cy - v1
+	else
+		xa, ya, xb, yb = cx - v0, cy + u0, cx - v1, cy + u1
+	end
+	local x0, x1 = min(xa, xb), max(xa, xb)
+	local y0, y1 = min(ya, yb), max(ya, yb)
+	if x1 - x0 < 0.05 or y1 - y0 < 0.05 then
+		tex:Hide()
+		return
+	end
+	tex:ClearAllPoints()
+	tex:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", x0, y0)
+	tex:SetWidth(x1 - x0)
+	tex:SetHeight(y1 - y0)
+	tex:Show()
+end
+
+local function CreateClock(frame)
+	local clock = {quarters = {}}
+	for q = 1, 4 do
+		local t = frame:CreateTexture(nil, "OVERLAY")
+		t:SetTexture(0, 0, 0, CLOCK_ALPHA)
+		t:Hide()
+		clock.quarters[q] = t
+	end
+	clock.extra = frame:CreateTexture(nil, "OVERLAY")
+	clock.extra:SetTexture(0, 0, 0, CLOCK_ALPHA)
+	clock.extra:Hide()
+	clock.triangle = frame:CreateTexture(nil, "OVERLAY")
+	clock.triangle:SetTexture(CLOCK_TRIANGLE)
+	clock.triangle:SetVertexColor(0, 0, 0, CLOCK_ALPHA)
+	clock.triangle:Hide()
+	clock.hand = frame:CreateTexture(nil, "OVERLAY")
+	clock.hand:SetTexture(CLOCK_HAND)
+	clock.hand:SetVertexColor(1, 0.82, 0.2, 1)
+	clock.hand:Hide()
+	frame.Clock = clock
+	return clock
+end
+
+local function HideClock(frame)
+	local clock = frame.Clock
+	if clock then
+		for q = 1, 4 do
+			clock.quarters[q]:Hide()
+		end
+		clock.extra:Hide()
+		clock.triangle:Hide()
+		clock.hand:Hide()
+	end
+end
+
+local function UpdateClock(frame, frac)
+	local clock = frame.Clock or CreateClock(frame)
+	local w, h = frame:GetWidth(), frame:GetHeight()
+	local cx, cy = w / 2, h / 2
+	local angle = frac * TWO_PI
+	local full = mfloor(angle / HALF_PI)
+	for q = 1, 4 do
+		local a, b = cx, cy
+		if q == 2 or q == 4 then
+			a, b = cy, cx
+		end
+		if q <= full then
+			PlaceClockRect(clock.quarters[q], frame, q, cx, cy, 0, a, 0, b)
+		else
+			clock.quarters[q]:Hide()
+		end
+	end
+	local q = full + 1
+	if q <= 4 then
+		local a, b = cx, cy
+		if q == 2 or q == 4 then
+			a, b = cy, cx
+		end
+		local phi = angle - full * HALF_PI
+		local tri = clock.triangle
+		local c = TRI_COORDS[q]
+		tri:SetTexCoord(c[1], c[2], c[3], c[4])
+		if phi <= matan2(a, b) then
+			-- Strahl trifft die äußere Kante in Startrichtung
+			PlaceClockRect(tri, frame, q, cx, cy, 0, b * mtan(phi), 0, b)
+			clock.extra:Hide()
+		else
+			-- Strahl trifft die Seitenkante: Rechteck oberhalb + Dreieck darunter
+			local v1 = a / mtan(phi)
+			PlaceClockRect(clock.extra, frame, q, cx, cy, 0, a, v1, b)
+			PlaceClockRect(tri, frame, q, cx, cy, 0, a, 0, v1)
+		end
+	else
+		clock.triangle:Hide()
+		clock.extra:Hide()
+	end
+	-- Zeiger: quadratische Textur um die Mitte, Bild per Texturkoordinaten im
+	-- Uhrzeigersinn gedreht (Länge = halbe kürzere Seite, bleibt im Symbol)
+	local hand = clock.hand
+	local size = 2 * min(cx, cy)
+	hand:ClearAllPoints()
+	hand:SetPoint("CENTER", frame, "BOTTOMLEFT", cx, cy)
+	hand:SetWidth(size)
+	hand:SetHeight(size)
+	local co, si = mcos(angle), msin(angle)
+	-- Texturpunkt = Mitte + inverse Drehung des Bildschirmpunkts (y nach unten)
+	hand:SetTexCoord(
+		0.5 - 0.5 * co - 0.5 * si, 0.5 + 0.5 * si - 0.5 * co, -- oben links
+		0.5 - 0.5 * co + 0.5 * si, 0.5 + 0.5 * si + 0.5 * co, -- unten links
+		0.5 + 0.5 * co - 0.5 * si, 0.5 - 0.5 * si - 0.5 * co, -- oben rechts
+		0.5 + 0.5 * co + 0.5 * si, 0.5 - 0.5 * si + 0.5 * co) -- unten rechts
+	hand:Show()
+end
+
 local function ShadeOnUpdate(frame, elapsed)
 	local tick = frame.shadeTick + elapsed
 	if tick < SHADE_INTERVAL then
@@ -591,6 +725,14 @@ local function ShadeOnUpdate(frame, elapsed)
 	end
 	frame.shadeTick = 0
 	local frac = (GetTime() - frame.shadeStart) / frame.shadeDuration
+	if frame.timerStyle == "CLOCK" then
+		if frac <= 0.01 or frac >= 1 then
+			HideClock(frame)
+		else
+			UpdateClock(frame, frac)
+		end
+		return
+	end
 	if frac <= 0.02 or frac >= 1 then
 		frame.Shade:Hide()
 		frame.ShadeEdge:Hide()
@@ -618,9 +760,19 @@ local function UpdateIcon(frame, texture, expiration, stacks, duration)
 		-- Ablauf-Anzeige, wenn das Theme sie wünscht (widget.showSpiral) und die Dauer
 		-- bekannt ist: der abgelaufene Teil wächst von oben nach unten (ausgegraut, leicht
 		-- abgedunkelt), goldene Kante an seiner Unterseite
-		if frame:GetParent().showSpiral and duration and duration > 0 then
+		local widget = frame:GetParent()
+		if widget.showSpiral and duration and duration > 0 then
 			frame.shadeStart, frame.shadeDuration = expiration - duration, duration
 			frame.shadeTick = SHADE_INTERVAL
+			-- Darstellung: "BAR" (grauer Balken, Standard) oder "CLOCK" (Uhr)
+			local style = widget.timerStyle == "CLOCK" and "CLOCK" or "BAR"
+			if frame.timerStyle ~= style then
+				frame.timerStyle = style
+				frame.Shade:Hide()
+				frame.ShadeEdge:Hide()
+				frame.Grey:Hide()
+				HideClock(frame)
+			end
 			frame:SetScript("OnUpdate", ShadeOnUpdate)
 			frame.Grey:SetTexture(texture)
 			frame.Grey:SetDesaturated(true)
@@ -629,6 +781,7 @@ local function UpdateIcon(frame, texture, expiration, stacks, duration)
 			frame.Shade:Hide()
 			frame.ShadeEdge:Hide()
 			frame.Grey:Hide()
+			HideClock(frame)
 		end
 
 		-- Stacks
