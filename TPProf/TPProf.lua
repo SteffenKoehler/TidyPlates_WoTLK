@@ -330,6 +330,68 @@ local function HookErrors()
 end
 
 -------------------------------------------------------------------------------
+-- Mausblick-Diagnose: Endet der Mausblick, obwohl die rechte Maustaste noch gedrückt
+-- ist, wurde er unterbrochen (Kamera springt, Zeiger erscheint). Gespeichert wird, was
+-- in dem Moment unter dem Zeiger lag - insbesondere, ob es eine Namensplakette war.
+-------------------------------------------------------------------------------
+local MAX_MOUSELOOK = 50
+local wasLooking = false
+
+-- Rahmen unter dem Zeiger beschreiben; Plakette erkennen (TidyPlates: plate.extended
+-- bzw. extended.parentPlate in der Elternkette)
+local function DescribeFocus()
+	local f = GetMouseFocus()
+	if not f then
+		return "nichts"
+	end
+	if f == WorldFrame then
+		return "Spielwelt"
+	end
+	local desc = (f.GetName and f:GetName()) or (f.GetObjectType and f:GetObjectType()) or "?"
+	local p = f
+	for _ = 1, 5 do
+		if not p then
+			break
+		end
+		local ext = p.extended or (p.parentPlate and p)
+		if ext then
+			local unit = ext.unit
+			return "Plakette " .. ((unit and unit.name) or "?"), true
+		end
+		p = p.GetParent and p:GetParent()
+	end
+	return desc
+end
+
+local function RecordMouselookBreak()
+	local desc, onPlate = DescribeFocus()
+	local x, y = GetCursorPosition()
+	local scale = UIParent:GetEffectiveScale()
+	local entry = {
+		date = date("%Y-%m-%d %H:%M:%S"),
+		zone = Where(),
+		player = UnitName("player"),
+		inCombat = InCombatLockdown() and true or false,
+		focus = desc,
+		onPlate = onPlate or false,
+		plates = CountPlates(),
+		cursor = format("%.0f / %.0f von %.0f / %.0f", x / scale, y / scale, GetScreenWidth(), GetScreenHeight()),
+		profile = Profile()
+	}
+	Push(TPProfDB.mouselook, entry, MAX_MOUSELOOK)
+	Print("Mausblick unterbrochen - unter dem Zeiger: " .. desc)
+end
+
+local mouselookWatcher = CreateFrame("Frame")
+mouselookWatcher:SetScript("OnUpdate", function()
+	local looking = IsMouselooking()
+	if wasLooking and not looking and IsMouseButtonDown("RightButton") and TPProfDB then
+		RecordMouselookBreak()
+	end
+	wasLooking = looking
+end)
+
+-------------------------------------------------------------------------------
 -- Events und Befehle
 -------------------------------------------------------------------------------
 local frame = CreateFrame("Frame")
@@ -344,6 +406,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 			TPProfDB = TPProfDB or {}
 			TPProfDB.fights = TPProfDB.fights or {}
 			TPProfDB.errors = TPProfDB.errors or {}
+			TPProfDB.mouselook = TPProfDB.mouselook or {}
 			if IsProfiling() then
 				Print("Profiling ist AN (kostet etwas Leistung). Ausschalten: /tpprof off")
 				StartMeasure()
@@ -381,12 +444,13 @@ SlashCmdList["TPPROF"] = function(msg)
 		Print("Bericht im Chat nach jedem Kampf: " .. (TPProfDB.fight and "AN" or "AUS")
 			.. " (gespeichert wird immer)")
 	elseif msg == "log" then
-		Print(format("Gespeichert: %d Kämpfe, %d Fehler. In die Datei geschrieben wird bei /reload oder Ausloggen.",
-			#TPProfDB.fights, #TPProfDB.errors))
+		Print(format("Gespeichert: %d Kämpfe, %d Fehler, %d Mausblick-Abbrüche. In die Datei geschrieben wird bei /reload oder Ausloggen.",
+			#TPProfDB.fights, #TPProfDB.errors, #TPProfDB.mouselook))
 	elseif msg == "clear" then
 		wipe(TPProfDB.fights)
 		wipe(TPProfDB.errors)
-		Print("Kampf- und Fehlerprotokoll gelöscht.")
+		wipe(TPProfDB.mouselook)
+		Print("Kampf-, Fehler- und Mausblick-Protokoll gelöscht.")
 	elseif msg == "" then
 		Report()
 	else
