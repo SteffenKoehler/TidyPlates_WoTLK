@@ -437,6 +437,15 @@ local function PlaceClassicCast(self)
 	self:SetShielded(plate.unit and plate.unit.spellIsShielded)
 end
 
+-- Der Kern ruft beim Ausblenden einer Plakette Hide() für jedes Widget auf
+local function HideClassicParts(look)
+	look.border:Hide()
+	look.elite:Hide()
+	look.highlight:Hide()
+	look.glow:Hide()
+	look.targetBorder:Hide()
+end
+
 function ThreatPlatesWidgets.CreateClassicLook(plate)
 	local art = TidyPlates.BlizzardArt
 	local hb = plate.bars.healthbar
@@ -445,7 +454,9 @@ function ThreatPlatesWidgets.CreateClassicLook(plate)
 		border = ClassicTexture(hb, "OVERLAY", art.healthborder),
 		elite = ClassicTexture(hb, "OVERLAY", art.eliteicon),
 		highlight = ClassicTexture(hb, "OVERLAY", art.highlight, "ADD"),
-		glow = ClassicTexture(hb, "BACKGROUND", art.threatglow, "ADD")
+		glow = ClassicTexture(hb, "BACKGROUND", art.threatglow, "ADD"),
+		targetBorder = ClassicTexture(hb, "OVERLAY", art.healthborder, "ADD"),
+		Hide = HideClassicParts
 	}
 	-- Zauberleiste: eigene Ebene über der Leiste, Restzeit/Farbe wie bei Plater
 	local cb = plate.bars.castbar
@@ -471,17 +482,12 @@ function ThreatPlatesWidgets.CreateClassicLook(plate)
 end
 
 function ThreatPlatesWidgets.HideClassicLook(look)
-	look.border:Hide()
-	look.elite:Hide()
-	look.highlight:Hide()
-	look.glow:Hide()
+	HideClassicParts(look)
 	look.cast:SetScript("OnUpdate", nil)
 	look.cast:SetScript("OnShow", nil)
 	look.cast:SetScript("OnHide", nil)
 	look.cast:Hide()
 	look.cast.thin:Hide()
-	look.border:SetDesaturated(false)
-	look.border:SetVertexColor(1, 1, 1)
 end
 
 local function HasBar(barstyle)
@@ -494,10 +500,7 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 	local geo = art.health
 	local style = plate.style
 	if not HasBar(style.healthbar) then -- Nur-Name, Totem-Symbol
-		look.border:Hide()
-		look.elite:Hide()
-		look.highlight:Hide()
-		look.glow:Hide()
+		HideClassicParts(look)
 		return
 	end
 	local bar = plate.bars.healthbar
@@ -505,22 +508,21 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 	if look.w ~= w or look.h ~= h then
 		look.w, look.h = w, h
 		PlaceRect(look.border, bar, geo.healthborder, w, h)
+		PlaceRect(look.targetBorder, bar, geo.healthborder, w, h)
 		PlaceRect(look.elite, bar, geo.eliteicon, w, h)
 		PlaceRect(look.highlight, bar, geo.highlight, w, h)
 		PlaceRect(look.glow, bar, geo.threatglow, w, h)
 	end
 	ShowIf(look.border, true)
-	-- Ziel: Rahmen samt Stufen-Feld entsättigt und eingefärbt (gelb-grün wie im Classic-Client)
-	local tinted = cfg.targetBorder and unit.isTarget
-	if tinted ~= look.tinted then
-		look.tinted = tinted
-		look.border:SetDesaturated(tinted and true or false)
-		if tinted then
-			local c = cfg.targetColor
-			look.border:SetVertexColor(c.r, c.g, c.b)
-		else
-			look.border:SetVertexColor(1, 1, 1)
-		end
+	-- Ziel: eingefärbte Kopie des Rahmens (samt Stufen-Feld) additiv darüber, so wird der
+	-- Goldrahmen hell gelb-grün wie im Classic-Client. (Entsättigen + SetVertexColor färbt
+	-- in diesem Client nicht, der Rahmen wird nur grau.)
+	if cfg.targetBorder and unit.isTarget then
+		local c = cfg.targetColor
+		look.targetBorder:SetVertexColor(c.r, c.g, c.b)
+		ShowIf(look.targetBorder, true)
+	else
+		look.targetBorder:Hide()
 	end
 	ShowIf(look.elite, unit.isElite)
 	ShowIf(look.highlight, unit.isMouseover and not unit.isTarget)

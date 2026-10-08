@@ -1555,6 +1555,8 @@ local function EventHandler(self, event, ...)
 			TidyPlatesThreat:EnsurePlaterProfile()
 			if TidyPlatesThreat:UpgradePlaterProfile() then
 				TidyPlates:ForceUpdate()
+				-- Stile sind beim Login schon gebaut: neue Layout-Werte erst nach /reload sichtbar
+				StaticPopup_Show("TPTP_PROFILE_RELOAD")
 			end
 		end
 		CharDB.threat.tanking = TidyPlatesThreat:currentRoleBool(Active()) -- Aligns tanking role with current spec on log in.
