@@ -581,10 +581,29 @@ local function UpdateWidgetTime(frame, expiration)
 	end
 end
 
-local function UpdateIcon(frame, texture, expiration, stacks)
+local function UpdateIcon(frame, texture, expiration, stacks, duration)
 	if frame and texture and expiration then
 		-- Icon
 		frame.Icon:SetTexture(texture)
+
+		-- Abklingzeit-Spirale (wie auf Aktionsbuttons), wenn das Theme sie wünscht
+		-- (widget.showSpiral) und die Dauer bekannt ist. Texte liegen eine Ebene darüber.
+		local cd = frame.Cooldown
+		if frame:GetParent().showSpiral and duration and duration > 0 then
+			local level = frame:GetFrameLevel()
+			if cd:GetFrameLevel() ~= level + 1 then
+				cd:SetFrameLevel(level + 1)
+				frame.TextFrame:SetFrameLevel(level + 2)
+			end
+			if frame.cdExpiration ~= expiration or frame.cdDuration ~= duration then
+				frame.cdExpiration, frame.cdDuration = expiration, duration
+				cd:SetCooldown(expiration - duration, duration)
+			end
+			cd:Show()
+		else
+			frame.cdExpiration = nil
+			cd:Hide()
+		end
 
 		-- Stacks
 		if stacks > 1 then
@@ -658,7 +677,7 @@ local function UpdateIconGrid(frame, guid)
 		for index = 1, #DebuffCache do
 			local cachedaura = DebuffCache[index]
 			if cachedaura.spellid and cachedaura.expiration then
-				UpdateIcon(AuraIconFrames[AuraSlotIndex], cachedaura.texture, cachedaura.expiration, cachedaura.stacks)
+				UpdateIcon(AuraIconFrames[AuraSlotIndex], cachedaura.texture, cachedaura.expiration, cachedaura.stacks, cachedaura.duration)
 				AuraSlotIndex = AuraSlotIndex + 1
 			end
 			if AuraSlotIndex > maxDebuffs then
@@ -800,8 +819,21 @@ local function CreateAuraIconFrame(parent)
 	frame.Glow = frame:CreateTexture(nil, "ARTWORK")
 	frame.Glow:SetAllPoints(frame.Border)
 	frame.Glow:SetTexture(AuraGlowArt)
+	-- Abklingzeit-Spirale über dem Symbol (nur sichtbar, wenn das Theme sie einschaltet);
+	-- keine fremden Zeitanzeigen (OmniCC/ElvUI) daran, die Restzeit zeigt das Widget selbst
+	local cd = CreateFrame("Cooldown", nil, frame)
+	cd:SetAllPoints(frame)
+	cd.noOCC = true
+	cd.noCooldownCount = true
+	cd:Hide()
+	frame.Cooldown = cd
+	-- Texte auf eigener Ebene über der Spirale
+	local textFrame = CreateFrame("Frame", nil, frame)
+	textFrame:SetAllPoints(frame)
+	textFrame:SetFrameLevel(frame:GetFrameLevel() + 2)
+	frame.TextFrame = textFrame
 	--  Time Text
-	frame.TimeLeft = frame:CreateFontString(nil, "OVERLAY")
+	frame.TimeLeft = textFrame:CreateFontString(nil, "OVERLAY")
 	frame.TimeLeft:SetFont(AuraFont, 9, "OUTLINE")
 	frame.TimeLeft:SetShadowOffset(1, -1)
 	frame.TimeLeft:SetShadowColor(0, 0, 0, 1)
@@ -810,7 +842,7 @@ local function CreateAuraIconFrame(parent)
 	frame.TimeLeft:SetHeight(16)
 	frame.TimeLeft:SetJustifyH("RIGHT")
 	--  Stacks
-	frame.Stacks = frame:CreateFontString(nil, "OVERLAY")
+	frame.Stacks = textFrame:CreateFontString(nil, "OVERLAY")
 	frame.Stacks:SetFont(AuraFont, 10, "OUTLINE")
 	frame.Stacks:SetShadowOffset(1, -1)
 	frame.Stacks:SetShadowColor(0, 0, 0, 1)

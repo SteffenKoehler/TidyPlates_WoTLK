@@ -3683,6 +3683,16 @@ local function GetOptions()
 											descStyle = "inline",
 											width = "double",
 											arg = {"debuffWidget", "ON"}
+										},
+										Spiral = {
+											name = "Abklingzeit-Spirale",
+											desc = "Dunkelt das Debuff-Symbol wie eine Uhr ab, je weniger Zeit übrig ist (wie bei Abklingzeiten auf der Aktionsleiste).",
+											type = "toggle",
+											order = 2,
+											disabled = function()
+												return not db.debuffWidget.ON
+											end,
+											arg = {"debuffWidget", "spiral"}
 										}
 									}
 								},

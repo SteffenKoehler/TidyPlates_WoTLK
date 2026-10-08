@@ -1120,6 +1120,7 @@ end
 local function ApplyLayout(plate)
 	local w = plate.widgets
 	if w.WidgetDebuff then
+		w.WidgetDebuff.showSpiral = db.debuffWidget.spiral
 		w.WidgetDebuff:SetScale(db.debuffWidget.scale)
 		w.WidgetDebuff:SetPoint(db.debuffWidget.anchor, plate, db.debuffWidget.x, db.debuffWidget.y)
 	end

@@ -728,7 +728,8 @@ function TidyPlatesThreat:OnInitialize()
 				mode = "whitelist",
 				scale = 1,
 				anchor = "CENTER",
-				filter = {}
+				filter = {},
+				spiral = true -- Abklingzeit-Spirale auf den Symbolen
 			},
 			uniqueWidget = {
 				ON = true,
