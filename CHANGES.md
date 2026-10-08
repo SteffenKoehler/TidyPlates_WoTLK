@@ -119,6 +119,18 @@ target stays above its model and other plates move around it. The WeakAura's
 in-combat hitbox trick is not included (it closed open windows). **Disable
 the WeakAura** when using this, otherwise both move the plates.
 
+- **Two columns** (option "Zwei Stapel ab", default 6): plates that overlap
+  horizontally form a tower; from the threshold on they split into a left and
+  a right column one plate width apart, the target stays pinned between them.
+  Sides are sticky (no jumping while mobs move), offsets glide in and are
+  applied with left/right clamp insets, so the mouseover area moves along.
+- **Only engaged enemies** (option "Nur beteiligte Gegner stapeln", default
+  on): in combat, plates of enemies not fighting me, my pet or my group stay
+  in place and push nobody. Engaged = target/mouseover, threat glow, or a
+  combat log exchange with us (by GUID; without GUID by name, and right after
+  a pull the lowest plates on screen of that name). Out of combat everything
+  stacks as before.
+
 ## Commands and options
 
 | Command | Effect |
