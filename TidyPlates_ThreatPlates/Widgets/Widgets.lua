@@ -522,7 +522,7 @@ function ThreatPlatesWidgets.PlaceClassicCombo(widget, plate, db)
 	local _, inset = SimpleEdge(db.classicLook.lineSize)
 	widget:ClearAllPoints()
 	widget:SetWidth(db.settings.healthbar.width or 150)
-	widget:SetHeight(5)
+	widget:SetHeight(4)
 	widget.Icon:SetTexCoord(0, 1, 111 / 256, 145 / 256)
 	widget:SetPoint("TOP", plate.bars.healthbar, "BOTTOM", 0, -(inset + 1))
 end
@@ -554,6 +554,22 @@ local function PlaceSimpleCast(self)
 	SimpleBackdrop(frame, edge, inset)
 	frame:Show()
 	bar:SetBackgroundColor(0, 0, 0, 0) -- dunkler Hintergrund kommt vom Rahmen
+
+	-- Lage direkt unter dem Lebensbalken; Platz für die Combo-Punkte nur, solange sie
+	-- angezeigt werden. Symbol und Zaubername hängen an der Leiste. (Der Kern setzt die
+	-- Stil-Lage bei Stilwechseln zurück, daher bei jedem Aufruf.)
+	local plate = self.plate
+	local combo = plate.widgets and plate.widgets.ComboPoints
+	local gap = (combo and combo:IsShown()) and 6 or 2
+	bar:ClearAllPoints()
+	bar:SetPoint("TOP", plate.bars.healthbar, "BOTTOM", 0, -(inset + gap + inset))
+	local icon = plate.visual.spellicon
+	icon:ClearAllPoints()
+	icon:SetPoint("RIGHT", bar, "LEFT", -(inset + 2), 0)
+	local name = plate.visual.spelltext
+	name:ClearAllPoints()
+	name:SetPoint("LEFT", bar, "LEFT", 3, 0)
+	name:SetJustifyH("LEFT")
 	self.text:ClearAllPoints()
 	self.text:SetPoint("RIGHT", bar, "RIGHT", -3, 0)
 	self.kickReady = nil
