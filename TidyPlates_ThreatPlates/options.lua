@@ -4503,6 +4503,33 @@ local function GetOptions()
 											get = GetValue,
 											set = SetValue,
 											arg = {"stacking", "tallBossFix"}
+										},
+										Columns = {
+											name = "Zwei Stapel nebeneinander",
+											desc = "Stehen viele Gegner dicht beieinander, werden ihre Plaketten auf zwei Spalten links und rechts verteilt, statt einen hohen Turm zu bilden. Das Ziel bleibt an seinem Platz.",
+											type = "toggle",
+											order = 5,
+											disabled = function()
+												return not db.stacking.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "columns"}
+										},
+										ColumnsAt = {
+											name = "Zwei Stapel ab",
+											desc = "Ab so vielen übereinander gestapelten Plaketten werden zwei Spalten gebildet (Standard 6).",
+											type = "range",
+											order = 6,
+											min = 3,
+											max = 20,
+											step = 1,
+											disabled = function()
+												return not (db.stacking.ON and db.stacking.columns)
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "columnsAt"}
 										}
 									}
 								}

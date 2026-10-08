@@ -1771,7 +1771,8 @@ do
 		interval = 0.02,
 		tallBossFix = true,
 		pinTarget = true,                                  -- Ziel bleibt an seinem Platz
-		extraTop = nil                                     -- function(extended): zusätzlicher Platz über der Plakette (z.B. Debuffs)
+		extraTop = nil,                                    -- function(extended): zusätzlicher Platz über der Plakette (z.B. Debuffs)
+		columnsAt = 0                                      -- ab so vielen Plaketten in einem Turm zwei Spalten (0 = aus)
 	}
 	local delta = cfg.speed * 5
 	local Stacked = {} -- [plate] = {xpos, ypos, position, bottom}
@@ -1791,9 +1792,97 @@ do
 
 	-- Nach x sortiert; verglichen werden nur Nachbarn innerhalb von xspace
 	-- (vorher alle Paare, 50x pro Sekunde)
-	local Order = {}
+	local Order, ExOrder = {}, {}
 	local function ByX(a, b)
 		return a.xpos < b.xpos
+	end
+	local function ByEx(a, b)
+		return a.ex < b.ex
+	end
+	local HSPEED = 0.25 -- Anteil der Reststrecke pro Lauf beim seitlichen Gleiten (~0,2 s)
+
+	-- Zwei Spalten: Ein "Turm" sind Plaketten, deren natürliche x-Position innerhalb von
+	-- xspace der linken liegt (alle überlappen sich). Ab columnsAt Plaketten bekommt jede
+	-- eine Seite (links/rechts); die Spalten liegen eine Plakettenbreite auseinander und
+	-- stapeln dadurch unabhängig. Seiten bleiben erhalten, solange die Spalten nicht um mehr
+	-- als eine Plakette ungleich sind (kein Springen, wenn sich Mobs bewegen). Das Ziel bleibt
+	-- an seinem Platz (zwischen den Spalten).
+	local function AssignColumns(order, count, xspace, splitAt)
+		local i = 1
+		while i <= count do
+			local first = order[i]
+			local j = i
+			while j < count and order[j + 1].xpos - first.xpos < xspace do
+				j = j + 1
+			end
+			local size = j - i + 1
+			local wasSplit = false
+			for k = i, j do
+				if order[k].side then
+					wasSplit = true
+					break
+				end
+			end
+			-- Etwas Spielraum beim Zurückschalten, damit es an der Grenze nicht flackert
+			if splitAt > 1 and (size >= splitAt or (wasSplit and size >= splitAt - 1)) then
+				local sum = 0
+				for k = i, j do
+					sum = sum + order[k].xpos
+				end
+				local cx = sum / size
+				local left, right = 0, 0
+				for k = i, j do
+					local p = order[k]
+					if p.isTarget then
+						p.side = nil
+					elseif p.side == -1 then
+						left = left + 1
+					elseif p.side == 1 then
+						right = right + 1
+					end
+				end
+				-- Neue Mitglieder auf die kleinere Seite (bei Gleichstand nach Lage zur Mitte)
+				for k = i, j do
+					local p = order[k]
+					if not p.isTarget and not p.side then
+						if left < right or (left == right and p.xpos < cx) then
+							p.side, left = -1, left + 1
+						else
+							p.side, right = 1, right + 1
+						end
+					end
+				end
+				-- Ausgleichen: von der größeren Seite die Plakette, die am nächsten an der
+				-- anderen Seite liegt
+				while left - right > 1 or right - left > 1 do
+					local from = left > right and -1 or 1
+					local best
+					for k = i, j do
+						local p = order[k]
+						if p.side == from and (not best or (from == -1 and p.xpos > best.xpos) or (from == 1 and p.xpos < best.xpos)) then
+							best = p
+						end
+					end
+					best.side = -from
+					if from == -1 then
+						left, right = left - 1, right + 1
+					else
+						left, right = left + 1, right - 1
+					end
+				end
+				local half = xspace / 2 + 1
+				for k = i, j do
+					local p = order[k]
+					p.hgoal = p.side and (cx + p.side * half - p.xpos) or 0
+				end
+			else
+				for k = i, j do
+					order[k].side = nil
+					order[k].hgoal = 0
+				end
+			end
+			i = j + 1
+		end
 	end
 	local EXTRA_INTERVAL = 0.1 -- Platz für Debuffs seltener abfragen als gestapelt wird
 
@@ -1873,6 +1962,32 @@ do
 		end
 		table.sort(order, ByX)
 
+		-- Spalten bestimmen und seitlich dorthin gleiten
+		AssignColumns(order, count, xspace, cfg.columnsAt or 0)
+		for i = 1, count do
+			local p = order[i]
+			local h, goal = p.hoff or 0, p.hgoal or 0
+			local diff = goal - h
+			if abs(diff) < 0.5 then
+				h = goal
+			else
+				h = h + diff * HSPEED
+			end
+			p.hoff = h
+			p.ex = p.xpos + h
+		end
+		-- Für das Stapeln zählt die tatsächliche (verschobene) x-Position
+		local exorder = ExOrder
+		for i = 1, count do
+			exorder[i] = order[i]
+		end
+		for i = #exorder, count + 1, -1 do
+			exorder[i] = nil
+		end
+		table.sort(exorder, ByEx)
+		order = exorder
+		local screenWidth = GetScreenWidth() * UIParent:GetEffectiveScale()
+
 		-- Für jede Plakette den Abstand zur nächsten darunter bestimmen und sanft
 		-- anheben, absenken oder zurücksetzen (Formeln unverändert aus der Aura).
 		-- Ausnahme Ziel: bleibt an seinem Platz über dem Modell, die anderen weichen aus.
@@ -1884,11 +1999,11 @@ do
 			local j, step = i - 1, -1
 			while true do
 				local p2 = order[j]
-				if not p2 or abs(p1.xpos - p2.xpos) >= xspace then
+				if not p2 or abs(p1.ex - p2.ex) >= xspace then
 					if step < 0 then
 						j, step = i + 1, 1
 						p2 = order[j]
-						if not p2 or abs(p1.xpos - p2.xpos) >= xspace then
+						if not p2 or abs(p1.ex - p2.ex) >= xspace then
 							break
 						end
 					else
@@ -1926,12 +2041,33 @@ do
 			end
 			p1.position = new
 
+			-- Seitlich: linke Kante der Plakette ohne Verschiebung merken (Abstand zur
+			-- Ankerposition); mit Verschiebung beide Seiten des Clamp-Rechtecks so setzen,
+			-- dass genau die gewünschte x-Lage auf den Bildschirm passt
+			local left, right = -10, 10
+			local hoff = p1.hoff
+			if hoff == 0 then
+				if p1.wasUnshifted then
+					local l = plate1:GetLeft()
+					if l then
+						p1.kx = l - p1.xpos
+					end
+				end
+				p1.wasUnshifted = true
+			else
+				p1.wasUnshifted = false
+				local w = plate1:GetWidth()
+				local nl = p1.xpos + (p1.kx or -w / 2)
+				left = -(nl + hoff)
+				right = screenWidth - (nl + w + hoff)
+			end
+
 			-- Clamp-Rechteck nur neu setzen, wenn es sich spürbar ändert
 			local bottom = -p1.ypos - new - originpos + plate1:GetHeight()
-			if not p1.bottom or abs(bottom - p1.bottom) > 0.5 then
-				p1.bottom = bottom
+			if not p1.bottom or abs(bottom - p1.bottom) > 0.5 or abs(left - p1.left) > 0.5 or abs(right - p1.right) > 0.5 then
+				p1.bottom, p1.left, p1.right = bottom, left, right
 				plate1:SetClampedToScreen()
-				plate1:SetClampRectInsets(-10, 10, upperborder, bottom)
+				plate1:SetClampRectInsets(left, right, upperborder, bottom)
 			end
 		end
 	end

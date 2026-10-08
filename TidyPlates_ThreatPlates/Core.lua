@@ -811,7 +811,9 @@ function TidyPlatesThreat:OnInitialize()
 				ON = false,
 				speed = 0.7,
 				tallBossFix = true,
-				pinTarget = true -- Ziel bleibt über dem Modell, andere weichen aus
+				pinTarget = true, -- Ziel bleibt über dem Modell, andere weichen aus
+				columns = true, -- große Türme in zwei Spalten nebeneinander
+				columnsAt = 6 -- ab so vielen Plaketten in einem Turm
 			},
 			tankedWidget = {
 				ON = false,
@@ -1427,6 +1429,7 @@ function TidyPlatesThreat:ApplyStacking()
 		speed = p.stacking.speed,
 		tallBossFix = p.stacking.tallBossFix,
 		pinTarget = p.stacking.pinTarget,
+		columnsAt = p.stacking.columns and p.stacking.columnsAt or 0,
 		extraTop = DebuffExtraTop
 	})
 end
