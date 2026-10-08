@@ -846,7 +846,7 @@ local function CreateAuraIconFrame(parent)
 	frame.Glow:SetAllPoints(frame.Border)
 	frame.Glow:SetTexture(AuraGlowArt)
 	-- Ablauf-Anzeige (nur aktiv, wenn das Theme sie einschaltet): abgelaufener Teil
-	-- ausgegraut (entsättigte Kopie des Symbols) und leicht abgedunkelt, goldene Kante
+	-- ausgegraut (entsättigte Kopie des Symbols) und abgedunkelt, goldene Kante
 	local grey = frame:CreateTexture(nil, "BORDER")
 	grey:SetDesaturated(true)
 	grey:SetPoint("TOPLEFT", frame, "TOPLEFT")
@@ -854,14 +854,14 @@ local function CreateAuraIconFrame(parent)
 	grey:Hide()
 	frame.Grey = grey
 	local shade = frame:CreateTexture(nil, "OVERLAY")
-	shade:SetTexture(0, 0, 0, 0.35)
+	shade:SetTexture(0, 0, 0, 0.6)
 	shade:SetPoint("TOPLEFT", frame, "TOPLEFT")
 	shade:SetPoint("TOPRIGHT", frame, "TOPRIGHT")
 	shade:Hide()
 	frame.Shade = shade
 	local edge = frame:CreateTexture(nil, "OVERLAY")
 	edge:SetTexture(1, 0.82, 0.2, 1)
-	edge:SetHeight(1)
+	edge:SetHeight(2)
 	edge:SetPoint("TOPLEFT", shade, "BOTTOMLEFT")
 	edge:SetPoint("TOPRIGHT", shade, "BOTTOMRIGHT")
 	edge:Hide()
