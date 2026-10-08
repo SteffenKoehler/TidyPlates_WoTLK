@@ -28,7 +28,31 @@
 >   and "Performance Throttling") was **removed** in this branch because it
 >   dropped events; the load is reduced by other means instead (see CHANGES.md).
 >
-> The text below is the upstream README of the Hypopheria Remaster.
+> The text below the screenshots is the upstream README of the Hypopheria Remaster.
+
+### Screenshots (Rising-Gods fork)
+
+**Classic look** (profile `Classic`, `/tptpclassic`): flat bar in a rounded frame,
+separate level box, yellow-green line on the target.
+
+| | |
+|---|---|
+| ![Classic look with combo points](docs/images/classic-combo-points.png) | Combo points as a segmented strip under the target's bar, colored by count (1 blue … 5 red). |
+| ![Quest icon](docs/images/classic-quest-icon.png) | Quest icon in front of the name for mobs that are an open kill objective in the quest log. |
+| ![Castbar with interrupt ready](docs/images/classic-kick-ready.png) | Castbar turns cyan while your interrupt is ready (gray on cooldown, locked for uninterruptible casts). |
+
+**Stacking** (`/tptp` → *Erweiterungen* → *Stapeln*): enemy plates move out of each
+other's way, the target stays pinned above its model.
+
+| | |
+|---|---|
+| ![Two columns](docs/images/stacking-two-columns.png) | From 6 plates on (option "Zwei Stapel ab") a tower splits into two columns next to the target. |
+| ![Only engaged enemies](docs/images/stacking-only-engaged.png) | In combat only enemies fighting you or your group are stacked (purple = your aggro); idle mobs (red, left) stay where they are. |
+
+**Plater look** (profile `Plater`, `/tptpplater`): 1 px border, HP as `72.8k (24%)`,
+castbar with spell name and timer, NotPlater target indicators.
+
+![Plater look](docs/images/plater-look.png)
 
 > [!IMPORTANT]
 > The original repository has been abandoned for years. This fork revives the addon with critical bug fixes, performance optimizations, and a fully working configuration interface.
