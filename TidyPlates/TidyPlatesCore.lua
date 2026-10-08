@@ -102,7 +102,7 @@ local OnUpdateHealth, OnUpdateLevel, OnUpdateThreatSituation, OnUpdateRaidIcon, 
 local OnMouseoverNameplate, OnRequestWidgetUpdate, OnRequestDelegateUpdate
 local OnShowCastbar, OnHideCastbar, OnValueChangedCastbar
 local PollPlateState, ProcessHealthUpdate, OnTargetChangedNameplate, LearnGUIDs
-local CorrelateDamage, AssignFromMarkers
+local CorrelateDamage, AssignFromMarkers, NameNeedsGUID
 local StartTargetCastFallback, StopTargetCastFallback
 
 -- Spell Casting
@@ -568,31 +568,7 @@ do
 	local CORRELATE_WINDOW = 0.35
 	local MAX_PENDING = 200
 
-	local function AddDamageRecord(list, key, keyField, name, amount, now)
-		-- Mehrere Treffer im selben Frame zusammenfassen
-		for i = #list, 1, -1 do
-			local r = list[i]
-			if r.t ~= now then
-				break
-			end
-			if r[keyField] == key then
-				r.amount = r.amount + amount
-				return
-			end
-		end
-		if #list >= MAX_PENDING then
-			return
-		end
-		list[#list + 1] = {[keyField] = key, name = name, amount = amount, t = now}
-	end
-
-	local function RecordCombatDamage(guid, name, amount)
-		AddDamageRecord(PendingDamage, guid, "guid", name, amount, GetTime())
-	end
-
-	local function RecordPlateDamage(plate, amount)
-		AddDamageRecord(PlateDamage, plate, "plate", nil, amount, GetTime())
-	end
+	local DamageDirty = false -- neue Einträge seit dem letzten Abgleich
 
 	local function PruneDamage(list, now)
 		local j = 0
@@ -608,18 +584,72 @@ do
 		end
 	end
 
+	local function AddDamageRecord(list, key, keyField, name, amount, now)
+		-- Mehrere Treffer im selben Frame zusammenfassen
+		for i = #list, 1, -1 do
+			local r = list[i]
+			if r.t ~= now then
+				break
+			end
+			if r[keyField] == key then
+				r.amount = r.amount + amount
+				r.new = true
+				DamageDirty = true
+				return
+			end
+		end
+		if #list >= MAX_PENDING then
+			PruneDamage(list, now) -- alte Einträge zuerst verwerfen
+			if #list >= MAX_PENDING then
+				return
+			end
+		end
+		list[#list + 1] = {[keyField] = key, name = name, amount = amount, t = now, new = true}
+		DamageDirty = true
+	end
+
+	local function RecordCombatDamage(guid, name, amount)
+		AddDamageRecord(PendingDamage, guid, "guid", name, amount, GetTime())
+	end
+
+	local function RecordPlateDamage(plate, amount)
+		AddDamageRecord(PlateDamage, plate, "plate", nil, amount, GetTime())
+	end
+
+	-- Läuft nur, wenn seit dem letzten Frame neue Einträge kamen, und prüft nur Paare,
+	-- an denen ein neuer Eintrag beteiligt ist (vorher: jeden Frame alle gegen alle).
 	local abs = math.abs
 	function CorrelateDamage()
-		if #PendingDamage == 0 and #PlateDamage == 0 then
+		if not DamageDirty then
 			return
 		end
+		DamageDirty = false
 		local now = GetTime()
 		PruneDamage(PendingDamage, now)
 		PruneDamage(PlateDamage, now)
 
+		-- Neue Plaketten-Einträge: passende Kampflog-Einträge erneut prüfen
+		for k = 1, #PlateDamage do
+			local d = PlateDamage[k]
+			if d.new then
+				d.new = nil
+				local du = d.plate.extended.unit
+				if not d.done and not du.guid then
+					for i = 1, #PendingDamage do
+						local e = PendingDamage[i]
+						if e.amount == d.amount and e.name == du.name then
+							e.new = true
+						end
+					end
+				end
+			end
+		end
+
 		for i = 1, #PendingDamage do
 			local e = PendingDamage[i]
-			if not e.done and not GUID[e.guid] then
+			local isNew = e.new
+			e.new = nil
+			if isNew and not e.done and not GUID[e.guid] then
 				local match, count = nil, 0
 				for k = 1, #PlateDamage do
 					local d = PlateDamage[k]
@@ -723,6 +753,24 @@ do
 			SPELL_DAMAGE = true, SPELL_PERIODIC_DAMAGE = true, RANGE_DAMAGE = true,
 			DAMAGE_SHIELD = true, DAMAGE_SPLIT = true
 		}
+		-- Namen sichtbarer Plaketten ohne GUID, höchstens einmal pro Frame neu erfasst.
+		-- Schaden an Gegnern, die gar nicht zuzuordnen sind, wird so nicht gespeichert.
+		local UnassignedNames, namesStamp = {}, nil
+		function NameNeedsGUID(name)
+			local now = GetTime()
+			if namesStamp ~= now then
+				namesStamp = now
+				wipe(UnassignedNames)
+				for plate in pairs(PlatesVisible) do
+					local u = plate.extended.unit
+					if not u.guid and u.name then
+						UnassignedNames[u.name] = true
+					end
+				end
+			end
+			return UnassignedNames[name]
+		end
+
 		local DamageWatcher = CreateFrame("Frame")
 		DamageWatcher:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 		DamageWatcher:SetScript("OnEvent", function(self, event, ...)
@@ -758,7 +806,7 @@ do
 			if overkill and overkill > 0 then
 				amount = amount - overkill
 			end
-			if amount > 0 then
+			if amount > 0 and NameNeedsGUID(destName) then
 				RecordCombatDamage(destGUID, destName, amount)
 			end
 		end)
@@ -1900,12 +1948,19 @@ do
 	local highlightRegion
 	local POLL_INTERVAL = 0.1
 	local NextPoll = 0
+	local LastPoll = 0
+	local POLL_MIN_GAP = 0.05
 	local GUID_LEARN_INTERVAL = 0.5
 	local NextGUIDLearn = 0
 
 	-- Erzwingt die Zustandsabfrage im nächsten Frame (z.B. bei Threat-Events)
+	-- Höchstens 20x pro Sekunde: Das Event kommt im Raid für jedes Mitglied und
+	-- hat vorher die 10-Hz-Drossel praktisch auf "jeden Frame" gesetzt.
 	function TidyPlates:RequestStatePoll()
-		NextPoll = 0
+		local soon = LastPoll + POLL_MIN_GAP
+		if NextPoll > soon then
+			NextPoll = soon
+		end
 	end
 
 	function OnUpdate(self)
@@ -1915,6 +1970,7 @@ do
 		local now = GetTime()
 		if now >= NextPoll then
 			NextPoll = now + POLL_INTERVAL
+			LastPoll = now
 			for plate in pairs(PlatesVisible) do
 				if plate.extended:IsShown() then
 					PollPlateState(plate)

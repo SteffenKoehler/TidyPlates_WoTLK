@@ -29,6 +29,7 @@ do
 		-- If no more frames to watch, unregister the OnUpdate script
 		if framecount == 0 then
 			Watcherframe:SetScript("OnUpdate", nil)
+			WatcherframeActive = false -- sonst startet der Watcher nach der ersten Pause nie wieder
 		end
 	end
 
@@ -55,6 +56,19 @@ do
 	local select = select
 	local timeToUpdate = 0
 
+	-- Abgelaufene Aura: nur die Plakette des Icons neu bewerten statt aller Plaketten
+	-- (Icon -> Aura-Widget -> extended -> Plakette)
+	local function RequestDelegateUpdateFor(frame)
+		local widget = frame:GetParent()
+		local extended = widget and widget:GetParent()
+		local plate = extended and extended.parentPlate
+		if plate and TidyPlates.RequestDelegateUpdateForPlate then
+			TidyPlates:RequestDelegateUpdateForPlate(plate)
+		else
+			TidyPlates:RequestDelegateUpdate()
+		end
+	end
+
 	local function CheckFramelist(self)
 		local curTime = GetTime()
 		if curTime < timeToUpdate then
@@ -69,7 +83,7 @@ do
 				-- If active...
 				frame:Hide()
 				Framelist[frame] = nil
-				TidyPlates:RequestDelegateUpdate() -- Request an Update on Delegate functions, so we can catch when auras fall off
+				RequestDelegateUpdateFor(frame) -- Request an Update on Delegate functions, so we can catch when auras fall off
 			else
 				-- Update the frame
 				if frame.Poll then

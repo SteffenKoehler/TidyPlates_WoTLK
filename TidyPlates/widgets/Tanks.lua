@@ -62,13 +62,24 @@ local function RebuildTrackedTargets()
 	TrackedUnitTargets, NewTrackedUnitTargets = NewTrackedUnitTargets, TrackedUnitTargets
 end
 
--- UNIT_TARGET feuert im Raid sehr oft: höchstens einmal pro Frame neu aufbauen
+-- UNIT_TARGET/UNIT_THREAT_SITUATION_UPDATE feuern im Raid praktisch jeden Frame:
+-- höchstens 4x pro Sekunde neu aufbauen. Eigenes Ziel/Fokus sofort (nächster Frame).
+local TARGET_REBUILD_INTERVAL = 0.25
+local nextTargetRebuild = 0
 local function TargetWatcherOnUpdate(self)
+	local now = GetTime()
+	if now < nextTargetRebuild then
+		return
+	end
+	nextTargetRebuild = now + TARGET_REBUILD_INTERVAL
 	self:SetScript("OnUpdate", nil)
 	RebuildTrackedTargets()
 end
 
-local function TargetWatcherEvents(self)
+local function TargetWatcherEvents(self, event)
+	if event == "PLAYER_TARGET_CHANGED" or event == "PLAYER_FOCUS_CHANGED" then
+		nextTargetRebuild = 0
+	end
 	if not TargetsDirty then
 		TargetsDirty = true
 		self:SetScript("OnUpdate", TargetWatcherOnUpdate)
@@ -80,9 +91,11 @@ end
 ---------------
 local TankNames = {}
 local TankWatcher
+local PlayerName
 
 local function IsTankedByAnotherTank(unit)
 	local targetOf
+	PlayerName = PlayerName or UnitName("player")
 	if unit.guid then
 		if unit.isTarget then
 			targetOf = UnitName("targettarget") -- Nameplate is a target
@@ -93,7 +106,7 @@ local function IsTankedByAnotherTank(unit)
 		end
 
 		-- "Anderer" Tank: man selbst zählt nicht (eigene Aggro zeigt die Bedrohungsfarbe)
-		if targetOf and TankNames[targetOf] and targetOf ~= UnitName("player") then
+		if targetOf and TankNames[targetOf] and targetOf ~= PlayerName then
 			return true
 		end
 	end
@@ -136,6 +149,19 @@ local function HasTankAura(unitid)
 	return false
 end
 
+-- Ergebnis der Aura-Prüfung pro Einheit merken; neu geprüft wird nur eine Einheit,
+-- deren Auren sich geändert haben (vorher: alle 25 Mitglieder bei jeder Änderung)
+local AuraTankCache, AuraDirtyUnits = {}, {}
+local function UnitHasTankAura(unitid)
+	local v = AuraTankCache[unitid]
+	if v == nil or AuraDirtyUnits[unitid] then
+		v = HasTankAura(unitid)
+		AuraTankCache[unitid] = v
+		AuraDirtyUnits[unitid] = nil
+	end
+	return v
+end
+
 local OldTankNames = {}
 local function TankWatcherEvents()
 	OldTankNames, TankNames = TankNames, OldTankNames
@@ -147,7 +173,7 @@ local function TankWatcherEvents()
 			local raidid = "raid" .. index
 			local name = UnitName(raidid)
 			if name and (GetPartyAssignment("MAINTANK", raidid) or GetPartyAssignment("MAINASSIST", raidid)
-				or IsTankUnit(raidid) or HasTankAura(raidid)) then
+				or IsTankUnit(raidid) or UnitHasTankAura(raidid)) then
 				TankNames[name] = true
 			end
 		end
@@ -156,7 +182,7 @@ local function TankWatcherEvents()
 		for index = 1, GetNumPartyMembers() do
 			local partyid = "party" .. index
 			local name = UnitName(partyid)
-			if name and (IsTankUnit(partyid) or HasTankAura(partyid)) then
+			if name and (IsTankUnit(partyid) or UnitHasTankAura(partyid)) then
 				TankNames[name] = true
 			end
 		end
@@ -202,10 +228,13 @@ end
 local function TankWatcherOnEvent(self, event, unitid)
 	if event == "UNIT_AURA" then
 		if unitid and (unitid:find("^raid%d") or unitid:find("^party%d")) then
+			AuraDirtyUnits[unitid] = true
 			auraDirty = true
 		end
 		return
 	end
+	-- Gruppe/Rollen geändert: Einheiten-IDs können jetzt andere Spieler sein
+	wipe(AuraTankCache)
 	TankWatcherEvents()
 end
 

@@ -173,7 +173,10 @@ end
 local newTable = TidyPlatesUtility.NewTable
 local delTable = TidyPlatesUtility.DelTable
 
-local Aura_List = setmetatable({}, weaktable) -- Two Dimensional
+-- Kein schwacher Table: Die Unterlisten hängen nur hier und würden sonst vom
+-- Garbage Collector weggeräumt (Debuffs auf Nicht-Zielen verschwanden).
+-- Aufgeräumt wird über CleanAuraLists und UNIT_DIED.
+local Aura_List = {} -- Two Dimensional
 local Aura_Spellid = {}
 local Aura_Expiration = {}
 local Aura_Stacks = {}
@@ -203,7 +206,7 @@ end
 local function GetAuraInstance(guid, aura_id)
 	if guid and aura_id then
 		local aura_instance_id = guid .. aura_id
-		local spellid, expiration, stacks, caster, duration, texture, auratype
+		local spellid, expiration, stacks, caster, duration, texture, auratype, auratarget
 		spellid = Aura_Spellid[aura_instance_id]
 		expiration = Aura_Expiration[aura_instance_id]
 		stacks = Aura_Stacks[aura_instance_id]
@@ -260,10 +263,10 @@ end
 local function CleanAuraLists()
 	local currentTime = GetTime()
 	for guid, instance_list in pairs(Aura_List) do
-		local auracount = 0
+		local auracount = 0 -- verbleibende (nicht abgelaufene) Auren
 		for aura_id, aura_instance_id in pairs(instance_list) do
 			local expiration = Aura_Expiration[aura_instance_id]
-			if expiration and expiration < currentTime then
+			if not expiration or expiration < currentTime then
 				Aura_List[guid][aura_id] = nil
 				Aura_Spellid[aura_instance_id] = nil
 				Aura_Expiration[aura_instance_id] = nil
@@ -273,12 +276,24 @@ local function CleanAuraLists()
 				Aura_Texture[aura_instance_id] = nil
 				Aura_Type[aura_instance_id] = nil
 				Aura_Target[aura_instance_id] = nil
+			else
 				auracount = auracount + 1
 			end
 		end
+		-- Vorher genau verkehrt herum: Listen mit laufenden Auren wurden gelöscht,
+		-- Listen mit nur abgelaufenen blieben ewig liegen
 		if auracount == 0 then
-			Aura_List[guid] = delTable(Aura_List[guid])
+			Aura_List[guid] = nil
+			delTable(instance_list)
 		end
+	end
+end
+
+local function RemoveAuraList(guid)
+	if guid and Aura_List[guid] then
+		WipeAuraList(guid)
+		delTable(Aura_List[guid])
+		Aura_List[guid] = nil
 	end
 end
 
@@ -446,6 +461,51 @@ local GeneralEvents = {
 	["ACTIVE_TALENT_GROUP_CHANGED"] = UpdatePlayerDispelTypes
 }
 
+-- Gebündelte Verarbeitung: Mehrere Debuff-Ereignisse auf denselben Gegner im selben
+-- Frame (Raid: 10-30 pro Sekunde) führen nur zu einem Neu-Scan und einem Neuzeichnen.
+local RAIDTARGET_MASK = 0x0FF00000
+local PendingGUID, PendingIcon, PendingName = {}, {}, {}
+local CLEAN_INTERVAL = 30
+local nextClean = 0
+
+local function ProcessPending(self)
+	self:SetScript("OnUpdate", nil)
+	for guid in pairs(PendingGUID) do
+		local raidicon, name = PendingIcon[guid], PendingName[guid]
+		PendingGUID[guid], PendingIcon[guid], PendingName[guid] = nil, nil, nil
+
+		local widget = FindWidgetByGUID(guid)
+			or (name and FindWidgetByName(name))
+			or (raidicon and FindWidgetByIcon(raidicon))
+		if widget then
+			-- Genauere Daten über die API, falls jemand den Gegner im Ziel hat
+			-- (aktualisiert das Widget dabei selbst)
+			local updatedViaAPI = UpdateAuraByLookup(guid)
+			if not (updatedViaAPI and WidgetGUID[guid]) then
+				UpdateWidget(widget)
+			end
+		end
+	end
+	-- Lange Kämpfe ohne PLAYER_REGEN_ENABLED: abgelaufene Einträge zwischendurch freigeben
+	local now = GetTime()
+	if now >= nextClean then
+		nextClean = now + CLEAN_INTERVAL
+		CleanAuraLists()
+	end
+end
+
+local function QueueGUID(guid, raidicon, name)
+	if not guid then
+		return
+	end
+	if not next(PendingGUID) then
+		AuraMonitor:SetScript("OnUpdate", ProcessPending)
+	end
+	PendingGUID[guid] = true
+	PendingIcon[guid] = raidicon or PendingIcon[guid]
+	PendingName[guid] = name or PendingName[guid]
+end
+
 local function GetCombatEventResults(...)
 	local timestamp, combatevent, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, spellid, spellName, spellSchool, auraType, stackCount = ...
 	return timestamp, combatevent, sourceGUID, destGUID, destName, destFlags, destFlags, auraType, spellid, stackCount
@@ -466,6 +526,11 @@ local function CombatEventHandler(frame, event, ...)
 	local _, subevent = ...
 	local CombatLogUpdateFunction = CombatLogEvents[subevent]
 	if not CombatLogUpdateFunction then
+		if subevent == "UNIT_DIED" then
+			-- Auren toter Gegner sofort freigeben statt bis Kampfende zu horten
+			local destGUID = select(6, ...)
+			RemoveAuraList(destGUID)
+		end
 		return
 	end
 
@@ -474,26 +539,22 @@ local function CombatEventHandler(frame, event, ...)
 
 	-- Evaluate only for enemy units, for now
 	if (bit.band(destFlags, COMBATLOG_OBJECT_REACTION_FRIENDLY) == 0) then -- FILTER: ENEMY UNIT
-		do
-			-- Evaluate only for debuffs
-			if auraType == "DEBUFF" then -- FILTER: DEBUFF
-				-- Update Auras via API/UnitID Search (aktualisiert das Widget selbst)
-				local updatedViaAPI = UpdateAuraByLookup(destGUID)
-				if not updatedViaAPI then
-					-- Update Auras via Combat Log
-					CombatLogUpdateFunction(timestamp, sourceGUID, destGUID, destName, spellid, stackCount)
-				end
-				-- To Do: Need to write something to detect when a change was made to the destID
-				-- Return values on functions?
+		-- Evaluate only for debuffs
+		if auraType == "DEBUFF" then -- FILTER: DEBUFF
+			-- Daten aus dem Kampflog sofort merken (billig). Ein Neu-Scan über die API
+			-- und das Neuzeichnen passieren gebündelt einmal pro Gegner und Frame, und
+			-- nur, wenn es für den Gegner überhaupt eine Plakette gibt.
+			CombatLogUpdateFunction(timestamp, sourceGUID, destGUID, destName, spellid, stackCount)
 
-				local name, raidicon
-				-- Cache Unit Name for alternative lookup strategy
-				if bit.band(destFlags, COMBATLOG_OBJECT_CONTROL_PLAYER) > 0 then
-					local rawName = strsplit("-", destName) -- Strip server name from players
-					ByName[rawName] = destGUID
-					name = rawName
-				end
-				-- Cache Raid Icon Data for alternative lookup strategy
+			local name, raidicon
+			-- Cache Unit Name for alternative lookup strategy
+			if bit.band(destFlags, COMBATLOG_OBJECT_CONTROL_PLAYER) > 0 then
+				local rawName = strsplit("-", destName) -- Strip server name from players
+				ByName[rawName] = destGUID
+				name = rawName
+			end
+			-- Cache Raid Icon Data for alternative lookup strategy
+			if bit.band(destRaidFlag, RAIDTARGET_MASK) > 0 then
 				for iconname, bitmask in pairs(RaidIconBit) do
 					if bit.band(destRaidFlag, bitmask) > 0 then
 						ByRaidIcon[iconname] = destGUID
@@ -501,12 +562,9 @@ local function CombatEventHandler(frame, event, ...)
 						break
 					end
 				end
-
-				-- Wurde das Widget schon über die API per GUID aktualisiert, nicht doppelt
-				if not (updatedViaAPI and WidgetGUID[destGUID]) then
-					CallForWidgetUpdate(destGUID, raidicon, name)
-				end
 			end
+
+			QueueGUID(destGUID, raidicon, name)
 		end
 	end
 end
@@ -552,11 +610,14 @@ local function debuffSort(a, b)
 end
 
 local DebuffCache = {}
+-- Wiederverwendete Aura-Tabellen (vorher bei jedem Neuzeichnen neu angelegt)
+local AuraPool = {}
 
 local function UpdateIconGrid(frame, guid)
 	local AuraIconFrames = frame.AuraIconFrames
 	local AurasOnUnit = GetAuraList(guid)
 	local AuraSlotIndex = 1
+	local maxDebuffs = GetMaxDebuffs()
 
 	wipe(DebuffCache)
 	local debuffCount = 0
@@ -564,8 +625,13 @@ local function UpdateIconGrid(frame, guid)
 	-- Cache displayable debuffs
 	if AurasOnUnit then
 		frame:Show()
+		local now = GetTime()
 		for instanceid in pairs(AurasOnUnit) do
-			local aura = {}
+			local aura = AuraPool[debuffCount + 1]
+			if not aura then
+				aura = {}
+				AuraPool[debuffCount + 1] = aura
+			end
 			aura.spellid, aura.expiration, aura.stacks, aura.caster, aura.duration, aura.texture, aura.type, aura.target =
 				GetAuraInstance(guid, instanceid)
 
@@ -578,7 +644,7 @@ local function UpdateIconGrid(frame, guid)
 				aura.priority = priority or 10
 
 				-- Get Order/Priority
-				if show and aura.expiration > GetTime() then
+				if show and aura.expiration and aura.expiration > now then
 					debuffCount = debuffCount + 1
 					DebuffCache[debuffCount] = aura
 				end
@@ -595,14 +661,14 @@ local function UpdateIconGrid(frame, guid)
 				UpdateIcon(AuraIconFrames[AuraSlotIndex], cachedaura.texture, cachedaura.expiration, cachedaura.stacks)
 				AuraSlotIndex = AuraSlotIndex + 1
 			end
-			if AuraSlotIndex > GetMaxDebuffs() then
+			if AuraSlotIndex > maxDebuffs then
 				break
 			end
 		end
 	end
 
 	-- Clear Extra Slots
-	for index = AuraSlotIndex, GetMaxDebuffs() do
+	for index = AuraSlotIndex, maxDebuffs do
 		UpdateIcon(AuraIconFrames[index])
 	end
 
@@ -709,7 +775,9 @@ end
 
 local function Disable()
 	AuraMonitor:SetScript("OnEvent", nil)
+	AuraMonitor:SetScript("OnUpdate", nil)
 	AuraMonitor:UnregisterAllEvents()
+	wipe(PendingGUID)
 	--TidyPlatesUtility:DisableGroupWatcher()
 end
 
@@ -791,7 +859,7 @@ local function CreateAuraWidget(parent)
 		frame:_Hide()
 	end
 	frame:SetScript("OnHide", function()
-		for index = 1, 4 do
+		for index = 1, #AuraIconFrames do
 			PolledHideIn(AuraIconFrames[index], 0)
 		end
 	end)
