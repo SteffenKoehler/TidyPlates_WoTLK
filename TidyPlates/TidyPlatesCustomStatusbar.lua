@@ -8,8 +8,15 @@ local CreateFrame = CreateFrame
 local barFrame = CreateFrame("Frame")
 local barPrototype_SetScript = barFrame.SetScript
 
+-- Anker, Hintergrund und Ausrichtung ändern sich nur bei Layout-Änderungen
+-- (Orientierung/Füllart/Drehung) - nicht bei jedem neuen Wert. layoutDirty merkt
+-- sich das; SetValue setzt dann nur noch Breite und Texturkoordinaten des Balkens.
 local function barPrototype_Update(self, sizeChanged, width, height)
 	local progress = (self.VALUE - self.MINVALUE) / (self.MAXVALUE - self.MINVALUE)
+	if not sizeChanged and not self.layoutDirty and progress == self.lastProgress then
+		return
+	end
+	self.lastProgress = progress
 
 	local align1, align2
 	local TLx, TLy, BLx, BLy, TRx, TRy, BRx, BRy
@@ -59,7 +66,8 @@ local function barPrototype_Update(self, sizeChanged, width, height)
 		BRx_, BRy_ = BRx * progress, BRy
 	end
 
-	if not sizeChanged then
+	if not sizeChanged and self.layoutDirty then
+		self.layoutDirty = false
 		self.bg:ClearAllPoints()
 		self.bg:SetAllPoints()
 		self.bg:SetTexCoord(TLx, TLy, BLx, BLy, TRx, TRy, BRx, BRy)
@@ -67,8 +75,8 @@ local function barPrototype_Update(self, sizeChanged, width, height)
 		self.fg:ClearAllPoints()
 		self.fg:SetPoint(align1)
 		self.fg:SetPoint(align2)
-		self.fg:SetTexCoord(TLx_, TLy_, BLx_, BLy_, TRx_, TRy_, BRx_, BRy_)
 	end
+	self.fg:SetTexCoord(TLx_, TLy_, BLx_, BLy_, TRx_, TRy_, BRx_, BRy_)
 
 	if xprogress then
 		self.fg:SetWidth(xprogress > 0 and xprogress or 0.1)
@@ -132,6 +140,7 @@ local barPrototype = setmetatable({
 	SetOrientation = function(self, orientation)
 		if orientation == "HORIZONTAL" or orientation == "VERTICAL" then
 			self.ORIENTATION = orientation
+			self.layoutDirty = true
 			barPrototype_Update(self)
 		end
 	end,
@@ -142,6 +151,7 @@ local barPrototype = setmetatable({
 
 	SetRotatesTexture = function(self, rotate)
 		self.ROTATE = (rotate ~= nil and rotate ~= false)
+		self.layoutDirty = true
 		barPrototype_Update(self)
 	end,
 
@@ -151,6 +161,7 @@ local barPrototype = setmetatable({
 
 	SetReverseFill = function(self, reverse)
 		self.REVERSE = (reverse == true)
+		self.layoutDirty = true
 		barPrototype_Update(self)
 	end,
 
@@ -160,6 +171,7 @@ local barPrototype = setmetatable({
 
 	SetFillStyle = function(self, style)
 		assert(type(style) == "string" or style == nil, "Usage: StatusBar:SetFillStyle(string)")
+		self.layoutDirty = true
 		if style and style:lower() == "center" then
 			self.FILLSTYLE = "CENTER"
 			barPrototype_Update(self)

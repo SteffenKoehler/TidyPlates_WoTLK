@@ -107,22 +107,35 @@ local function GetInterruptNames()
 end
 
 -- true = eine eigene Unterbrechung ist (spätestens bis Zauberende) bereit,
--- false = alle auf Abklingzeit/gerade nicht nutzbar, nil = Klasse hat keine
+-- false = alle auf Abklingzeit/gerade nicht nutzbar, nil = Klasse hat keine.
+-- Die Abklingzeiten werden einmal pro Frame gelesen und für alle zaubernden
+-- Plaketten verwendet (vorher pro Plakette).
+local irStamp, irKnown, irMinCd
 local function InterruptReady(castRemaining)
-	local known, now = false, GetTime()
-	for _, name in ipairs(GetInterruptNames()) do
-		local start, duration = GetSpellCooldown(name)
-		if start then
-			known = true
-			local usable, noMana = IsUsableSpell(name)
-			-- Globale Abklingzeit (<= 1.5 s) zählt nicht
-			local cd = (start > 0 and duration > 1.5) and (start + duration - now) or 0
-			if (usable or noMana) and cd <= (castRemaining or 0) then
-				return true
+	local now = GetTime()
+	if irStamp ~= now then
+		irStamp, irKnown, irMinCd = now, false, nil
+		local names = GetInterruptNames()
+		for i = 1, #names do
+			local name = names[i]
+			local start, duration = GetSpellCooldown(name)
+			if start then
+				irKnown = true
+				local usable, noMana = IsUsableSpell(name)
+				if usable or noMana then
+					-- Globale Abklingzeit (<= 1.5 s) zählt nicht
+					local cd = (start > 0 and duration > 1.5) and (start + duration - now) or 0
+					if not irMinCd or cd < irMinCd then
+						irMinCd = cd
+					end
+				end
 			end
 		end
 	end
-	if known then
+	if irMinCd and irMinCd <= (castRemaining or 0) then
+		return true
+	end
+	if irKnown then
 		return false
 	end
 end
@@ -133,7 +146,7 @@ function ThreatPlatesWidgets.PlaterCastColor(unit, castRemaining)
 	local c
 	if unit.spellIsShielded then
 		c = pc.colorShield
-	elseif pc.kickCooldown and InterruptReady(castRemaining) == false then
+	elseif pc.kickCooldown and InterruptReady(castRemaining or unit.castRemaining) == false then
 		c = pc.colorCooldown
 	else
 		c = pc.colorReady
@@ -169,8 +182,8 @@ local function CastTimerOnUpdate(self)
 	local bar = self.bar
 	local value = bar:GetValue()
 	local minv, maxv = bar:GetMinMaxValues()
-	if maxv ~= self.lastMax then -- neuer Zauber
-		self.lastMax, self.lastValue, self.channel = maxv, nil, nil
+	if maxv ~= self.lastMax then -- neuer Zauber: Farbe/Kick sofort neu bewerten
+		self.lastMax, self.lastValue, self.channel, self.nextState = maxv, nil, nil, nil
 	end
 	local last = self.lastValue
 	if last and value ~= last then
@@ -181,7 +194,12 @@ local function CastTimerOnUpdate(self)
 	if remaining < 0 then
 		remaining = 0
 	end
-	self.text:SetFormattedText("%.1f", remaining)
+	-- Text nur neu setzen, wenn sich die angezeigte Zehntelsekunde ändert
+	local tenth = floor(remaining * 10 + 0.5)
+	if tenth ~= self.lastTenth then
+		self.lastTenth = tenth
+		self.text:SetFormattedText("%.1f", tenth / 10)
+	end
 	-- Farbe/Schloss 10x pro Sekunde nachführen (Abklingzeit der eigenen Unterbrechung)
 	local now = GetTime()
 	if not self.nextState or now >= self.nextState then
@@ -194,7 +212,7 @@ end
 -- (Ebene 127) würde er sonst über der Zauberleiste gezeichnet. SetAlpha reicht nicht,
 -- weil SetTextColor (bei jeder Farbaktualisierung) die Transparenz zurücksetzt.
 local function OnCastShow(self)
-	self.lastMax, self.lastValue, self.channel, self.nextState = nil, nil, nil, nil
+	self.lastMax, self.lastValue, self.channel, self.nextState, self.lastTenth = nil, nil, nil, nil, nil
 	if self.Place then
 		self:Place()
 	end
@@ -473,6 +491,19 @@ local TOOLTIP_EDGE = "Interface\\Tooltips\\UI-Tooltip-Border"
 local SIMPLE_GAP = 1 -- Abstand zwischen Rahmen und Stufen-Kästchen (außen)
 local SIMPLE_BOX_RATIO = 1.45 -- Breite des Kästchens relativ zu seiner Höhe
 
+-- Setzt einen einzelnen Ankerpunkt nur, wenn er abweicht. true = neu gesetzt.
+local function Anchor(obj, point, rel, relPoint, x, y)
+	if obj:GetNumPoints() == 1 then
+		local p, r, rp, ox, oy = obj:GetPoint(1)
+		if p == point and r == rel and rp == relPoint and ox == x and oy == y then
+			return false
+		end
+	end
+	obj:ClearAllPoints()
+	obj:SetPoint(point, rel, relPoint, x, y)
+	return true
+end
+
 -- Rahmenstärke 1-4 -> Kantengröße der Tooltip-Grafik; der Balken liegt um "inset" eingerückt
 local function SimpleEdge(lineSize)
 	local edge = 6 + 2 * (lineSize or 2)
@@ -561,19 +592,18 @@ local function PlaceSimpleCast(self)
 	local plate = self.plate
 	local combo = plate.widgets and plate.widgets.ComboPoints
 	local gap = (combo and combo:IsShown()) and 6 or 2
-	bar:ClearAllPoints()
-	bar:SetPoint("TOP", plate.bars.healthbar, "BOTTOM", 0, -(inset + gap + inset))
-	local icon = plate.visual.spellicon
-	icon:ClearAllPoints()
-	icon:SetPoint("RIGHT", bar, "LEFT", -(inset + 2), 0)
+	Anchor(bar, "TOP", plate.bars.healthbar, "BOTTOM", 0, -(inset + gap + inset))
+	Anchor(plate.visual.spellicon, "RIGHT", bar, "LEFT", -(inset + 2), 0)
 	local name = plate.visual.spelltext
-	name:ClearAllPoints()
-	name:SetPoint("LEFT", bar, "LEFT", 3, 0)
+	Anchor(name, "LEFT", bar, "LEFT", 3, 0)
 	name:SetJustifyH("LEFT")
-	self.text:ClearAllPoints()
-	self.text:SetPoint("RIGHT", bar, "RIGHT", -3, 0)
+	Anchor(self.text, "RIGHT", bar, "RIGHT", -3, 0)
+	-- Kick-Zustand beibehalten (läuft bei jeder Aktualisierung der Plakette; vorher wurde
+	-- der Rahmen hier jedes Mal dunkel und erst 0,1 s später wieder hell). Ein neuer
+	-- Zauber wird im ersten Frame der Zauberleiste neu bewertet.
+	local ready = self.kickReady
 	self.kickReady = nil
-	self:SetKickReady(false)
+	self:SetKickReady(ready or false)
 end
 
 -- Rahmen der Zauberleiste hell, solange der Zauber unterbrechbar und dein Kick bereit ist
@@ -623,21 +653,31 @@ local function UpdateSimpleLook(plate, unit, look, cfg)
 
 	-- Stufe mittig im Kästchen (Schwierigkeitsfarbe vom Kern), Elite mit "+";
 	-- Totenkopf (Boss) an derselben Stelle
+	-- Läuft bei Kontext- und Normal-Update; Schrift und Lage nur setzen, wenn sie
+	-- abweichen (der Kern setzt sie bei Stilwechseln zurück)
 	local level = plate.visual.level
-	level:ClearAllPoints()
-	level:SetPoint("CENTER", box, "CENTER", 0.5, 0)
-	level:SetJustifyH("CENTER")
+	if Anchor(level, "CENTER", box, "CENTER", 0.5, 0) then
+		level:SetJustifyH("CENTER")
+	end
 	local art = TidyPlates.BlizzardArt
-	local font = art and art.levelFont and art.levelFont[1]
-	level:SetFont(font or STANDARD_TEXT_FONT, math.max(9, h * 1.05) * (cfg.levelSize or 1), "OUTLINE")
+	local font = (art and art.levelFont and art.levelFont[1]) or STANDARD_TEXT_FONT
+	local size = math.max(9, h * 1.05) * (cfg.levelSize or 1)
+	local curFont, curSize, curFlags = level:GetFont()
+	if curFont ~= font or not curSize or math.abs(curSize - size) > 0.5 or curFlags ~= "OUTLINE" then
+		level:SetFont(font, size, "OUTLINE")
+	end
 	if unit.isElite and unit.level then
-		level:SetText(unit.level .. "+")
+		local text = unit.level .. "+"
+		if level:GetText() ~= text then
+			level:SetText(text)
+		end
 	end
 	local skull = plate.visual.skullicon
-	skull:ClearAllPoints()
-	skull:SetPoint("CENTER", box, "CENTER", 0, 0)
-	skull:SetWidth(h)
-	skull:SetHeight(h)
+	Anchor(skull, "CENTER", box, "CENTER", 0, 0)
+	if skull:GetWidth() ~= h or skull:GetHeight() ~= h then
+		skull:SetWidth(h)
+		skull:SetHeight(h)
+	end
 end
 
 function ThreatPlatesWidgets.CreateClassicLook(plate)
@@ -1055,7 +1095,13 @@ local function ApplyLayout(plate)
 		w.WidgetDebuff:SetPoint(db.debuffWidget.anchor, plate, db.debuffWidget.x, db.debuffWidget.y)
 	end
 	if w.ComboPoints then
-		w.ComboPoints:SetPoint("CENTER", plate, (db.comboWidget.x), db.comboWidget.y)
+		-- Classic (schlicht): Leiste hängt am Balken; ein zusätzlicher CENTER-Anker
+		-- würde sie verzerren
+		if db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD" then
+			ThreatPlatesWidgets.PlaceClassicCombo(w.ComboPoints, plate, db)
+		else
+			w.ComboPoints:SetPoint("CENTER", plate, (db.comboWidget.x), db.comboWidget.y)
+		end
 	end
 	if w.ThreatLineWidget then
 		w.ThreatLineWidget:SetPoint("CENTER", plate, (db.threatWidget.x), db.threatWidget.y)

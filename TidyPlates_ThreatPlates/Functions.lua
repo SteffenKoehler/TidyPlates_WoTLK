@@ -253,7 +253,31 @@ do
 		end
 	end
 
-	TidyPlatesThreat.SetCustomText = SetCustomText
+	-- Der Text hängt nur von Lebenspunkten und Optionen ab. Er wird pro Plakette gemerkt
+	-- und nur bei geänderten Lebenspunkten neu gebaut (vorher bei jedem Delegate-Update
+	-- 3-5 neue Strings). Optionen/Profil ändern -> ForceUpdate -> Cache leeren.
+	local TextMemo = setmetatable({}, {__mode = "k"})
+	local function SetCustomTextCached(unit)
+		if not TidyPlatesThreat.db.profile.settings.customtext.show then
+			return ""
+		end
+		local m = TextMemo[unit]
+		if m and m.health == unit.health and m.healthmax == unit.healthmax then
+			return m.text
+		end
+		if not m then
+			m = {}
+			TextMemo[unit] = m
+		end
+		m.health, m.healthmax = unit.health, unit.healthmax
+		m.text = SetCustomText(unit)
+		return m.text
+	end
+	hooksecurefunc(TidyPlates, "ForceUpdate", function()
+		wipe(TextMemo)
+	end)
+
+	TidyPlatesThreat.SetCustomText = SetCustomTextCached
 end
 
 -------------------------------------------------------------------------------
@@ -462,7 +486,7 @@ do
 		-- Plater: Farbe nach Unterbrechbarkeit und eigener Unterbrechung (laufend aktualisiert
 		-- von der Zauberleiste, siehe Widgets.lua)
 		if (db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON and ThreatPlatesWidgets and ThreatPlatesWidgets.PlaterCastColor then
-			return ThreatPlatesWidgets.PlaterCastColor(unit)
+			return ThreatPlatesWidgets.PlaterCastColor(unit, unit.castRemaining)
 		end
 		c.r, c.g, c.b, c.a = 1, 1, 0, 1
 		if db.castbarColor.toggle and not unit.spellIsShielded then

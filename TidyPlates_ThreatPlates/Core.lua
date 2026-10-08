@@ -1134,8 +1134,10 @@ local UnitInGroup = TidyPlatesUtility.UnitInGroup
 local TotemNameFallback = TidyPlatesUtility.TotemNameFallback
 -- Style-Cache: UnitType/SetStyle werden pro Plakette und Update bis zu ~10x
 -- aufgerufen (Alpha, Scale, Farbe, Widgets ...). Das Ergebnis wird pro Unit
--- gemerkt, solange sich weder die relevanten Unit-Daten noch der Frame
--- (GetTime) noch die Generation (Optionen/Rolle geändert) ändern.
+-- gemerkt, solange sich weder die relevanten Unit-Daten noch Kampfstatus, Rolle
+-- oder die Generation (Optionen/Profil/Gruppe geändert) ändern. Vom Leben zählt nur
+-- "verletzt ja/nein"; vorher machten aktuelle Zeit und Lebenspunkte im Schlüssel
+-- den Cache bei jedem Aufruf ungültig.
 local GetTime, InCombatLockdown = GetTime, InCombatLockdown
 local StyleMemo = setmetatable({}, {__mode = "k"})
 local StyleGeneration = 0
@@ -1144,24 +1146,49 @@ function TidyPlatesThreat.InvalidateStyleCache()
 	StyleGeneration = StyleGeneration + 1
 end
 
+-- Gruppenzugehörigkeit (UnitInGroup) fließt in den Stil ein
+do
+	local RosterWatcher = CreateFrame("Frame")
+	RosterWatcher:RegisterEvent("RAID_ROSTER_UPDATE")
+	RosterWatcher:RegisterEvent("PARTY_MEMBERS_CHANGED")
+	RosterWatcher:SetScript("OnEvent", TidyPlatesThreat.InvalidateStyleCache)
+end
+
 local function GetStyleMemo(unit)
 	local m = StyleMemo[unit]
 	if not m then
 		m = {}
 		StyleMemo[unit] = m
 	end
-	local now, combat = GetTime(), InCombatLockdown()
-	if m.time ~= now or m.gen ~= StyleGeneration or m.combat ~= combat or m.name ~= unit.name or
+	local combat, tanking = InCombatLockdown(), TidyPlatesThreat.IsTanking()
+	local damaged = (unit.health or 0) < (unit.healthmax or 0)
+	if m.gen ~= StyleGeneration or m.combat ~= combat or m.tanking ~= tanking or m.name ~= unit.name or
 		m.reaction ~= unit.reaction or m.isElite ~= unit.isElite or m.isDangerous ~= unit.isDangerous or
-		m.class ~= unit.class or m.isInCombat ~= unit.isInCombat or m.health ~= unit.health or
-		m.healthmax ~= unit.healthmax
+		m.class ~= unit.class or m.isInCombat ~= unit.isInCombat or m.damaged ~= damaged
 	then
-		m.time, m.gen, m.combat, m.name = now, StyleGeneration, combat, unit.name
+		m.gen, m.combat, m.tanking, m.name = StyleGeneration, combat, tanking, unit.name
 		m.reaction, m.isElite, m.isDangerous = unit.reaction, unit.isElite, unit.isDangerous
-		m.class, m.isInCombat, m.health, m.healthmax = unit.class, unit.isInCombat, unit.health, unit.healthmax
+		m.class, m.isInCombat, m.damaged = unit.class, unit.isInCombat, damaged
 		m.hasType, m.hasStyle = false, false
 	end
 	return m
+end
+
+-- Name -> Index in uniqueSettings.list (statt mehrfacher linearer Suche pro Update).
+-- Neu aufgebaut, wenn die Liste ersetzt wurde oder die Generation sich ändert.
+local UniqueMap, UniqueMapList, UniqueMapGen = {}, nil, -1
+function TidyPlatesThreat.UniqueIndex(name)
+	local list = TidyPlatesThreat.db.profile.uniqueSettings.list
+	if UniqueMapList ~= list or UniqueMapGen ~= StyleGeneration then
+		wipe(UniqueMap)
+		for k_c, k_v in pairs(list) do
+			if UniqueMap[k_v] == nil then
+				UniqueMap[k_v] = k_c
+			end
+		end
+		UniqueMapList, UniqueMapGen = list, StyleGeneration
+	end
+	return name and UniqueMap[name]
 end
 
 -- Unit Classification
@@ -1175,40 +1202,33 @@ local function ComputeUnitType(unit)
 	end
 
 	-- a unique unit?
-	local unique = tContains(DB.uniqueSettings.list, unit.name)
-	if unique then
-		for k_c, k_v in pairs(DB.uniqueSettings.list) do
-			if k_v == unit.name then
-				if DB.uniqueSettings[k_c].useStyle then
-					return "Unique"
-				else
-					if (unit.isDangerous and (unit.reaction == "FRIENDLY" or unit.reaction == "HOSTILE")) then
-						return "Boss"
-					elseif (unit.isElite and not unit.isDangerous and (unit.reaction == "FRIENDLY" or unit.reaction == "HOSTILE")) then
-						return "Elite"
-					elseif (not unit.isElite and not unit.isDangerous and (unit.reaction == "FRIENDLY" or unit.reaction == "HOSTILE")) then
-						return "Normal"
-					elseif unit.reaction == "NEUTRAL" then
-						return "Neutral"
-					end
-				end
+	local k_c = TidyPlatesThreat.UniqueIndex(unit.name)
+	if k_c then
+		if DB.uniqueSettings[k_c].useStyle then
+			return "Unique"
+		else
+			if (unit.isDangerous and (unit.reaction == "FRIENDLY" or unit.reaction == "HOSTILE")) then
+				return "Boss"
+			elseif (unit.isElite and not unit.isDangerous and (unit.reaction == "FRIENDLY" or unit.reaction == "HOSTILE")) then
+				return "Elite"
+			elseif (not unit.isElite and not unit.isDangerous and (unit.reaction == "FRIENDLY" or unit.reaction == "HOSTILE")) then
+				return "Normal"
+			elseif unit.reaction == "NEUTRAL" then
+				return "Neutral"
 			end
 		end
 	end
 
 	-- a group member with hidden nameplates?
-	if (tContains(DB.uniqueSettings.list, "GROUP") and unit.name and UnitInGroup(unit.name)) then
+	local k_g = TidyPlatesThreat.UniqueIndex("GROUP")
+	if k_g and unit.name and UnitInGroup(unit.name) then
 		if DB.friendlyNameOnly then
 			return "Normal", true
 		end
-		for k_c, k_v in pairs(DB.uniqueSettings.list) do
-			if k_v == "GROUP" then
-				if DB.uniqueSettings[k_c].useStyle then
-					return "Unique", true
-				else
-					return "Normal", true
-				end
-			end
+		if DB.uniqueSettings[k_g].useStyle then
+			return "Unique", true
+		else
+			return "Normal", true
 		end
 	end
 

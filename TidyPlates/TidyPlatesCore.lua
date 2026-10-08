@@ -1357,6 +1357,9 @@ do
 			end
 			unit.spellIsShielded = notInterruptible
 			unit.spellInterruptible = not notInterruptible
+			-- Restzeit für die Startfarbe (Kick bis Zauberende bereit?); ab dem ersten Frame
+			-- führt das Theme sie mit der echten Restzeit nach
+			unit.castRemaining = maxval - minval
 
 			if activetheme.SetCastbarColor then
 				r, g, b, a = activetheme.SetCastbarColor(unit)
