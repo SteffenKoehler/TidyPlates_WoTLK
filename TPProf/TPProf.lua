@@ -117,7 +117,7 @@ local function Report(label)
 	-- Mit echtem Profiling brauchen die Addons zusammen mehrere ms pro Sekunde
 	if duration > 30 and total / duration < 0.1 then
 		Print("|cffff6600Achtung:|r Fast keine CPU-Zeit gemessen - das Profiling ist vermutlich nicht aktiv. "
-			.. "WoW nach /tpprof on einmal komplett beenden und neu starten.")
+			.. "Nach /tpprof on ist ein /reload nötig (der Client schaltet es bei jedem Spielstart wieder aus).")
 	end
 end
 
