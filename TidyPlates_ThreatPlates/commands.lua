@@ -187,7 +187,7 @@ end
 -- Classic-Widget, Name über dem Balken, Lebenspunkte-Text wie im Default-Profil.
 -- Gleiche Versionsregel wie bei Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 7
+local CLASSIC_LOOK_VERSION = 8
 
 -- Version 2 (Vorbild Classic-Client): Name auf Balkenbreite gekürzt, dünne orange Zauber-
 -- leiste direkt unter dem Rahmen, Zaubername klein links darunter (Restzeit rechts), kein
@@ -229,7 +229,8 @@ local function ApplyClassicV2(p)
 		-- in der Leiste (Restzeit rechts), Zaubersymbol links daneben so hoch wie der Rahmen
 		local inset = math.floor((6 + 2 * (p.classicLook.lineSize or 2)) / 3 + 0.5)
 		castHeight = 9
-		castY = bottom - inset - 2 - inset - castHeight / 2
+		-- 8 px Abstand zum Balkenrahmen: dort sitzen die Combo-Punkte (Streifen in Balkenbreite)
+		castY = bottom - inset - 8 - inset - castHeight / 2
 		local textWidth = width - 34
 		s.spelltext.size = 9
 		s.spelltext.flags = "OUTLINE"
@@ -243,9 +244,6 @@ local function ApplyClassicV2(p)
 		s.spellicon.scale = icon
 		s.spellicon.x = left - inset - 2 - icon / 2
 		s.spellicon.y = castY
-		-- Combo-Punkte unter die Zauberleiste (lagen mitten auf dem Lebensbalken)
-		p.comboWidget.x = 0
-		p.comboWidget.y = castY - castHeight / 2 - inset - 7
 	end
 	s.castbar.height = castHeight
 	s.castbar.y = castY
@@ -398,7 +396,9 @@ local ClassicMigrations = {
 		p.settings.castbar.texture = "Flat"
 	end,
 	-- auffälligere Zauberleiste (Rahmen, Name in der Leiste, Symbol), Combo-Punkte darunter
-	[7] = ApplyClassicV2
+	[7] = ApplyClassicV2,
+	-- Combo-Punkte als Streifen unter dem Balken, Zauberleiste etwas tiefer
+	[8] = ApplyClassicV2
 }
 
 -- Eigene Optik-Profile: Name, Anwenden, Version (Feld im Profil) und Nachträge

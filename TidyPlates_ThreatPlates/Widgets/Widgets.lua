@@ -516,6 +516,17 @@ local function CreateSimpleParts(look, hb)
 	look.box = box
 end
 
+-- Combo-Punkte als dünner Streifen in Balkenbreite direkt unter dem Rahmen. Die Grafik ist
+-- eine segmentierte Leiste (5 Felder) in einem 256er-Quadrat, Zeilen 111-145.
+function ThreatPlatesWidgets.PlaceClassicCombo(widget, plate, db)
+	local _, inset = SimpleEdge(db.classicLook.lineSize)
+	widget:ClearAllPoints()
+	widget:SetWidth(db.settings.healthbar.width or 150)
+	widget:SetHeight(5)
+	widget.Icon:SetTexCoord(0, 1, 111 / 256, 145 / 256)
+	widget:SetPoint("TOP", plate.bars.healthbar, "BOTTOM", 0, -(inset + 1))
+end
+
 -- Platz rechts neben dem Balken (Rahmen + Kästchen) für die Stapel-Abstände
 function ThreatPlatesWidgets.ClassicSimpleExtent(height, lineSize)
 	local _, inset = SimpleEdge(lineSize)
@@ -1251,7 +1262,11 @@ local function OnInitialize(plate)
 	if db.comboWidget.ON then
 		if not w.ComboPoints then
 			local widget = ThreatPlatesWidgets.CreateComboPointWidget(plate)
-			widget:SetPoint("CENTER", plate, (db.comboWidget.x), db.comboWidget.y)
+			if db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD" then
+				ThreatPlatesWidgets.PlaceClassicCombo(widget, plate, db)
+			else
+				widget:SetPoint("CENTER", plate, (db.comboWidget.x), db.comboWidget.y)
+			end
 			w.ComboPoints = widget
 		end
 	elseif w.ComboPoints then
