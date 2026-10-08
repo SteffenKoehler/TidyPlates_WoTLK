@@ -1836,15 +1836,12 @@ do
 	end
 	local HSPEED = 0.25 -- Anteil der Reststrecke pro Lauf beim seitlichen Gleiten (~0,2 s)
 
-	-- Ist der Gegner an meinem Kampf beteiligt? Ziel/Mouseover immer; nicht im Kampf (Name
-	-- nicht rot) nie; Aggro-Leuchten auf mir ja; sonst über die Kampflog-Liste - per GUID,
-	-- ohne GUID über den Namen (im Zweifel beteiligt).
-	local function IsEngaged(unit)
+	-- Ist der Gegner an meinem Kampf beteiligt? true/false = sicher, nil = unklar (keine GUID,
+	-- Name gehört zu einem beteiligten Gegner, aber der Client zeigt noch keinen Kampf an -
+	-- so ist es direkt nach dem Pull, bevor man selbst Schaden austeilt).
+	local function EngagedState(unit)
 		if unit.isTarget or unit.isMouseover then
 			return true
-		end
-		if not unit.isInCombat then
-			return false
 		end
 		if unit.threatSituation and unit.threatSituation ~= "LOW" then
 			return true
@@ -1852,7 +1849,71 @@ do
 		if unit.guid then
 			return EngagedGUID[unit.guid] ~= nil
 		end
-		return unit.name and EngagedNames[unit.name] ~= nil
+		if not (unit.name and EngagedNames[unit.name]) then
+			return false
+		end
+		if unit.isInCombat then
+			return true
+		end
+		return nil
+	end
+
+	-- Bestimmt p.passive für alle Plaketten (10x pro Sekunde). Unklare Plaketten: Laut
+	-- Kampflog sind n Gegner dieses Namens beteiligt; davon fehlen noch so viele, wie
+	-- nicht schon sicher zugeordnet sind. Genommen werden die untersten Plaketten im Bild
+	-- (näher an der Kamera, also eher bei mir); die weiter oben bleiben unbeteiligt.
+	local ENGAGE_INTERVAL = 0.1
+	local nextEngage = 0
+	local Cands, NameUsed = {}, {}
+	local function ByNameY(a, b)
+		if a.name ~= b.name then
+			return a.name < b.name
+		end
+		return a.ypos < b.ypos
+	end
+	local function UpdateEngagement(now, order, count)
+		if not (cfg.onlyEngaged and InCombat) then
+			for i = 1, count do
+				order[i].passive = nil
+			end
+			return
+		end
+		if now < nextEngage then
+			return
+		end
+		nextEngage = now + ENGAGE_INTERVAL
+		wipe(NameUsed)
+		local nc = 0
+		for i = 1, count do
+			local p = order[i]
+			local u = p.plate.extended.unit
+			local state = EngagedState(u)
+			if state == nil then
+				nc = nc + 1
+				Cands[nc] = p
+				p.name = u.name
+				p.passive = true
+			else
+				p.passive = not state or nil
+				if state and u.name then
+					NameUsed[u.name] = (NameUsed[u.name] or 0) + 1
+				end
+			end
+		end
+		for i = #Cands, nc + 1, -1 do
+			Cands[i] = nil
+		end
+		if nc > 0 then
+			table.sort(Cands, ByNameY)
+			for k = 1, nc do
+				local p = Cands[k]
+				local name = p.name
+				if (EngagedNames[name] or 0) > (NameUsed[name] or 0) then
+					p.passive = nil
+					NameUsed[name] = (NameUsed[name] or 0) + 1
+				end
+			end
+		end
 	end
 
 	-- Zwei Spalten: Ein "Turm" sind Plaketten, deren natürliche x-Position innerhalb von
@@ -1997,9 +2058,6 @@ do
 				local _, _, _, x, y = plate:GetPoint(1)
 				p.xpos, p.ypos = x or 0, y or 0 -- (Sortieren verträgt kein nil)
 				p.plate = plate
-				-- Unbeteiligte: schieben niemanden weg, gleiten selbst an ihren Platz zurück
-				-- (nur im Kampf; außerhalb wird wie bisher alles gestapelt)
-				p.passive = cfg.onlyEngaged and InCombat and not IsEngaged(plate.extended.unit) or nil
 				p.isTarget = cfg.pinTarget and plate.extended.unit.isTarget
 				if not p.extraAt or now >= p.extraAt then
 					p.extraAt = now + EXTRA_INTERVAL
@@ -2018,6 +2076,10 @@ do
 			order[i] = nil
 		end
 		table.sort(order, ByX)
+
+		-- Unbeteiligte (nur im Kampf; außerhalb wird wie bisher alles gestapelt) schieben
+		-- niemanden weg und gleiten selbst an ihren Platz zurück
+		UpdateEngagement(now, order, count)
 
 		-- Spalten bestimmen (nur aus beteiligten Plaketten) und seitlich dorthin gleiten
 		local active, nActive = ActiveOrder, 0
