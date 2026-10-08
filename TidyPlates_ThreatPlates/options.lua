@@ -4030,422 +4030,488 @@ local function GetOptions()
 					args = {}
 				},
 				-- Plater-Optik und Stapeln (eigene Erweiterungen, Texte bewusst ohne Übersetzungstabelle)
-				Plater = {
-					name = "Plater",
+				Extensions = {
+					name = "Erweiterungen",
 					type = "group",
 					order = 70,
 					args = {
 						Intro = {
 							type = "description",
 							order = 0,
-							name = "Einstellungen für die Plater-Optik und das Stapeln der Plaketten. Sie gelten für das aktuelle Profil. Mit /tptpplater wird das Profil \"Plater\" mit allem zusammen angelegt, mit /tptpclassic das Profil \"Classic\" (Blizzard-Grafiken).",
+							name = "Zusätze dieser Version von Threat Plates: Plater- und Classic-Optik, eingefärbte Zauberleiste, Stapeln und Quest-Symbol. Fertig eingestellte Profile: \"Plater\" und \"Classic\" (Auswahl unter \"Profile\").",
 							fontSize = "medium"
 						},
-						Look = {
-							name = "Optik",
+						PlaterLook = {
+							name = "Plater-Optik",
 							type = "group",
-							inline = true,
 							order = 1,
 							args = {
-								BorderToggle = {
-									name = "Plater-Rahmen",
-									desc = "Dünner, scharfer Rahmen um Lebens- und Zauberleiste (Ziel weiß, Mouseover grau), Restzeit in der Zauberleiste, Name wird beim Zaubern ausgeblendet, Auren im Plater-Stil (die Aura-Optik wird erst nach /reload zurückgesetzt).",
-									type = "toggle",
+								Intro = {
+									type = "description",
+									order = 0,
+									name = "Dünner, scharfer Rahmen wie im Addon Plater. Gilt für das aktuelle Profil; das Profil \"Plater\" ist fertig eingestellt (/tptpplater).",
+									fontSize = "medium"
+								},
+								Options = {
+									name = "",
+									type = "group",
+									inline = true,
 									order = 1,
-									get = GetValue,
-									set = SetValue,
-									arg = {"platerBorder", "ON"}
+									args = {
+										BorderToggle = {
+											name = "Plater-Rahmen",
+											desc = "Dünner, scharfer Rahmen um Lebens- und Zauberleiste (Ziel weiß, Mouseover grau), Restzeit in der Zauberleiste, Name wird beim Zaubern ausgeblendet, Auren im Plater-Stil (die Aura-Optik wird erst nach /reload zurückgesetzt).",
+											type = "toggle",
+											order = 1,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerBorder", "ON"}
+										},
+										BorderSize = {
+											name = "Rahmenstärke (Pixel)",
+											type = "range",
+											order = 2,
+											min = 1,
+											max = 4,
+											step = 1,
+											disabled = function()
+												return not db.platerBorder.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerBorder", "size"}
+										},
+										TargetIndicator = {
+											name = "Ziel-Markierung",
+											desc = "Grafik um den Balken des Ziels (aus NotPlater). Standard dort: Silver.",
+											type = "select",
+											order = 2.1,
+											values = {
+												["NONE"] = "Keine",
+												["Silver"] = "Silver",
+												["Magneto"] = "Magneto",
+												["Gray Bold"] = "Gray Bold",
+												["Pins"] = "Pins",
+												["Ornament"] = "Ornament",
+												["Golden"] = "Golden",
+												["Ornament Gray"] = "Ornament Gray",
+												["Epic"] = "Epic",
+												["Arrow"] = "Arrow",
+												["Arrow Thin"] = "Arrow Thin",
+												["Double Arrows"] = "Double Arrows"
+											},
+											disabled = function()
+												return not db.platerBorder.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerTarget", "indicator"}
+										},
+										TargetGlow = {
+											name = "Ziel-Leuchten",
+											desc = "Blaues Leuchten über und unter dem Balken des Ziels (wie NotPlater).",
+											type = "toggle",
+											order = 2.2,
+											disabled = function()
+												return not db.platerBorder.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerTarget", "glow"}
+										},
+										ParensToggle = {
+											name = "Lebenspunkte als \"4.3k (100%)\"",
+											desc = "Plater-Format: Betrag mit Prozent in Klammern, kürzt schon ab 1000 mit k. Aus = \"4300 - 100%\".",
+											type = "toggle",
+											width = "double",
+											order = 3,
+											get = GetValue,
+											set = SetValue,
+											arg = {"text", "parens"}
+										},
+										Reset = {
+											name = "Optik zurücksetzen",
+											desc = "Setzt die Plater-Optik im Profil \"Plater\" auf die Ausgangswerte zurück (Layout, Größen, Schriften) und lädt neu - wie /tptpplater reset. Nur im Profil \"Plater\" möglich; Profile wechselst du unter \"Profile\".",
+											type = "execute",
+											order = 10,
+											confirm = true,
+											confirmText = "Plater-Optik auf die Ausgangswerte zurücksetzen und neu laden?",
+											disabled = function()
+												return TidyPlatesThreat.db:GetCurrentProfile() ~= "Plater"
+											end,
+											func = function()
+												SlashCmdList["TPTPPLATER"]("reset")
+											end
+										},
+									}
+								}
+							}
+						},
+						ClassicLook = {
+							name = "Classic-Optik",
+							type = "group",
+							order = 2,
+							args = {
+								Intro = {
+									type = "description",
+									order = 0,
+									name = "Optik wie die Plaketten im Classic-Client. Gilt für das aktuelle Profil; das Profil \"Classic\" ist fertig eingestellt (/tptpclassic).",
+									fontSize = "medium"
 								},
-								BorderSize = {
-									name = "Rahmenstärke (Pixel)",
-									type = "range",
-									order = 2,
-									min = 1,
-									max = 4,
-									step = 1,
-									disabled = function()
-										return not db.platerBorder.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"platerBorder", "size"}
-								},
-								TargetIndicator = {
-									name = "Ziel-Markierung",
-									desc = "Grafik um den Balken des Ziels (aus NotPlater). Standard dort: Silver.",
-									type = "select",
-									order = 2.1,
-									values = {
-										["NONE"] = "Keine",
-										["Silver"] = "Silver",
-										["Magneto"] = "Magneto",
-										["Gray Bold"] = "Gray Bold",
-										["Pins"] = "Pins",
-										["Ornament"] = "Ornament",
-										["Golden"] = "Golden",
-										["Ornament Gray"] = "Ornament Gray",
-										["Epic"] = "Epic",
-										["Arrow"] = "Arrow",
-										["Arrow Thin"] = "Arrow Thin",
-										["Double Arrows"] = "Double Arrows"
-									},
-									disabled = function()
-										return not db.platerBorder.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"platerTarget", "indicator"}
-								},
-								TargetGlow = {
-									name = "Ziel-Leuchten",
-									desc = "Blaues Leuchten über und unter dem Balken des Ziels (wie NotPlater).",
-									type = "toggle",
-									order = 2.2,
-									disabled = function()
-										return not db.platerBorder.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"platerTarget", "glow"}
-								},
-								ParensToggle = {
-									name = "Lebenspunkte als \"4.3k (100%)\"",
-									desc = "Plater-Format: Betrag mit Prozent in Klammern, kürzt schon ab 1000 mit k. Aus = \"4300 - 100%\".",
-									type = "toggle",
-									width = "double",
-									order = 3,
-									get = GetValue,
-									set = SetValue,
-									arg = {"text", "parens"}
+								Options = {
+									name = "",
+									type = "group",
+									inline = true,
+									order = 1,
+									args = {
+										ClassicToggle = {
+											name = "Classic-Optik aktiv",
+											desc = "Rahmen im Stil des Classic-Clients (schlicht oder Blizzard-Gold), Ziel farbig hervorgehoben, kleinere Nicht-Ziele. Das Profil \"Classic\" stellt auch Größen, Schriften und Zauberleiste passend ein.",
+											type = "toggle",
+											order = 1,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "ON"}
+										},
+										FrameStyle = {
+											name = "Rahmen",
+											desc = "Schlicht: dünne Linie, dunkler Hintergrund und eigenes Stufen-Kästchen wie im Classic-Era-Client. Gold: originaler Blizzard-Goldrahmen aus WotLK.",
+											type = "select",
+											order = 1.1,
+											values = {SIMPLE = "Schlicht (Classic Era)", GOLD = "Gold (Blizzard WotLK)"},
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "frameStyle"}
+										},
+										LineSize = {
+											name = "Rahmenstärke",
+											type = "range",
+											order = 1.2,
+											min = 1,
+											max = 4,
+											step = 1,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD")
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "lineSize"}
+										},
+										TargetBorder = {
+											name = "Ziel: Rahmen einfärben",
+											desc = "Rahmen und Stufen-Feld des Ziels werden in der gewählten Farbe hervorgehoben (wie im Classic-Client gelb-grün).",
+											type = "toggle",
+											order = 2,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "targetBorder"}
+										},
+										LineTargetColor = {
+											name = "Farbe (schlicht)",
+											type = "color",
+											order = 2.5,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.targetBorder and db.classicLook.frameStyle ~= "GOLD")
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"classicLook", "lineTargetColor"}
+										},
+										TargetColor = {
+											name = "Farbe (Gold)",
+											type = "color",
+											order = 3,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.targetBorder and db.classicLook.frameStyle == "GOLD")
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"classicLook", "targetColor"}
+										},
+										TargetGlow = {
+											name = "Ziel: Leuchten",
+											desc = "Zusätzlich weicher Schein hinter der Plakette des Ziels.",
+											type = "toggle",
+											order = 4,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "targetGlow"}
+										},
+										GlowColor = {
+											name = "Farbe",
+											type = "color",
+											order = 5,
+											hasAlpha = true,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.targetGlow)
+											end,
+											get = GetColorAlpha,
+											set = SetColorAlpha,
+											arg = {"classicLook", "glowColor"}
+										},
+										NonTargetScale = {
+											name = "Größe Nicht-Ziele",
+											desc = "Plaketten, die nicht dein Ziel sind, werden auf diesen Anteil verkleinert (1 = gleich groß).",
+											type = "range",
+											order = 6,
+											min = 0.5,
+											max = 1,
+											step = 0.05,
+											isPercent = true,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "nonTargetScale"}
+										},
+										LevelSize = {
+											name = "Schriftgröße Stufe",
+											desc = "Relativ zur Blizzard-Schrift im Stufen-Feld.",
+											type = "range",
+											order = 7,
+											min = 0.5,
+											max = 1.2,
+											step = 0.05,
+											isPercent = true,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "levelSize"}
+										},
+										CastBorder = {
+											name = "Blizzard-Zauberleiste",
+											desc = "Blizzards Zauberleisten-Rahmen (mit Schild bei nicht unterbrechbaren Zaubern) statt der dünnen Leiste. Passt nur zu einer höheren Zauberleiste (/tptpclassic reset stellt die dünne ein).",
+											type = "toggle",
+											order = 8,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "castBorder"}
+										},
+										Reset = {
+											name = "Optik zurücksetzen",
+											desc = "Setzt die Classic-Optik im Profil \"Classic\" auf die Ausgangswerte zurück (Layout, Größen, Schriften) und lädt neu - wie /tptpclassic reset. Nur im Profil \"Classic\" möglich; Profile wechselst du unter \"Profile\".",
+											type = "execute",
+											order = 20,
+											confirm = true,
+											confirmText = "Classic-Optik auf die Ausgangswerte zurücksetzen und neu laden?",
+											disabled = function()
+												return TidyPlatesThreat.db:GetCurrentProfile() ~= "Classic"
+											end,
+											func = function()
+												SlashCmdList["TPTPCLASSIC"]("reset")
+											end
+										},
+									}
 								}
 							}
 						},
 						Castbar = {
-							name = "Zauberleiste: Unterbrechen",
+							name = "Zauberleiste",
 							type = "group",
-							inline = true,
-							order = 1.5,
+							order = 3,
 							disabled = function()
 								return not (db.platerBorder.ON or db.classicLook.ON)
 							end,
 							args = {
-								CastToggle = {
-									name = "Nach Unterbrechbarkeit färben",
-									desc = "Färbt die Zauberleiste je nachdem, ob der Zauber unterbrechbar ist und ob deine eigene Unterbrechung (Tritt, Zuschlagen, Gegenzauber ...) bereit ist. Ob ein Zauber unterbrechbar ist, wird beim Ziel/Mouseover gelernt und dann auch für andere Plaketten verwendet. Benötigt den Plater-Rahmen oder die Classic-Optik.",
-									type = "toggle",
-									width = "double",
+								Intro = {
+									type = "description",
+									order = 0,
+									name = "Färbt die Zauberleiste nach Unterbrechbarkeit. Wirkt mit der Plater- oder der Classic-Optik.",
+									fontSize = "medium"
+								},
+								Options = {
+									name = "",
+									type = "group",
+									inline = true,
 									order = 1,
-									get = GetValue,
-									set = SetValue,
-									arg = {"platerCast", "ON"}
-								},
-								KickCooldown = {
-									name = "Abklingzeit der eigenen Unterbrechung",
-									desc = "Blassere Farbe, solange deine Unterbrechung bis zum Zauberende nicht bereit ist (oder in der falschen Haltung/Form nicht nutzbar).",
-									type = "toggle",
-									width = "double",
-									order = 2,
-									disabled = function()
-										return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"platerCast", "kickCooldown"}
-								},
-								ShieldIcon = {
-									name = "Schloss bei nicht unterbrechbar",
-									desc = "Schloss-Symbol am Zaubersymbol, das Symbol wird grau.",
-									type = "toggle",
-									order = 3,
-									disabled = function()
-										return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"platerCast", "shieldIcon"}
-								},
-								ColorReady = {
-									name = "Unterbrechbar, bereit",
-									type = "color",
-									order = 4,
-									disabled = function()
-										return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
-									end,
-									get = GetColor,
-									set = SetColor,
-									arg = {"platerCast", "colorReady"}
-								},
-								ColorCooldown = {
-									name = "Unterbrechbar, Abklingzeit",
-									type = "color",
-									order = 5,
-									disabled = function()
-										return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON and db.platerCast.kickCooldown)
-									end,
-									get = GetColor,
-									set = SetColor,
-									arg = {"platerCast", "colorCooldown"}
-								},
-								ColorShield = {
-									name = "Nicht unterbrechbar",
-									type = "color",
-									order = 6,
-									disabled = function()
-										return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
-									end,
-									get = GetColor,
-									set = SetColor,
-									arg = {"platerCast", "colorShield"}
+									args = {
+										CastToggle = {
+											name = "Nach Unterbrechbarkeit färben",
+											desc = "Färbt die Zauberleiste je nachdem, ob der Zauber unterbrechbar ist und ob deine eigene Unterbrechung (Tritt, Zuschlagen, Gegenzauber ...) bereit ist. Ob ein Zauber unterbrechbar ist, wird beim Ziel/Mouseover gelernt und dann auch für andere Plaketten verwendet. Benötigt den Plater-Rahmen oder die Classic-Optik.",
+											type = "toggle",
+											width = "double",
+											order = 1,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerCast", "ON"}
+										},
+										KickCooldown = {
+											name = "Abklingzeit der eigenen Unterbrechung",
+											desc = "Blassere Farbe, solange deine Unterbrechung bis zum Zauberende nicht bereit ist (oder in der falschen Haltung/Form nicht nutzbar).",
+											type = "toggle",
+											width = "double",
+											order = 2,
+											disabled = function()
+												return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerCast", "kickCooldown"}
+										},
+										ShieldIcon = {
+											name = "Schloss bei nicht unterbrechbar",
+											desc = "Schloss-Symbol am Zaubersymbol, das Symbol wird grau.",
+											type = "toggle",
+											order = 3,
+											disabled = function()
+												return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerCast", "shieldIcon"}
+										},
+										ColorReady = {
+											name = "Unterbrechbar, bereit",
+											type = "color",
+											order = 4,
+											disabled = function()
+												return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"platerCast", "colorReady"}
+										},
+										ColorCooldown = {
+											name = "Unterbrechbar, Abklingzeit",
+											type = "color",
+											order = 5,
+											disabled = function()
+												return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON and db.platerCast.kickCooldown)
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"platerCast", "colorCooldown"}
+										},
+										ColorShield = {
+											name = "Nicht unterbrechbar",
+											type = "color",
+											order = 6,
+											disabled = function()
+												return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"platerCast", "colorShield"}
+										}
+									}
 								}
 							}
 						},
 						Stacking = {
 							name = "Stapeln",
 							type = "group",
-							inline = true,
-							order = 2,
+							order = 4,
 							args = {
-								StackingToggle = {
-									name = "Plaketten stapeln",
-									desc = "Gegnerische Plaketten werden nach oben geschoben, statt sich zu überlappen (ersetzt die WeakAura \"Enhanced Stacking Nameplate\" - diese dann nicht gleichzeitig laden). Abstände werden aus Balkengröße und Name berechnet.",
-									type = "toggle",
+								Intro = {
+									type = "description",
+									order = 0,
+									name = "Gegnerische Plaketten weichen einander nach oben aus, statt sich zu überlappen. Gilt für jedes Profil.",
+									fontSize = "medium"
+								},
+								Options = {
+									name = "",
+									type = "group",
+									inline = true,
 									order = 1,
-									get = GetValue,
-									set = SetValue,
-									arg = {"stacking", "ON"}
-								},
-								PinTarget = {
-									name = "Ziel festhalten",
-									desc = "Die Plakette des Ziels bleibt direkt über dem Modell, die anderen weichen aus.",
-									type = "toggle",
-									order = 2,
-									disabled = function()
-										return not db.stacking.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"stacking", "pinTarget"}
-								},
-								Speed = {
-									name = "Geschwindigkeit",
-									desc = "Wie schnell sich die Plaketten verschieben (Standard 0.7).",
-									type = "range",
-									order = 3,
-									min = 0.2,
-									max = 2,
-									step = 0.1,
-									disabled = function()
-										return not db.stacking.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"stacking", "speed"}
-								},
-								TallBossFix = {
-									name = "Große Bosse sichtbar halten",
-									desc = "Vergrößert den Spielbereich nach oben, damit Plaketten sehr großer Bosse nicht aus dem Bild rutschen. Ausschalten wirkt erst nach /reload.",
-									type = "toggle",
-									width = "double",
-									order = 4,
-									disabled = function()
-										return not db.stacking.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"stacking", "tallBossFix"}
+									args = {
+										StackingToggle = {
+											name = "Plaketten stapeln",
+											desc = "Gegnerische Plaketten werden nach oben geschoben, statt sich zu überlappen (ersetzt die WeakAura \"Enhanced Stacking Nameplate\" - diese dann nicht gleichzeitig laden). Abstände werden aus Balkengröße und Name berechnet.",
+											type = "toggle",
+											order = 1,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "ON"}
+										},
+										PinTarget = {
+											name = "Ziel festhalten",
+											desc = "Die Plakette des Ziels bleibt direkt über dem Modell, die anderen weichen aus.",
+											type = "toggle",
+											order = 2,
+											disabled = function()
+												return not db.stacking.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "pinTarget"}
+										},
+										Speed = {
+											name = "Geschwindigkeit",
+											desc = "Wie schnell sich die Plaketten verschieben (Standard 0.7).",
+											type = "range",
+											order = 3,
+											min = 0.2,
+											max = 2,
+											step = 0.1,
+											disabled = function()
+												return not db.stacking.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "speed"}
+										},
+										TallBossFix = {
+											name = "Große Bosse sichtbar halten",
+											desc = "Vergrößert den Spielbereich nach oben, damit Plaketten sehr großer Bosse nicht aus dem Bild rutschen. Ausschalten wirkt erst nach /reload.",
+											type = "toggle",
+											width = "double",
+											order = 4,
+											disabled = function()
+												return not db.stacking.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "tallBossFix"}
+										}
+									}
 								}
 							}
 						},
-						Classic = {
-							name = "Classic-Optik",
+						QuestIcon = {
+							name = "Quest-Symbol",
 							type = "group",
-							inline = true,
-							order = 2.5,
+							order = 5,
 							args = {
-								ClassicToggle = {
-									name = "Blizzard-Grafiken",
-									desc = "Originale Blizzard-Rahmen (Goldrahmen mit Stufen-Feld, Elite-Drache, Zauberleisten-Rahmen mit Schild). Lage wird an der Original-Plakette gemessen. Am besten über /tptpclassic, das stellt auch Größen und Schriften passend ein.",
-									type = "toggle",
+								Intro = {
+									type = "description",
+									order = 0,
+									name = "Symbol vor dem Namen von Mobs aus offenen Tötungs-Quests. Gilt für jedes Profil.",
+									fontSize = "medium"
+								},
+								Options = {
+									name = "",
+									type = "group",
+									inline = true,
 									order = 1,
-									get = GetValue,
-									set = SetValue,
-									arg = {"classicLook", "ON"}
-								},
-								FrameStyle = {
-									name = "Rahmen",
-									desc = "Schlicht: dünne Linie, dunkler Hintergrund und eigenes Stufen-Kästchen wie im Classic-Era-Client. Gold: originaler Blizzard-Goldrahmen aus WotLK.",
-									type = "select",
-									order = 1.1,
-									values = {SIMPLE = "Schlicht (Classic Era)", GOLD = "Gold (Blizzard WotLK)"},
-									disabled = function()
-										return not db.classicLook.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"classicLook", "frameStyle"}
-								},
-								LineSize = {
-									name = "Rahmenstärke",
-									type = "range",
-									order = 1.2,
-									min = 1,
-									max = 4,
-									step = 1,
-									disabled = function()
-										return not (db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD")
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"classicLook", "lineSize"}
-								},
-								TargetBorder = {
-									name = "Ziel: Rahmen einfärben",
-									desc = "Rahmen und Stufen-Feld des Ziels werden in der gewählten Farbe hervorgehoben (wie im Classic-Client gelb-grün).",
-									type = "toggle",
-									order = 2,
-									disabled = function()
-										return not db.classicLook.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"classicLook", "targetBorder"}
-								},
-								LineTargetColor = {
-									name = "Farbe (schlicht)",
-									type = "color",
-									order = 2.5,
-									disabled = function()
-										return not (db.classicLook.ON and db.classicLook.targetBorder and db.classicLook.frameStyle ~= "GOLD")
-									end,
-									get = GetColor,
-									set = SetColor,
-									arg = {"classicLook", "lineTargetColor"}
-								},
-								TargetColor = {
-									name = "Farbe (Gold)",
-									type = "color",
-									order = 3,
-									disabled = function()
-										return not (db.classicLook.ON and db.classicLook.targetBorder and db.classicLook.frameStyle == "GOLD")
-									end,
-									get = GetColor,
-									set = SetColor,
-									arg = {"classicLook", "targetColor"}
-								},
-								TargetGlow = {
-									name = "Ziel: Leuchten",
-									desc = "Zusätzlich weicher Schein hinter der Plakette des Ziels.",
-									type = "toggle",
-									order = 4,
-									disabled = function()
-										return not db.classicLook.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"classicLook", "targetGlow"}
-								},
-								GlowColor = {
-									name = "Farbe",
-									type = "color",
-									order = 5,
-									hasAlpha = true,
-									disabled = function()
-										return not (db.classicLook.ON and db.classicLook.targetGlow)
-									end,
-									get = GetColorAlpha,
-									set = SetColorAlpha,
-									arg = {"classicLook", "glowColor"}
-								},
-								NonTargetScale = {
-									name = "Größe Nicht-Ziele",
-									desc = "Plaketten, die nicht dein Ziel sind, werden auf diesen Anteil verkleinert (1 = gleich groß).",
-									type = "range",
-									order = 6,
-									min = 0.5,
-									max = 1,
-									step = 0.05,
-									isPercent = true,
-									disabled = function()
-										return not db.classicLook.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"classicLook", "nonTargetScale"}
-								},
-								LevelSize = {
-									name = "Schriftgröße Stufe",
-									desc = "Relativ zur Blizzard-Schrift im Stufen-Feld.",
-									type = "range",
-									order = 7,
-									min = 0.5,
-									max = 1.2,
-									step = 0.05,
-									isPercent = true,
-									disabled = function()
-										return not db.classicLook.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"classicLook", "levelSize"}
-								},
-								CastBorder = {
-									name = "Blizzard-Zauberleiste",
-									desc = "Blizzards Zauberleisten-Rahmen (mit Schild bei nicht unterbrechbaren Zaubern) statt der dünnen Leiste. Passt nur zu einer höheren Zauberleiste (/tptpclassic reset stellt die dünne ein).",
-									type = "toggle",
-									order = 8,
-									disabled = function()
-										return not db.classicLook.ON
-									end,
-									get = GetValue,
-									set = SetValue,
-									arg = {"classicLook", "castBorder"}
-								},
-								QuestIcon = {
-									name = "Quest-Symbol",
-									desc = "Symbol vor dem Namen von Mobs, die ein offenes Tötungsziel im Questlog sind (Abgleich über den Namen). Sammelziele werden nicht erkannt, Quests unter eingeklappten Überschriften auch nicht. Gilt für jedes Profil.",
-									type = "toggle",
-									order = 9,
-									get = GetValue,
-									set = SetValue,
-									arg = {"questIcon", "ON"}
-								},
-								Apply = {
-									name = "Classic-Look anwenden",
-									desc = "Wendet die komplette Classic-Optik auf das Profil \"Classic\" an und lädt neu - wie /tptpclassic reset.",
-									type = "execute",
-									order = 10,
-									func = function()
-										SlashCmdList["TPTPCLASSIC"]("reset")
-									end
+									args = {
+										QuestIcon = {
+											name = "Quest-Symbol",
+											desc = "Symbol vor dem Namen von Mobs, die ein offenes Tötungsziel im Questlog sind (Abgleich über den Namen). Sammelziele werden nicht erkannt, Quests unter eingeklappten Überschriften auch nicht. Gilt für jedes Profil.",
+											type = "toggle",
+											order = 1,
+											get = GetValue,
+											set = SetValue,
+											arg = {"questIcon", "ON"}
+										},
+									}
 								}
 							}
 						},
-						Profile = {
-							name = "Plater-Profil",
-							type = "group",
-							inline = true,
-							order = 3,
-							args = {
-								Apply = {
-									name = "Plater-Look anwenden",
-									desc = "Wendet die komplette Plater-Optik (Layout, Größen, Schriften, Rahmen, Stapeln) auf das Profil \"Plater\" an und lädt neu - wie /tptpplater reset.",
-									type = "execute",
-									order = 1,
-									func = function()
-										SlashCmdList["TPTPPLATER"]("reset")
-									end
-								},
-								Default = {
-									name = "Zurück zu \"Default\"",
-									desc = "Wechselt zum Profil \"Default\" und lädt neu - wie /tptpplater default.",
-									type = "execute",
-									order = 2,
-									func = function()
-										SlashCmdList["TPTPPLATER"]("default")
-									end
-								}
-							}
-						}
 					}
 				},
 				About = {
