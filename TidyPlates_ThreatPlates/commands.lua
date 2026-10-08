@@ -187,7 +187,7 @@ end
 -- Classic-Widget, Name über dem Balken, Lebenspunkte-Text wie im Default-Profil.
 -- Gleiche Versionsregel wie bei Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 4
+local CLASSIC_LOOK_VERSION = 5
 
 -- Version 2 (Vorbild Classic-Client): Name auf Balkenbreite gekürzt, dünne orange Zauber-
 -- leiste direkt unter dem Rahmen, Zaubername klein links darunter (Restzeit rechts), kein
@@ -198,7 +198,7 @@ local function ApplyClassicV2(p)
 	local top, bottom, left = height / 2, -height / 2, -width / 2
 	local gold = p.classicLook.frameStyle == "GOLD"
 	-- Unterkante des Rahmens: schlichte Linie bzw. Blizzard-Goldrahmen (falls schon vermessen)
-	local borderBottom = bottom - 3
+	local borderBottom = bottom - 4
 	local art = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
 	if gold then
 		borderBottom = bottom - 4
@@ -209,7 +209,7 @@ local function ApplyClassicV2(p)
 
 	-- Name gekürzt auf Balkenbreite, beim schlichten Rahmen näher am Balken
 	s.name.width = width
-	s.name.y = top + (gold and 11 or 8)
+	s.name.y = top + (gold and 11 or 10)
 	local auraScale = p.debuffWidget.scale or 1.15
 	p.debuffWidget.y = (s.name.y + s.name.size / 2 + 2) / auraScale + 9
 
@@ -363,7 +363,9 @@ local ClassicMigrations = {
 		-- schlichter Rahmen wie im Classic-Era-Client (Gold bleibt als Option)
 		p.classicLook.frameStyle = "SIMPLE"
 		ApplyClassicV2(p)
-	end
+	end,
+	-- schlichter Rahmen jetzt als Tooltip-Rahmen (etwas breiter): Name/Zauberleiste nachziehen
+	[5] = ApplyClassicV2
 }
 
 -- Eigene Optik-Profile: Name, Anwenden, Version (Feld im Profil) und Nachträge

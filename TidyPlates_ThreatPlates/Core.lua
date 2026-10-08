@@ -1363,8 +1363,8 @@ function TidyPlatesThreat:ApplyStacking()
 	-- Classic: der Blizzard-Rahmen (mit Stufen-Feld) bzw. Linie + Stufen-Kästchen sind größer als der Balken
 	local art = p.classicLook.ON and p.classicLook.frameStyle == "GOLD" and TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
 	if p.classicLook.ON and p.classicLook.frameStyle ~= "GOLD" and ThreatPlatesWidgets and ThreatPlatesWidgets.ClassicSimpleExtent then
-		xspace = width + ThreatPlatesWidgets.ClassicSimpleExtent(height) + 8
-		top, bottom = top + 2, bottom - 2
+		xspace = width + ThreatPlatesWidgets.ClassicSimpleExtent(height, p.classicLook.lineSize) + 8
+		top, bottom = top + 4, bottom - 4
 	elseif art then
 		local b = art.healthborder
 		xspace = math.max(xspace, (b.right - b.left) * width + 4)

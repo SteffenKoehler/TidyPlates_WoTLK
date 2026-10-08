@@ -4283,7 +4283,7 @@ local function GetOptions()
 									arg = {"classicLook", "frameStyle"}
 								},
 								LineSize = {
-									name = "Linienstärke (Pixel)",
+									name = "Rahmenstärke",
 									type = "range",
 									order = 1.2,
 									min = 1,

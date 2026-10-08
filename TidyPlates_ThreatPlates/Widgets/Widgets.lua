@@ -447,8 +447,7 @@ local function HideGoldParts(look)
 end
 
 local function HideSimpleParts(look)
-	look.bg:Hide()
-	look.line:Hide()
+	look.frame:Hide()
 	look.box:Hide()
 end
 
@@ -457,59 +456,91 @@ local function HideClassicParts(look)
 	HideSimpleParts(look)
 end
 
--- Schlichter Rahmen (wie die Plaketten des Classic-Era-Clients): fast schwarzer Hintergrund,
--- dünne Linie um den Balken und ein eigenes Stufen-Kästchen rechts daneben
-local SIMPLE_GAP = 3 -- Abstand zwischen Balken und Stufen-Kästchen
-local SIMPLE_BOX_RATIO = 1.8 -- Breite des Kästchens relativ zur Balkenhöhe
+-- Schlichter Rahmen (wie die Plaketten des Classic-Era-Clients): abgerundeter Tooltip-Rahmen
+-- aus dem 3.3.5-Client mit dunklem Hintergrund um den Balken und ein eigenes Stufen-Kästchen
+-- im selben Stil rechts daneben. Rahmenfarbe: Ziel / Mouseover / sonst dunkelgrau.
+local TOOLTIP_EDGE = "Interface\\Tooltips\\UI-Tooltip-Border"
+local SIMPLE_GAP = 1 -- Abstand zwischen Rahmen und Stufen-Kästchen (außen)
+local SIMPLE_BOX_RATIO = 1.45 -- Breite des Kästchens relativ zu seiner Höhe
+
+-- Rahmenstärke 1-4 -> Kantengröße der Tooltip-Grafik; der Balken liegt um "inset" eingerückt
+local function SimpleEdge(lineSize)
+	local edge = 6 + 2 * (lineSize or 2)
+	return edge, math.floor(edge / 3 + 0.5)
+end
+
+local function SimpleBackdrop(frame, edge, inset)
+	if frame.edge == edge then
+		return
+	end
+	frame.edge = edge
+	frame:SetBackdrop({
+		bgFile = WHITE,
+		edgeFile = TOOLTIP_EDGE,
+		edgeSize = edge,
+		insets = {left = inset, right = inset, top = inset, bottom = inset}
+	})
+	frame:SetBackdropColor(0.03, 0.03, 0.03, 0.9)
+	frame.r = nil -- Rahmenfarbe neu setzen
+end
+
+local function SetSimpleColor(frame, r, g, b)
+	if frame.r ~= r or frame.g ~= g or frame.b ~= b then
+		frame.r, frame.g, frame.b = r, g, b
+		frame:SetBackdropBorderColor(r, g, b, 1)
+	end
+end
 
 local function CreateSimpleParts(look, hb)
-	local bg = hb:CreateTexture(nil, "BACKGROUND")
-	bg:SetTexture(WHITE)
-	bg:SetVertexColor(0.04, 0.04, 0.04, 0.9)
-	bg:SetAllPoints(hb)
-	bg:Hide()
-	look.bg = bg
-	look.line = ThreatPlatesWidgets.CreatePlaterBorder(hb)
-	look.line:Hide()
-	-- Kästchen auf der Ebene des Balkens, damit die Stufe (Plakette, eine Ebene höher) darüber liegt
+	-- Unter dem Balken (eine Ebene tiefer), damit die Füllung über dem Hintergrund liegt;
+	-- die Kante liegt außerhalb des Balkens und bleibt sichtbar
+	local level = math.max(0, hb:GetFrameLevel() - 1)
+	local frame = CreateFrame("Frame", nil, hb)
+	frame:SetFrameLevel(level)
+	frame:Hide()
+	look.frame = frame
 	local box = CreateFrame("Frame", nil, hb)
-	box:SetFrameLevel(hb:GetFrameLevel())
-	box:SetPoint("LEFT", hb, "RIGHT", SIMPLE_GAP, 0)
-	local boxBg = box:CreateTexture(nil, "BACKGROUND")
-	boxBg:SetTexture(WHITE)
-	boxBg:SetVertexColor(0.04, 0.04, 0.04, 0.9)
-	boxBg:SetAllPoints(box)
-	box.line = ThreatPlatesWidgets.CreatePlaterBorder(box)
+	box:SetFrameLevel(level)
+	box:SetPoint("LEFT", frame, "RIGHT", SIMPLE_GAP, 0)
 	box:Hide()
 	look.box = box
 end
 
-function ThreatPlatesWidgets.ClassicSimpleExtent(height)
-	return SIMPLE_GAP + math.floor(height * SIMPLE_BOX_RATIO + 0.5)
+-- Platz rechts neben dem Balken (Rahmen + Kästchen) für die Stapel-Abstände
+function ThreatPlatesWidgets.ClassicSimpleExtent(height, lineSize)
+	local _, inset = SimpleEdge(lineSize)
+	local outer = height + 2 * inset
+	return inset + SIMPLE_GAP + math.floor(outer * SIMPLE_BOX_RATIO + 0.5)
 end
 
 local function UpdateSimpleLook(plate, unit, look, cfg)
 	HideGoldParts(look)
 	local bar = plate.bars.healthbar
 	local h = bar:GetHeight()
-	local box = look.box
-	box:SetWidth(math.floor(h * SIMPLE_BOX_RATIO + 0.5))
-	box:SetHeight(h)
+	local edge, inset = SimpleEdge(cfg.lineSize)
+	local frame, box = look.frame, look.box
+	if look.inset ~= inset then
+		look.inset = inset
+		frame:ClearAllPoints()
+		frame:SetPoint("TOPLEFT", bar, "TOPLEFT", -inset, inset)
+		frame:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", inset, -inset)
+	end
+	SimpleBackdrop(frame, edge, inset)
+	SimpleBackdrop(box, edge, inset)
+	local outer = h + 2 * inset
+	box:SetWidth(math.floor(outer * SIMPLE_BOX_RATIO + 0.5))
+	box:SetHeight(outer)
 
-	local size = (cfg.lineSize or 1) * ThreatPlatesWidgets.PixelSize(bar)
-	look.line:SetBorderSize(size)
-	box.line:SetBorderSize(size)
-	local r, g, b = 0, 0, 0
+	local r, g, b = 0.3, 0.3, 0.3
 	if cfg.targetBorder and unit.isTarget then
 		local c = cfg.lineTargetColor
 		r, g, b = c.r, c.g, c.b
 	elseif unit.isMouseover then
-		r, g, b = 0.6, 0.6, 0.6
+		r, g, b = 0.75, 0.75, 0.75
 	end
-	look.line:SetBorderColor(r, g, b, 1)
-	box.line:SetBorderColor(r, g, b, 1)
-	look.bg:Show()
-	look.line:Show()
+	SetSimpleColor(frame, r, g, b)
+	SetSimpleColor(box, r, g, b)
+	frame:Show()
 	box:Show()
 
 	-- Stufe mittig im Kästchen (Schwierigkeitsfarbe vom Kern), Elite mit "+";
@@ -518,8 +549,9 @@ local function UpdateSimpleLook(plate, unit, look, cfg)
 	level:ClearAllPoints()
 	level:SetPoint("CENTER", box, "CENTER", 0.5, 0)
 	level:SetJustifyH("CENTER")
-	local font = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.levelFont and TidyPlates.BlizzardArt.levelFont[1]
-	level:SetFont(font or STANDARD_TEXT_FONT, math.max(7, h * 0.85) * (cfg.levelSize or 1), "OUTLINE")
+	local art = TidyPlates.BlizzardArt
+	local font = art and art.levelFont and art.levelFont[1]
+	level:SetFont(font or STANDARD_TEXT_FONT, math.max(9, h * 1.05) * (cfg.levelSize or 1), "OUTLINE")
 	if unit.isElite and unit.level then
 		level:SetText(unit.level .. "+")
 	end
