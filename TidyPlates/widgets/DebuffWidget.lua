@@ -593,8 +593,11 @@ local SHADE_INTERVAL = 0.033
 local CLOCK_TRIANGLE = "Interface\\AddOns\\TidyPlates\\media\\ClockTriangle"
 local CLOCK_HAND = "Interface\\AddOns\\TidyPlates\\media\\ClockHand"
 local CLOCK_ALPHA = 0.6
+-- Anteil der Zeigerlinie an der halben Zeiger-Grafik (Linie von der Mitte bis 3 px vor
+-- den oberen Rand einer 64er-Grafik)
+local HAND_LENGTH = (32 - 3) / 32
 local HALF_PI, TWO_PI = math.pi / 2, math.pi * 2
-local msin, mcos, mtan, matan2, mfloor = math.sin, math.cos, math.tan, math.atan2, math.floor
+local msin, mcos, mtan, matan2, mfloor, mabs = math.sin, math.cos, math.tan, math.atan2, math.floor, math.abs
 -- Dreieck je Viertel spiegeln (links, rechts, oben, unten)
 local TRI_COORDS = {{0, 1, 0, 1}, {1, 0, 0, 1}, {1, 0, 1, 0}, {0, 1, 1, 0}}
 
@@ -700,14 +703,17 @@ local function UpdateClock(frame, frac)
 		clock.extra:Hide()
 	end
 	-- Zeiger: quadratische Textur um die Mitte, Bild per Texturkoordinaten im
-	-- Uhrzeigersinn gedreht (Länge = halbe kürzere Seite, bleibt im Symbol)
+	-- Uhrzeigersinn gedreht. Die Größe wird je Winkel so gewählt, dass die Linie genau am
+	-- Rand des (nicht quadratischen) Symbols endet: Abstand Mitte -> Rand in Zeigerrichtung,
+	-- geteilt durch den Anteil der Linie an der halben Grafik.
 	local hand = clock.hand
-	local size = 2 * min(cx, cy)
+	local co, si = mcos(angle), msin(angle)
+	local reach = min(si ~= 0 and cx / mabs(si) or cx * 100, co ~= 0 and cy / mabs(co) or cy * 100)
+	local size = 2 * reach / HAND_LENGTH
 	hand:ClearAllPoints()
 	hand:SetPoint("CENTER", frame, "BOTTOMLEFT", cx, cy)
 	hand:SetWidth(size)
 	hand:SetHeight(size)
-	local co, si = mcos(angle), msin(angle)
 	-- Texturpunkt = Mitte + inverse Drehung des Bildschirmpunkts (y nach unten)
 	hand:SetTexCoord(
 		0.5 - 0.5 * co - 0.5 * si, 0.5 + 0.5 * si - 0.5 * co, -- oben links
