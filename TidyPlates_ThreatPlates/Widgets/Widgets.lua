@@ -392,8 +392,26 @@ local function SetClassicShielded(self, shielded)
 	ShowIf(self.shieldBorder, self.placed and shielded)
 end
 
+-- Dünne Leiste (castBorder aus): 1-px-Rahmen, dunkler Hintergrund, Restzeit unter der Leiste
+-- rechts (gegenüber dem Zaubernamen). Wird bei jedem Zauberbeginn gesetzt.
+local function PlaceThinCast(self)
+	local bar = self.bar
+	self.placed = nil
+	self.border:Hide()
+	self.shieldBorder:Hide()
+	self.thin:SetBorderSize(ThreatPlatesWidgets.PixelSize(bar))
+	self.thin:Show()
+	bar:SetBackgroundColor(0.08, 0.08, 0.08, 0.9)
+	self.text:ClearAllPoints()
+	self.text:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 0, -2)
+end
+
 local function PlaceClassicCast(self)
 	local plate = self.plate
+	if not TidyPlatesThreat.db.profile.classicLook.castBorder then
+		return PlaceThinCast(self)
+	end
+	self.thin:Hide()
 	local art = TidyPlates.BlizzardArt
 	if art and not art.cast and TidyPlates.MeasureBlizzardCast then
 		TidyPlates.MeasureBlizzardCast(plate)
@@ -440,6 +458,8 @@ function ThreatPlatesWidgets.CreateClassicLook(plate)
 	cast.shieldBorder = ClassicTexture(cast, "ARTWORK", art.castnostop)
 	cast.SetShielded = SetClassicShielded
 	cast.Place = PlaceClassicCast
+	cast.thin = ThreatPlatesWidgets.CreatePlaterBorder(cb)
+	cast.thin:Hide()
 	ThreatPlatesWidgets.AddCastTimer(cast, TidyPlatesThreat.db.profile.settings.spelltext.size or 10, plate)
 	look.cast = cast
 	-- Stapel-Abstände kennen erst jetzt die Rahmengröße
@@ -459,6 +479,9 @@ function ThreatPlatesWidgets.HideClassicLook(look)
 	look.cast:SetScript("OnShow", nil)
 	look.cast:SetScript("OnHide", nil)
 	look.cast:Hide()
+	look.cast.thin:Hide()
+	look.border:SetDesaturated(false)
+	look.border:SetVertexColor(1, 1, 1)
 end
 
 local function HasBar(barstyle)
@@ -487,6 +510,18 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 		PlaceRect(look.glow, bar, geo.threatglow, w, h)
 	end
 	ShowIf(look.border, true)
+	-- Ziel: Rahmen samt Stufen-Feld entsättigt und eingefärbt (gelb-grün wie im Classic-Client)
+	local tinted = cfg.targetBorder and unit.isTarget
+	if tinted ~= look.tinted then
+		look.tinted = tinted
+		look.border:SetDesaturated(tinted and true or false)
+		if tinted then
+			local c = cfg.targetColor
+			look.border:SetVertexColor(c.r, c.g, c.b)
+		else
+			look.border:SetVertexColor(1, 1, 1)
+		end
+	end
 	ShowIf(look.elite, unit.isElite)
 	ShowIf(look.highlight, unit.isMouseover and not unit.isTarget)
 	if cfg.targetGlow and unit.isTarget then
@@ -518,12 +553,124 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 		level:SetJustifyH(point)
 		local font, size, flags = unpack(art.levelFont)
 		if font and size then
-			level:SetFont(font, size * math.min(fx, fy), flags)
+			level:SetFont(font, size * math.min(fx, fy) * (cfg.levelSize or 1), flags)
 		end
 	end
 
 	if plate.bars.castbar:IsShown() then
 		look.cast:Place()
+	end
+end
+
+-----------------------
+-- Quest Icon Widget
+-----------------------
+-- 3.3.5 kennt keine Quest-Zuordnung für Plaketten. Annäherung: Mob-Namen aus offenen
+-- Tötungszielen im Questlog ("Verteidiger der Grimmhauer getötet: 3/8"). Sammelziele
+-- (Gegenstand droppt vom Mob) nennen den Mob nicht und werden daher nicht erkannt.
+local QuestMobs = {}
+local QUEST_ICON = "Interface\\GossipFrame\\AvailableQuestIcon"
+
+-- Muster aus dem lokalisierten Text ("%s getötet: %d/%d" bzw. "%s slain: %d/%d")
+local KilledPattern
+do
+	local template = QUEST_MONSTERS_KILLED or "%s slain: %d/%d"
+	local escaped = template:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
+	KilledPattern = "^" .. escaped:gsub("%%s", "(.+)"):gsub("%%d", "%%d+") .. "$"
+end
+
+local function ObjectiveMob(text)
+	local name = text:match(KilledPattern)
+	if not name then
+		-- Fallback: alles vor ": n/m", letztes Wort ("getötet") abschneiden
+		local prefix = text:match("^(.-):%s*%d+%s*/%s*%d+$")
+		name = prefix and prefix:match("^(.+)%s+%S+$")
+	end
+	return name
+end
+
+local function ScanQuestLog()
+	local found = {}
+	for i = 1, GetNumQuestLogEntries() do
+		local _, _, _, _, isHeader, _, isComplete = GetQuestLogTitle(i)
+		if not isHeader and isComplete ~= 1 then
+			for j = 1, GetNumQuestLeaderBoards(i) do
+				local text, objType, finished = GetQuestLogLeaderBoard(j, i)
+				if text and objType == "monster" and not finished then
+					local name = ObjectiveMob(text)
+					if name then
+						found[name] = true
+					end
+				end
+			end
+		end
+	end
+	-- Nur bei Änderung die Plaketten aktualisieren
+	local changed = false
+	for name in pairs(found) do
+		if not QuestMobs[name] then
+			changed = true
+		end
+	end
+	for name in pairs(QuestMobs) do
+		if not found[name] then
+			changed = true
+		end
+	end
+	QuestMobs = found
+	if changed then
+		TidyPlates:RequestWidgetUpdate()
+	end
+end
+
+-- QUEST_LOG_UPDATE kommt oft in Serien: höchstens zweimal pro Sekunde auswerten
+local questScanner = CreateFrame("Frame")
+local scanAt
+questScanner:Hide()
+questScanner:SetScript("OnUpdate", function(self)
+	if GetTime() >= scanAt then
+		self:Hide()
+		ScanQuestLog()
+	end
+end)
+questScanner:SetScript("OnEvent", function(self)
+	if not self:IsShown() then
+		scanAt = GetTime() + 0.5
+		self:Show()
+	end
+end)
+
+function ThreatPlatesWidgets.EnableQuestScanner(enabled)
+	if enabled and not questScanner.active then
+		questScanner.active = true
+		questScanner:RegisterEvent("QUEST_LOG_UPDATE")
+		questScanner:RegisterEvent("PLAYER_ENTERING_WORLD")
+		ScanQuestLog()
+	elseif not enabled and questScanner.active then
+		questScanner.active = nil
+		questScanner:UnregisterAllEvents()
+		QuestMobs = {}
+	end
+end
+
+function ThreatPlatesWidgets.CreateQuestIcon(plate)
+	local icon = plate:CreateTexture(nil, "OVERLAY")
+	icon:SetTexture(QUEST_ICON)
+	icon:Hide()
+	return icon
+end
+
+-- Links vor dem (zentrierten) Namen
+function ThreatPlatesWidgets.UpdateQuestIcon(plate, unit, icon, size)
+	local name = plate.visual.name
+	if unit.type == "NPC" and unit.reaction ~= "FRIENDLY" and QuestMobs[unit.name] and name:IsShown() then
+		icon:SetWidth(size)
+		icon:SetHeight(size)
+		icon:ClearAllPoints()
+		icon:SetPoint("RIGHT", name, "CENTER", -(name:GetStringWidth() or 0) / 2 - 1, 0)
+		icon:Show()
+	else
+		icon:Hide()
 	end
 end
 
@@ -875,6 +1022,17 @@ local function OnInitialize(plate)
 		w.ClassicLook = nil
 	end
 
+	-- Quest-Symbol
+	ThreatPlatesWidgets.EnableQuestScanner(db.questIcon.ON)
+	if db.questIcon.ON then
+		if not w.QuestIcon then
+			w.QuestIcon = ThreatPlatesWidgets.CreateQuestIcon(plate)
+		end
+	elseif w.QuestIcon then
+		w.QuestIcon:Hide()
+		w.QuestIcon = nil
+	end
+
 	-- Auren im Plater-Stil (auch zur Classic-Optik)
 	if (db.platerBorder.ON or db.classicLook.ON) and w.WidgetDebuff then
 		ThreatPlatesWidgets.StylePlaterAuras(w.WidgetDebuff)
@@ -1012,6 +1170,13 @@ local function OnUpdate(plate, unit)
 		UpdatePlaterBorder(plate, unit)
 	end
 	UpdateClassic(plate, unit)
+	-- Quest-Symbol (Name kann sich geändert haben)
+	if db.questIcon.ON then
+		if not w.QuestIcon then
+			OnInitialize(plate)
+		end
+		ThreatPlatesWidgets.UpdateQuestIcon(plate, unit, w.QuestIcon, db.questIcon.size)
+	end
 	-- Target Art
 	if db.targetWidget.ON then
 		if not w.TargetArt then

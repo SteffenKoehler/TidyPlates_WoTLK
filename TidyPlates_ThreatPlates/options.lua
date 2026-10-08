@@ -4267,10 +4267,34 @@ local function GetOptions()
 									set = SetValue,
 									arg = {"classicLook", "ON"}
 								},
-								TargetGlow = {
-									name = "Ziel leuchtet",
+								TargetBorder = {
+									name = "Ziel: Rahmen einfärben",
+									desc = "Rahmen und Stufen-Feld des Ziels werden in der gewählten Farbe hervorgehoben (wie im Classic-Client gelb-grün).",
 									type = "toggle",
 									order = 2,
+									disabled = function()
+										return not db.classicLook.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"classicLook", "targetBorder"}
+								},
+								TargetColor = {
+									name = "Farbe",
+									type = "color",
+									order = 3,
+									disabled = function()
+										return not (db.classicLook.ON and db.classicLook.targetBorder)
+									end,
+									get = GetColor,
+									set = SetColor,
+									arg = {"classicLook", "targetColor"}
+								},
+								TargetGlow = {
+									name = "Ziel: Leuchten",
+									desc = "Zusätzlich weicher Schein hinter der Plakette des Ziels.",
+									type = "toggle",
+									order = 4,
 									disabled = function()
 										return not db.classicLook.ON
 									end,
@@ -4281,7 +4305,7 @@ local function GetOptions()
 								GlowColor = {
 									name = "Farbe",
 									type = "color",
-									order = 3,
+									order = 5,
 									hasAlpha = true,
 									disabled = function()
 										return not (db.classicLook.ON and db.classicLook.targetGlow)
@@ -4290,11 +4314,64 @@ local function GetOptions()
 									set = SetColorAlpha,
 									arg = {"classicLook", "glowColor"}
 								},
+								NonTargetScale = {
+									name = "Größe Nicht-Ziele",
+									desc = "Plaketten, die nicht dein Ziel sind, werden auf diesen Anteil verkleinert (1 = gleich groß).",
+									type = "range",
+									order = 6,
+									min = 0.5,
+									max = 1,
+									step = 0.05,
+									isPercent = true,
+									disabled = function()
+										return not db.classicLook.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"classicLook", "nonTargetScale"}
+								},
+								LevelSize = {
+									name = "Schriftgröße Stufe",
+									desc = "Relativ zur Blizzard-Schrift im Stufen-Feld.",
+									type = "range",
+									order = 7,
+									min = 0.5,
+									max = 1.2,
+									step = 0.05,
+									isPercent = true,
+									disabled = function()
+										return not db.classicLook.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"classicLook", "levelSize"}
+								},
+								CastBorder = {
+									name = "Blizzard-Zauberleiste",
+									desc = "Blizzards Zauberleisten-Rahmen (mit Schild bei nicht unterbrechbaren Zaubern) statt der dünnen Leiste. Passt nur zu einer höheren Zauberleiste (/tptpclassic reset stellt die dünne ein).",
+									type = "toggle",
+									order = 8,
+									disabled = function()
+										return not db.classicLook.ON
+									end,
+									get = GetValue,
+									set = SetValue,
+									arg = {"classicLook", "castBorder"}
+								},
+								QuestIcon = {
+									name = "Quest-Symbol",
+									desc = "Symbol vor dem Namen von Mobs, die ein offenes Tötungsziel im Questlog sind (Abgleich über den Namen). Sammelziele werden nicht erkannt, Quests unter eingeklappten Überschriften auch nicht. Gilt für jedes Profil.",
+									type = "toggle",
+									order = 9,
+									get = GetValue,
+									set = SetValue,
+									arg = {"questIcon", "ON"}
+								},
 								Apply = {
 									name = "Classic-Look anwenden",
 									desc = "Wendet die komplette Classic-Optik auf das Profil \"Classic\" an und lädt neu - wie /tptpclassic reset.",
 									type = "execute",
-									order = 4,
+									order = 10,
 									func = function()
 										SlashCmdList["TPTPCLASSIC"]("reset")
 									end

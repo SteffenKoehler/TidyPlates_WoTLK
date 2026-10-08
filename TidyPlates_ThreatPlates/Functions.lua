@@ -156,7 +156,17 @@ do
 		end
 	end
 
-	TidyPlatesThreat.SetScale = SetScale
+	-- Classic-Optik: Plaketten, die nicht das Ziel sind, kleiner (wie im Classic-Client)
+	local function SetScaleClassic(unit)
+		local scale = SetScale(unit)
+		local cl = TidyPlatesThreat.db.profile.classicLook
+		if cl.ON and not unit.isTarget and cl.nonTargetScale and cl.nonTargetScale < 1 then
+			return (scale or 1) * cl.nonTargetScale
+		end
+		return scale
+	end
+
+	TidyPlatesThreat.SetScale = SetScaleClassic
 end
 
 -------------------------------------------------------------------------------

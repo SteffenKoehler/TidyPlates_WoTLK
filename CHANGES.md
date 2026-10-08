@@ -79,9 +79,17 @@ Target and mouseover are authoritative. Additionally, only when unique:
   original regions relative to the original health/cast bar when the first
   plate is created (`TidyPlates.BlizzardArt`); the widget scales them onto
   the bars.
-- Target = soft glow (Blizzard glow texture, color configurable), name above
-  the bar, health text as in "Default", Plater-style auras above the name,
-  interrupt castbar colors and stacking as in the Plater look.
+- Look version 2 (modeled on the Classic Era client): the target's border
+  and level box are desaturated and tinted yellow-green (optional soft glow),
+  non-target plates are scaled to 75 %, slightly smaller level font, name
+  truncated to bar width, thin orange castbar below the border with the
+  spell name small on the left and the remaining time on the right.
+- Name above the bar, health text as in "Default", Plater-style auras above
+  the name, interrupt castbar colors and stacking as in the Plater look.
+- Quest icon (any profile, option `questIcon`): shown in front of the name of
+  mobs that are an open kill objective in the quest log (matched by name via
+  `QUEST_MONSTERS_KILLED`). Collect objectives and quests under collapsed
+  headers are not detected.
 
 ## Stacking
 

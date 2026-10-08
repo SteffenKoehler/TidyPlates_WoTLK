@@ -765,8 +765,18 @@ function TidyPlatesThreat:OnInitialize()
 			-- Mouseover = Blizzard-Aufhellung
 			classicLook = {
 				ON = false,
-				targetGlow = true,
-				glowColor = {r = 1, g = 0.9, b = 0.55, a = 0.9}
+				targetBorder = true, -- Rahmen (mit Stufen-Feld) beim Ziel einfärben
+				targetColor = {r = 0.8, g = 1, b = 0.3},
+				targetGlow = false,
+				glowColor = {r = 1, g = 0.9, b = 0.55, a = 0.9},
+				levelSize = 0.85, -- Stufe relativ zur Blizzard-Schriftgröße
+				castBorder = false, -- Blizzard-Zauberleistenrahmen (sonst dünne Leiste mit 1-px-Rahmen)
+				nonTargetScale = 0.75 -- Größe der Plaketten, die nicht das Ziel sind (1 = aus)
+			},
+			-- Quest-Symbol bei Mobs, die ein offenes Tötungs-Questziel sind (Abgleich mit dem Questlog)
+			questIcon = {
+				ON = false,
+				size = 14
 			},
 			-- Stapeln gegnerischer Plaketten (ersetzt die WeakAura "Enhanced Stacking Nameplate");
 			-- Abstände werden aus Balkengröße und Name berechnet

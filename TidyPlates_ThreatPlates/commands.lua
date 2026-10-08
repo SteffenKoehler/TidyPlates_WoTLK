@@ -187,7 +187,39 @@ end
 -- Classic-Widget, Name über dem Balken, Lebenspunkte-Text wie im Default-Profil.
 -- Gleiche Versionsregel wie bei Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 1
+local CLASSIC_LOOK_VERSION = 2
+
+-- Version 2 (Vorbild Classic-Client): Name auf Balkenbreite gekürzt, dünne orange Zauber-
+-- leiste direkt unter dem Rahmen, Zaubername klein links darunter (Restzeit rechts), kein
+-- Zaubersymbol, Quest-Symbol an. Rahmenfarbe/Größen kommen aus den classicLook-Vorgaben.
+local function ApplyClassicV2(p)
+	local s = p.settings
+	local width, height = s.healthbar.width or 150, s.healthbar.height or 12
+	local bottom, left = -height / 2, -width / 2
+	-- Unterkante des Blizzard-Rahmens, falls schon vermessen
+	local borderBottom = bottom - 4
+	local art = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
+	if art and art.healthborder then
+		borderBottom = math.min(bottom, (art.healthborder.bottom - 0.5) * height)
+	end
+
+	s.name.width = width
+
+	local castHeight = 5
+	local castY = borderBottom - 1 - castHeight / 2
+	s.castbar.height = castHeight
+	s.castbar.y = castY
+	s.castborder.y = castY
+	s.castnostop.y = castY
+	s.spelltext.size = 9
+	s.spelltext.width = width - 30
+	s.spelltext.align = "LEFT"
+	s.spelltext.x = left + (width - 30) / 2
+	s.spelltext.y = castY - castHeight / 2 - 7
+	s.spellicon.show = false
+
+	p.questIcon.ON = true
+end
 
 local function ApplyClassicLook(p)
 	local s = p.settings
@@ -275,6 +307,7 @@ local function ApplyClassicLook(p)
 	s.spellicon.scale = castHeight + 6
 	s.spellicon.x = left - castHeight / 2 - 5
 	s.spellicon.y = castY
+	s.spellicon.show = true
 
 	-- Raid-Symbol links neben dem Rahmen
 	s.raidicon.scale = 20
@@ -288,6 +321,8 @@ local function ApplyClassicLook(p)
 	p.debuffWidget.anchor = "CENTER"
 	p.debuffWidget.x = 64 - (3 * 24 + 2 * 2) / 2
 	p.debuffWidget.y = (nameTop + 2) / auraScale + 9
+
+	ApplyClassicV2(p)
 end
 
 local function ProfileExists(db, name)
@@ -308,7 +343,9 @@ local PlaterMigrations = {
 		p.platerCast.ON = true -- Zauberleiste nach Unterbrechbarkeit färben
 	end
 }
-local ClassicMigrations = {}
+local ClassicMigrations = {
+	[2] = ApplyClassicV2
+}
 
 -- Eigene Optik-Profile: Name, Anwenden, Version (Feld im Profil) und Nachträge
 local Looks = {
