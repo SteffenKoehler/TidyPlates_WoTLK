@@ -574,15 +574,22 @@ local QuestMobs = {}
 local QUEST_ICON = "Interface\\GossipFrame\\AvailableQuestIcon"
 
 -- Muster aus dem lokalisierten Text ("%s getötet: %d/%d" bzw. "%s slain: %d/%d")
+-- Platzhalter können nummeriert sein ("%1$s getötet: %2$d/%3$d"): erst durch Marken
+-- ersetzen, dann alle Sonderzeichen maskieren, dann die Marken einsetzen. Ein unbrauchbares
+-- Muster wird verworfen (dann gilt nur der Fallback).
 local KilledPattern
 do
 	local template = QUEST_MONSTERS_KILLED or "%s slain: %d/%d"
-	local escaped = template:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
-	KilledPattern = "^" .. escaped:gsub("%%s", "(.+)"):gsub("%%d", "%%d+") .. "$"
+	local marked = template:gsub("%%%d*%$?s", "\001"):gsub("%%%d*%$?d", "\002")
+	local escaped = marked:gsub("([%%%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
+	local pattern = "^" .. escaped:gsub("\001", "(.+)"):gsub("\002", "%%d+") .. "$"
+	if pcall(string.match, "", pattern) then
+		KilledPattern = pattern
+	end
 end
 
 local function ObjectiveMob(text)
-	local name = text:match(KilledPattern)
+	local name = KilledPattern and text:match(KilledPattern)
 	if not name then
 		-- Fallback: alles vor ": n/m", letztes Wort ("getötet") abschneiden
 		local prefix = text:match("^(.-):%s*%d+%s*/%s*%d+$")
