@@ -187,7 +187,11 @@ end
 -- Classic-Widget, Name über dem Balken, Lebenspunkte-Text wie im Default-Profil.
 -- Gleiche Versionsregel wie bei Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 9
+local CLASSIC_LOOK_VERSION = 10
+
+-- Zauberleiste "unterbrechbar, Kick bereit" in Cyan: hebt sich klar vom gelb-grünen
+-- Ziel-Rand und vom roten/lila Lebensbalken ab
+local CLASSIC_CAST_READY = {r = 0.1, g = 0.7, b = 0.9}
 
 -- Version 2 (Vorbild Classic-Client): Name auf Balkenbreite gekürzt, dünne orange Zauber-
 -- leiste direkt unter dem Rahmen, Zaubername klein links darunter (Restzeit rechts), kein
@@ -277,6 +281,8 @@ local function ApplyClassicLook(p)
 	p.threat.art.ON = false
 	p.platerCast.ON = true
 	p.platerCast.shieldIcon = false -- nicht unterbrechbar zeigt der Blizzard-Schildrahmen
+	local c = CLASSIC_CAST_READY
+	p.platerCast.colorReady = {r = c.r, g = c.g, b = c.b}
 	p.stacking.ON = true
 
 	-- Blizzard-Balkengrafik, Breite etwas größer als das Original. Höhe im Seitenverhältnis
@@ -400,7 +406,15 @@ local ClassicMigrations = {
 	-- Combo-Punkte als Streifen unter dem Balken, Zauberleiste etwas tiefer
 	[8] = ApplyClassicV2,
 	-- Zauberleiste wieder direkt unter dem Balken (Abstand für Combo-Punkte nur bei Bedarf)
-	[9] = ApplyClassicV2
+	[9] = ApplyClassicV2,
+	-- Cyan für "Kick bereit", nur wenn noch das alte Orange eingestellt ist (eigene Wahl bleibt)
+	[10] = function(p)
+		local cr = p.platerCast.colorReady
+		if cr.r == 1 and cr.g == 0.56 and cr.b == 0.06 then
+			local c = CLASSIC_CAST_READY
+			p.platerCast.colorReady = {r = c.r, g = c.g, b = c.b}
+		end
+	end
 }
 
 -- Eigene Optik-Profile: Name, Anwenden, Version (Feld im Profil) und Nachträge
