@@ -549,13 +549,42 @@ end
 
 -- Combo-Punkte als dünner Streifen in Balkenbreite direkt unter dem Rahmen. Die Grafik ist
 -- eine segmentierte Leiste (5 Felder) in einem 256er-Quadrat, Zeilen 111-145.
+-- Classic: fünf einzelne Segmente mit kleinem Abstand statt der Grafik, in der die
+-- Punkte aneinanderkleben. Farben wie in den Original-Grafiken (1 blau ... 5 rot),
+-- Verlauf hell oben / dunkel unten. Gefüllt wird von links (siehe ComboPointWidget.lua).
+local COMBO_GAP_PX = 2 -- Abstand zwischen den Punkten in Bildschirmpixeln
+local COMBO_HEIGHT = 4
+
 function ThreatPlatesWidgets.PlaceClassicCombo(widget, plate, db)
 	local _, inset = SimpleEdge(db.classicLook.lineSize)
+	local width = db.settings.healthbar.width or 150
 	widget:ClearAllPoints()
-	widget:SetWidth(db.settings.healthbar.width or 150)
-	widget:SetHeight(4)
-	widget.Icon:SetTexCoord(0, 1, 111 / 256, 145 / 256)
+	widget:SetWidth(width)
+	widget:SetHeight(COMBO_HEIGHT)
 	widget:SetPoint("TOP", plate.bars.healthbar, "BOTTOM", 0, -(inset + 1))
+	widget.Icon:SetTexture(nil)
+	widget.Icon:Hide()
+
+	local segments = widget.segments
+	if not segments then
+		segments = {}
+		for i = 1, 5 do
+			local t = widget:CreateTexture(nil, "OVERLAY")
+			t:SetTexture(WHITE)
+			t:Hide()
+			segments[i] = t
+		end
+		widget.segments = segments
+	end
+	local gap = COMBO_GAP_PX * ThreatPlatesWidgets.PixelSize(widget)
+	local segWidth = (width - 4 * gap) / 5
+	for i = 1, 5 do
+		local t = segments[i]
+		t:ClearAllPoints()
+		t:SetPoint("TOPLEFT", widget, "TOPLEFT", (i - 1) * (segWidth + gap), 0)
+		t:SetWidth(segWidth)
+		t:SetHeight(COMBO_HEIGHT)
+	end
 end
 
 -- Platz rechts neben dem Balken (Rahmen + Kästchen) für die Stapel-Abstände
