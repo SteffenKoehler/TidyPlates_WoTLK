@@ -39,7 +39,7 @@ separate level box, yellow-green line on the target.
 |---|---|
 | ![Classic look with combo points](docs/images/classic-combo-points.png) | Combo points as a segmented strip under the target's bar, colored by count (1 blue … 5 red). |
 | ![Quest icon](docs/images/classic-quest-icon.png) | Quest icon in front of the name for mobs that are an open kill objective in the quest log. |
-| ![Castbar with interrupt ready](docs/images/classic-kick-ready.png) | Castbar turns cyan while your interrupt is ready (gray on cooldown, locked for uninterruptible casts). |
+| ![Castbar](docs/images/classic-castbar.png) | Castbar like WoW Forever: attached under the bar, as wide as bar + level box, gold while your interrupt is ready (gray on cooldown, locked for uninterruptible casts); spell name and remaining time below. |
 
 **Stacking** (`/tptp` → *Erweiterungen* → *Stapeln*): enemy plates move out of each
 other's way, the target stays pinned above its model.
@@ -48,6 +48,14 @@ other's way, the target stays pinned above its model.
 |---|---|
 | ![Two columns](docs/images/stacking-two-columns.png) | From 6 plates on (option "Zwei Stapel ab") a tower splits into two columns next to the target. |
 | ![Only engaged enemies](docs/images/stacking-only-engaged.png) | In combat only enemies fighting you or your group are stacked (purple = your aggro); idle mobs (red, left) stay where they are. |
+
+**Debuff timer** (`/tptp` → *Widgets* → *Debuffs* → "Darstellung"): the elapsed
+time of each debuff is shown on its icon.
+
+| | |
+|---|---|
+| ![Clock](docs/images/debuff-clock.png) | "Uhr" (default): dark sector from 12 o'clock with a golden hand (23 s, 15 s, 10 s left). |
+| ![Bar](docs/images/debuff-bar.png) | "Balken (grau)": the elapsed part is greyed out from the top, golden edge. |
 
 **Plater look** (profile `Plater`, `/tptpplater`): 1 px border, HP as `72.8k (24%)`,
 castbar with spell name and timer, NotPlater target indicators.
