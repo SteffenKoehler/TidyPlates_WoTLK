@@ -187,11 +187,11 @@ end
 -- Classic-Widget, Name über dem Balken, Lebenspunkte-Text wie im Default-Profil.
 -- Gleiche Versionsregel wie bei Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 10
+local CLASSIC_LOOK_VERSION = 11
 
--- Zauberleiste "unterbrechbar, Kick bereit" in Cyan: hebt sich klar vom gelb-grünen
--- Ziel-Rand und vom roten/lila Lebensbalken ab
-local CLASSIC_CAST_READY = {r = 0.1, g = 0.7, b = 0.9}
+-- Zauberleiste "unterbrechbar, Kick bereit" in Gold wie bei WoW Forever (Mittelton der
+-- dort hell/dunkel verlaufenden Leiste; vorher Cyan)
+local CLASSIC_CAST_READY = {r = 1, g = 0.8, b = 0.2}
 
 -- Version 2 (Vorbild Classic-Client): Name auf Balkenbreite gekürzt, dünne orange Zauber-
 -- leiste direkt unter dem Rahmen, Zaubername klein links darunter (Restzeit rechts), kein
@@ -411,6 +411,15 @@ local ClassicMigrations = {
 	[10] = function(p)
 		local cr = p.platerCast.colorReady
 		if cr.r == 1 and cr.g == 0.56 and cr.b == 0.06 then
+			local c = CLASSIC_CAST_READY
+			p.platerCast.colorReady = {r = c.r, g = c.g, b = c.b}
+		end
+	end,
+	-- Gold wie bei WoW Forever statt Cyan; ersetzt nur einen blauen Farbton (auch selbst
+	-- gewähltes Cyan), andere eigene Farben bleiben
+	[11] = function(p)
+		local cr = p.platerCast.colorReady
+		if cr and cr.b > cr.r + 0.3 then
 			local c = CLASSIC_CAST_READY
 			p.platerCast.colorReady = {r = c.r, g = c.g, b = c.b}
 		end
