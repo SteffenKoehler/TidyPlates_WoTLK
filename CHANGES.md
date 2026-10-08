@@ -112,9 +112,10 @@ the WeakAura** when using this, otherwise both move the plates.
 | `/tpprof kampf` | CPU report after every fight |
 | `/tpprof` | CPU report since the last start |
 
-Options: `/tptp` → tab **Plater** (border, border size, target indicator,
-target glow, health text format, stacking, pin target, speed, tall boss fix,
-Classic look toggle, target glow and color).
+Options: `/tptp` → tab **Erweiterungen** with the sub-pages Plater-Optik,
+Classic-Optik, Zauberleiste (interrupt colors), Stapeln and Quest-Symbol.
+Profiles are switched via the regular profile dropdown; each look page has
+an "Optik zurücksetzen" button (enabled only in the matching profile).
 
 ## Credits
 
