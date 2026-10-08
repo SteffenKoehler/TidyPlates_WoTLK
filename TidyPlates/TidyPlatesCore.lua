@@ -103,6 +103,7 @@ local OnMouseoverNameplate, OnRequestWidgetUpdate, OnRequestDelegateUpdate
 local OnShowCastbar, OnHideCastbar, OnValueChangedCastbar
 local PollPlateState, ProcessHealthUpdate, OnTargetChangedNameplate, LearnGUIDs
 local CorrelateDamage, AssignFromMarkers, NameNeedsGUID
+local ResetStackedPlate
 local StartTargetCastFallback, StopTargetCastFallback
 
 -- Spell Casting
@@ -1036,6 +1037,10 @@ do
 	-- OnHideNameplate
 	function OnHideNameplate(source)
 		local plate = source.parentPlate
+		-- Wiederverwendete Plakette darf den Stapel-Versatz des alten Gegners nicht erben
+		if ResetStackedPlate then
+			ResetStackedPlate(plate)
+		end
 		UpdateReferences(plate)
 		if unit.guid then
 			RememberFingerprint(unit) -- für das Wiederauftauchen merken
@@ -1778,6 +1783,19 @@ do
 		plate:SetClampRectInsets(0, 0, 0, 0)
 		plate:SetClampedToScreen(false)
 	end
+	function ResetStackedPlate(plate)
+		if Stacked[plate] then
+			ResetPlate(plate)
+		end
+	end
+
+	-- Nach x sortiert; verglichen werden nur Nachbarn innerhalb von xspace
+	-- (vorher alle Paare, 50x pro Sekunde)
+	local Order = {}
+	local function ByX(a, b)
+		return a.xpos < b.xpos
+	end
+	local EXTRA_INTERVAL = 0.1 -- Platz für Debuffs seltener abfragen als gestapelt wird
 
 	-- Plaketten sehr großer Bosse sollen nicht oben aus dem Bild rutschen (wie in der Aura)
 	local function EnlargeWorldFrame()
@@ -1834,34 +1852,64 @@ do
 					Stacked[plate] = p
 				end
 				local _, _, _, x, y = plate:GetPoint(1)
-				p.xpos, p.ypos = x, y
+				p.xpos, p.ypos = x or 0, y or 0 -- (Sortieren verträgt kein nil)
+				p.plate = plate
 				p.isTarget = cfg.pinTarget and plate.extended.unit.isTarget
-				p.extra = cfg.extraTop and cfg.extraTop(plate.extended) or 0
+				if not p.extraAt or now >= p.extraAt then
+					p.extraAt = now + EXTRA_INTERVAL
+					p.extra = cfg.extraTop and cfg.extraTop(plate.extended) or 0
+				end
 			end
 		end
+
+		local order = Order
+		local count = 0
+		for _, p in pairs(Stacked) do
+			count = count + 1
+			order[count] = p
+		end
+		for i = #order, count + 1, -1 do
+			order[i] = nil
+		end
+		table.sort(order, ByX)
 
 		-- Für jede Plakette den Abstand zur nächsten darunter bestimmen und sanft
 		-- anheben, absenken oder zurücksetzen (Formeln unverändert aus der Aura).
 		-- Ausnahme Ziel: bleibt an seinem Platz über dem Modell, die anderen weichen aus.
-		for plate1, p1 in pairs(Stacked) do
+		for i = 1, count do
+			local p1 = order[i]
+			local plate1 = p1.plate
 			local min, reset = 1000, true
-			for plate2, p2 in pairs(Stacked) do
-				if plate1 ~= plate2 and abs(p1.xpos - p2.xpos) < xspace then
-					local ydiff = p1.ypos + p1.position - p2.ypos - p2.position
-					-- Eine Plakette, die das Ziel von unten überlappt, gilt als direkt darüber
-					-- und wird über das Ziel hinweg nach oben geschoben
-					if p2.isTarget and ydiff < 0 and ydiff > -yspace then
-						ydiff = 0
-					end
-					-- Zeigt die Plakette darunter Debuffs, braucht sie nach oben mehr Platz:
-					-- ihr Abstand zählt um diesen Betrag kleiner
-					if ydiff >= 0 and ydiff - p2.extra < min then
-						min = ydiff - p2.extra
-					end
-					if abs(p1.ypos - p2.ypos - p2.position) < yspace + p2.extra + 2 * delta then
-						reset = false
+			-- erst nach links, dann nach rechts, solange der x-Abstand < xspace ist
+			local j, step = i - 1, -1
+			while true do
+				local p2 = order[j]
+				if not p2 or abs(p1.xpos - p2.xpos) >= xspace then
+					if step < 0 then
+						j, step = i + 1, 1
+						p2 = order[j]
+						if not p2 or abs(p1.xpos - p2.xpos) >= xspace then
+							break
+						end
+					else
+						break
 					end
 				end
+				local ydiff = p1.ypos + p1.position - p2.ypos - p2.position
+				-- Eine Plakette, die das Ziel von unten überlappt, gilt als direkt darüber
+				-- und wird über das Ziel hinweg nach oben geschoben
+				if p2.isTarget and ydiff < 0 and ydiff > -yspace then
+					ydiff = 0
+				end
+				-- Zeigt die Plakette darunter Debuffs, braucht sie nach oben mehr Platz:
+				-- ihr Abstand zählt um diesen Betrag kleiner
+				if ydiff >= 0 and ydiff - p2.extra < min then
+					min = ydiff - p2.extra
+				end
+				if abs(p1.ypos - p2.ypos - p2.position) < yspace + p2.extra + 2 * delta then
+					reset = false
+				end
+				j = j + step
 			end
 
 			local old = p1.position
