@@ -519,7 +519,7 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 	-- in diesem Client nicht, der Rahmen wird nur grau.)
 	if cfg.targetBorder and unit.isTarget then
 		local c = cfg.targetColor
-		look.targetBorder:SetVertexColor(c.r, c.g, c.b)
+		look.targetBorder:SetVertexColor(c.r, c.g, c.b, 0.8)
 		ShowIf(look.targetBorder, true)
 	else
 		look.targetBorder:Hide()
@@ -555,7 +555,8 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 		level:SetJustifyH(point)
 		local font, size, flags = unpack(art.levelFont)
 		if font and size then
-			level:SetFont(font, size * math.min(fx, fy) * (cfg.levelSize or 1), flags)
+			-- Kontur, damit die (oft gelbe) Stufe auch auf dem aufgehellten Feld des Ziels lesbar bleibt
+			level:SetFont(font, size * math.min(fx, fy) * (cfg.levelSize or 1), "OUTLINE")
 		end
 	end
 

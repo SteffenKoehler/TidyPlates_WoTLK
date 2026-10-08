@@ -766,7 +766,7 @@ function TidyPlatesThreat:OnInitialize()
 			classicLook = {
 				ON = false,
 				targetBorder = true, -- Rahmen (mit Stufen-Feld) beim Ziel einfärben
-				targetColor = {r = 0.8, g = 1, b = 0.3},
+				targetColor = {r = 0.45, g = 1, b = 0.15},
 				targetGlow = false,
 				glowColor = {r = 1, g = 0.9, b = 0.55, a = 0.9},
 				levelSize = 0.85, -- Stufe relativ zur Blizzard-Schriftgröße
