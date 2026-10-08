@@ -335,7 +335,9 @@ end
 -- in dem Moment unter dem Zeiger lag - insbesondere, ob es eine Namensplakette war.
 -------------------------------------------------------------------------------
 local MAX_MOUSELOOK = 50
+local MAX_MOUSELOOK_ALL = 150
 local wasLooking = false
+local lookStart
 
 -- Rahmen unter dem Zeiger beschreiben; Plakette erkennen (TidyPlates: plate.extended
 -- bzw. extended.parentPlate in der Elternkette)
@@ -365,6 +367,7 @@ end
 
 local function RecordMouselookBreak()
 	local desc, onPlate = DescribeFocus()
+	TPProfDB.mouselookAll[#TPProfDB.mouselookAll].focus = desc
 	local x, y = GetCursorPosition()
 	local scale = UIParent:GetEffectiveScale()
 	local entry = {
@@ -383,10 +386,30 @@ local function RecordMouselookBreak()
 end
 
 local mouselookWatcher = CreateFrame("Frame")
+-- Zusätzlich jedes Ende des Mausblicks (auch normales Loslassen) mit Uhrzeit und
+-- Tastenzustand, um einen gemeldeten Kamerasprung zeitlich zuordnen zu können
+local function RecordMouselookEnd(rmbDown)
+	local now = GetTime()
+	Push(TPProfDB.mouselookAll, {
+		time = date("%H:%M:%S"),
+		duration = lookStart and floor((now - lookStart) * 10 + 0.5) / 10 or nil,
+		rmbDown = rmbDown and true or false,
+		lmbDown = IsMouseButtonDown("LeftButton") and true or false,
+		inCombat = InCombatLockdown() and true or false,
+		plates = CountPlates()
+	}, MAX_MOUSELOOK_ALL)
+end
+
 mouselookWatcher:SetScript("OnUpdate", function()
 	local looking = IsMouselooking()
-	if wasLooking and not looking and IsMouseButtonDown("RightButton") and TPProfDB then
-		RecordMouselookBreak()
+	if looking and not wasLooking then
+		lookStart = GetTime()
+	elseif wasLooking and not looking and TPProfDB then
+		local rmbDown = IsMouseButtonDown("RightButton")
+		RecordMouselookEnd(rmbDown)
+		if rmbDown then
+			RecordMouselookBreak()
+		end
 	end
 	wasLooking = looking
 end)
@@ -407,6 +430,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 			TPProfDB.fights = TPProfDB.fights or {}
 			TPProfDB.errors = TPProfDB.errors or {}
 			TPProfDB.mouselook = TPProfDB.mouselook or {}
+			TPProfDB.mouselookAll = TPProfDB.mouselookAll or {}
 			if IsProfiling() then
 				Print("Profiling ist AN (kostet etwas Leistung). Ausschalten: /tpprof off")
 				StartMeasure()
@@ -444,12 +468,13 @@ SlashCmdList["TPPROF"] = function(msg)
 		Print("Bericht im Chat nach jedem Kampf: " .. (TPProfDB.fight and "AN" or "AUS")
 			.. " (gespeichert wird immer)")
 	elseif msg == "log" then
-		Print(format("Gespeichert: %d Kämpfe, %d Fehler, %d Mausblick-Abbrüche. In die Datei geschrieben wird bei /reload oder Ausloggen.",
-			#TPProfDB.fights, #TPProfDB.errors, #TPProfDB.mouselook))
+		Print(format("Gespeichert: %d Kämpfe, %d Fehler, %d Mausblick-Abbrüche (%d Mausblick-Enden). In die Datei geschrieben wird bei /reload oder Ausloggen.",
+			#TPProfDB.fights, #TPProfDB.errors, #TPProfDB.mouselook, #TPProfDB.mouselookAll))
 	elseif msg == "clear" then
 		wipe(TPProfDB.fights)
 		wipe(TPProfDB.errors)
 		wipe(TPProfDB.mouselook)
+		wipe(TPProfDB.mouselookAll)
 		Print("Kampf-, Fehler- und Mausblick-Protokoll gelöscht.")
 	elseif msg == "" then
 		Report()
