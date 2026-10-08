@@ -813,7 +813,8 @@ function TidyPlatesThreat:OnInitialize()
 				tallBossFix = true,
 				pinTarget = true, -- Ziel bleibt über dem Modell, andere weichen aus
 				columns = true, -- große Türme in zwei Spalten nebeneinander
-				columnsAt = 6 -- ab so vielen Plaketten in einem Turm
+				columnsAt = 6, -- ab so vielen Plaketten in einem Turm
+				onlyEngaged = true -- im Kampf nur Gegner stapeln, die mit mir/der Gruppe kämpfen
 			},
 			tankedWidget = {
 				ON = false,
@@ -1430,6 +1431,7 @@ function TidyPlatesThreat:ApplyStacking()
 		tallBossFix = p.stacking.tallBossFix,
 		pinTarget = p.stacking.pinTarget,
 		columnsAt = p.stacking.columns and p.stacking.columnsAt or 0,
+		onlyEngaged = p.stacking.onlyEngaged and true or false,
 		extraTop = DebuffExtraTop
 	})
 end

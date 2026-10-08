@@ -4530,6 +4530,19 @@ local function GetOptions()
 											get = GetValue,
 											set = SetValue,
 											arg = {"stacking", "columnsAt"}
+										},
+										OnlyEngaged = {
+											name = "Nur beteiligte Gegner stapeln",
+											desc = "Im Kampf werden nur Gegner gestapelt, die mit dir, deinem Begleiter oder deiner Gruppe kämpfen (laut Kampflog, Aggro, Ziel/Mouseover). Unbeteiligte Plaketten bleiben an ihrem Platz und schieben niemanden weg. Außerhalb des Kampfes wird alles gestapelt.",
+											type = "toggle",
+											width = "double",
+											order = 7,
+											disabled = function()
+												return not db.stacking.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "onlyEngaged"}
 										}
 									}
 								}

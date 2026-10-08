@@ -104,6 +104,8 @@ local OnShowCastbar, OnHideCastbar, OnValueChangedCastbar
 local PollPlateState, ProcessHealthUpdate, OnTargetChangedNameplate, LearnGUIDs
 local CorrelateDamage, AssignFromMarkers, NameNeedsGUID
 local ResetStackedPlate
+-- Gegner, die mit mir/meinem Pet/meiner Gruppe im Kampf sind (aus dem Kampflog)
+local EngagedGUID, EngagedNames = {}, {} -- [guid] = name / [name] = Anzahl
 local StartTargetCastFallback, StopTargetCastFallback
 
 -- Spell Casting
@@ -772,6 +774,13 @@ do
 			return UnassignedNames[name]
 		end
 
+		local AFFILIATION_OURS = 0x00000007 -- MINE, PARTY, RAID
+		local NotEngaging = {
+			UNIT_DIED = true, UNIT_DESTROYED = true, PARTY_KILL = true,
+			SPELL_AURA_REMOVED = true, SPELL_AURA_REMOVED_DOSE = true, SPELL_AURA_BROKEN = true,
+			SPELL_AURA_BROKEN_SPELL = true, ENCHANT_APPLIED = true, ENCHANT_REMOVED = true
+		}
+
 		local DamageWatcher = CreateFrame("Frame")
 		DamageWatcher:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 		DamageWatcher:SetScript("OnEvent", function(self, event, ...)
@@ -785,6 +794,25 @@ do
 				RecordMarker(MarkerByBit[raid], destGUID, destName)
 			end
 
+			-- Beteiligte Gegner merken: eine Seite gehört zu mir/meiner Gruppe/meinem Raid,
+			-- die andere ist ein nicht freundlicher NPC (Schaden, Verfehlen, Debuffs ...)
+			if InCombat and sourceFlags and destFlags and not NotEngaging[subevent] then
+				local gid, gname
+				if band(sourceFlags, AFFILIATION_OURS) ~= 0 then
+					if band(destFlags, CONTROL_NPC) ~= 0 and band(destFlags, REACTION_FRIENDLY) == 0 then
+						gid, gname = destGUID, destName
+					end
+				elseif band(destFlags, AFFILIATION_OURS) ~= 0 then
+					if band(sourceFlags, CONTROL_NPC) ~= 0 and band(sourceFlags, REACTION_FRIENDLY) == 0 then
+						gid, gname = sourceGUID, sourceName
+					end
+				end
+				if gid and gname and not EngagedGUID[gid] then
+					EngagedGUID[gid] = gname
+					EngagedNames[gname] = (EngagedNames[gname] or 0) + 1
+				end
+			end
+
 			local amount, overkill
 			if subevent == "SWING_DAMAGE" then
 				amount, overkill = select(9, ...)
@@ -793,6 +821,12 @@ do
 			elseif subevent == "UNIT_DIED" then
 				if destGUID then
 					HiddenFingerprints[destGUID] = nil
+					local gname = EngagedGUID[destGUID]
+					if gname then
+						EngagedGUID[destGUID] = nil
+						local n = (EngagedNames[gname] or 1) - 1
+						EngagedNames[gname] = n > 0 and n or nil
+					end
 				end
 				return
 			else
@@ -1772,7 +1806,8 @@ do
 		tallBossFix = true,
 		pinTarget = true,                                  -- Ziel bleibt an seinem Platz
 		extraTop = nil,                                    -- function(extended): zusätzlicher Platz über der Plakette (z.B. Debuffs)
-		columnsAt = 0                                      -- ab so vielen Plaketten in einem Turm zwei Spalten (0 = aus)
+		columnsAt = 0,                                     -- ab so vielen Plaketten in einem Turm zwei Spalten (0 = aus)
+		onlyEngaged = false                                -- im Kampf nur beteiligte Gegner stapeln
 	}
 	local delta = cfg.speed * 5
 	local Stacked = {} -- [plate] = {xpos, ypos, position, bottom}
@@ -1792,7 +1827,7 @@ do
 
 	-- Nach x sortiert; verglichen werden nur Nachbarn innerhalb von xspace
 	-- (vorher alle Paare, 50x pro Sekunde)
-	local Order, ExOrder = {}, {}
+	local Order, ExOrder, ActiveOrder = {}, {}, {}
 	local function ByX(a, b)
 		return a.xpos < b.xpos
 	end
@@ -1800,6 +1835,25 @@ do
 		return a.ex < b.ex
 	end
 	local HSPEED = 0.25 -- Anteil der Reststrecke pro Lauf beim seitlichen Gleiten (~0,2 s)
+
+	-- Ist der Gegner an meinem Kampf beteiligt? Ziel/Mouseover immer; nicht im Kampf (Name
+	-- nicht rot) nie; Aggro-Leuchten auf mir ja; sonst über die Kampflog-Liste - per GUID,
+	-- ohne GUID über den Namen (im Zweifel beteiligt).
+	local function IsEngaged(unit)
+		if unit.isTarget or unit.isMouseover then
+			return true
+		end
+		if not unit.isInCombat then
+			return false
+		end
+		if unit.threatSituation and unit.threatSituation ~= "LOW" then
+			return true
+		end
+		if unit.guid then
+			return EngagedGUID[unit.guid] ~= nil
+		end
+		return unit.name and EngagedNames[unit.name] ~= nil
+	end
 
 	-- Zwei Spalten: Ein "Turm" sind Plaketten, deren natürliche x-Position innerhalb von
 	-- xspace der linken liegt (alle überlappen sich). Ab columnsAt Plaketten bekommt jede
@@ -1943,6 +1997,9 @@ do
 				local _, _, _, x, y = plate:GetPoint(1)
 				p.xpos, p.ypos = x or 0, y or 0 -- (Sortieren verträgt kein nil)
 				p.plate = plate
+				-- Unbeteiligte: schieben niemanden weg, gleiten selbst an ihren Platz zurück
+				-- (nur im Kampf; außerhalb wird wie bisher alles gestapelt)
+				p.passive = cfg.onlyEngaged and InCombat and not IsEngaged(plate.extended.unit) or nil
 				p.isTarget = cfg.pinTarget and plate.extended.unit.isTarget
 				if not p.extraAt or now >= p.extraAt then
 					p.extraAt = now + EXTRA_INTERVAL
@@ -1962,8 +2019,21 @@ do
 		end
 		table.sort(order, ByX)
 
-		-- Spalten bestimmen und seitlich dorthin gleiten
-		AssignColumns(order, count, xspace, cfg.columnsAt or 0)
+		-- Spalten bestimmen (nur aus beteiligten Plaketten) und seitlich dorthin gleiten
+		local active, nActive = ActiveOrder, 0
+		for i = 1, count do
+			local p = order[i]
+			if p.passive then
+				p.side, p.hgoal = nil, 0
+			else
+				nActive = nActive + 1
+				active[nActive] = p
+			end
+		end
+		for i = #active, nActive + 1, -1 do
+			active[i] = nil
+		end
+		AssignColumns(active, nActive, xspace, cfg.columnsAt or 0)
 		for i = 1, count do
 			local p = order[i]
 			local h, goal = p.hoff or 0, p.hgoal or 0
@@ -2010,26 +2080,28 @@ do
 						break
 					end
 				end
-				local ydiff = p1.ypos + p1.position - p2.ypos - p2.position
-				-- Eine Plakette, die das Ziel von unten überlappt, gilt als direkt darüber
-				-- und wird über das Ziel hinweg nach oben geschoben
-				if p2.isTarget and ydiff < 0 and ydiff > -yspace then
-					ydiff = 0
-				end
-				-- Zeigt die Plakette darunter Debuffs, braucht sie nach oben mehr Platz:
-				-- ihr Abstand zählt um diesen Betrag kleiner
-				if ydiff >= 0 and ydiff - p2.extra < min then
-					min = ydiff - p2.extra
-				end
-				if abs(p1.ypos - p2.ypos - p2.position) < yspace + p2.extra + 2 * delta then
-					reset = false
+				if not p2.passive then
+					local ydiff = p1.ypos + p1.position - p2.ypos - p2.position
+					-- Eine Plakette, die das Ziel von unten überlappt, gilt als direkt darüber
+					-- und wird über das Ziel hinweg nach oben geschoben
+					if p2.isTarget and ydiff < 0 and ydiff > -yspace then
+						ydiff = 0
+					end
+					-- Zeigt die Plakette darunter Debuffs, braucht sie nach oben mehr Platz:
+					-- ihr Abstand zählt um diesen Betrag kleiner
+					if ydiff >= 0 and ydiff - p2.extra < min then
+						min = ydiff - p2.extra
+					end
+					if abs(p1.ypos - p2.ypos - p2.position) < yspace + p2.extra + 2 * delta then
+						reset = false
+					end
 				end
 				j = j + step
 			end
 
 			local old = p1.position
 			local new = old
-			if p1.isTarget then
+			if p1.isTarget or p1.passive then
 				-- Zügig (ca. 0,2 s) an den natürlichen Platz zurückgleiten
 				new = old > 3 * delta and old - 3 * delta or 0
 			elseif old >= 2 * delta and reset then
@@ -2304,6 +2376,8 @@ do
 	end
 	function events:PLAYER_REGEN_ENABLED()
 		InCombat = false
+		wipe(EngagedGUID)
+		wipe(EngagedNames)
 		SetMassQueue(OnUpdateNameplate)
 	end
 	function events:PLAYER_REGEN_DISABLED()
