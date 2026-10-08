@@ -29,6 +29,26 @@ chat bubble visibility) are not merged yet.
 - Debuff widget: no event-dropping throttle, early combat log filtering.
 - Stacking (see below) runs in the TidyPlates update loop instead of a
   WeakAura scanning all WorldFrame children every 20 ms.
+- Raid load (2026-10-08): debuff combat log events are coalesced per unit and
+  frame, the API rescan only runs when the unit has a plate, aura tables are
+  pooled. Damage correlation only runs on new entries and only records damage
+  for names of plates without GUID. Threat events bring the state poll forward
+  to at most 20 Hz instead of every frame. Tank target tracking is throttled
+  to 4 Hz (a tank swap turns blue up to 0.25 s later), tank auras are
+  re-checked per changed unit. An expired aura only updates its own plate.
+- Threat Plates style memo keyed on "damaged yes/no" instead of time and
+  health; unique units via a name index; health text cached per plate; the
+  custom statusbar re-anchors only on layout changes; interrupt cooldowns
+  read once per frame; cast timer text only on a new tenth; classic look sets
+  fonts/anchors only when they differ.
+- Stacking compares only x-neighbors (sorted) instead of all pairs.
+- Fixes: aura list was a weak table with inverted cleanup (debuffs on
+  non-targets vanished, expired lists leaked); auras of dead units are freed;
+  `HideIn` watcher never restarted after its first pause; group cache skipped
+  the last raid member; kick highlight flickered on every plate update; cast
+  start color ignored the remaining cast time; recycled plates inherited the
+  stacking offset; `threatWarning` compared as number; classic combo strip got
+  an extra CENTER anchor; class icon not hidden without class info.
 
 ## Castbars
 
