@@ -514,14 +514,17 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 		PlaceRect(look.glow, bar, geo.threatglow, w, h)
 	end
 	ShowIf(look.border, true)
-	-- Ziel: eingefärbte Kopie des Rahmens (samt Stufen-Feld) additiv darüber, so wird der
-	-- Goldrahmen hell gelb-grün wie im Classic-Client. (Entsättigen + SetVertexColor färbt
-	-- in diesem Client nicht, der Rahmen wird nur grau.)
+	-- Ziel: Goldrahmen (samt Stufen-Feld) in der Zielfarbe einfärben und eine eingefärbte
+	-- Kopie additiv darüberlegen. Nur additiv bleibt das Gold sichtbar und alles wirkt gelb;
+	-- das Einfärben nimmt zuerst das Rot heraus. (Entsättigen + SetVertexColor färbt in diesem
+	-- Client nicht, der Rahmen wird nur grau.)
 	if cfg.targetBorder and unit.isTarget then
 		local c = cfg.targetColor
+		look.border:SetVertexColor(c.r, c.g, c.b)
 		look.targetBorder:SetVertexColor(c.r, c.g, c.b, 0.8)
 		ShowIf(look.targetBorder, true)
 	else
+		look.border:SetVertexColor(1, 1, 1)
 		look.targetBorder:Hide()
 	end
 	ShowIf(look.elite, unit.isElite)
