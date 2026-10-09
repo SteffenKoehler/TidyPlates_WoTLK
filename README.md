@@ -69,6 +69,7 @@ time of each debuff is shown on its icon ("Show elapsed time").
 |---|---|
 | ![Clock](docs/images/debuff-clock.png) | "Clock" (default): dark sector from 12 o'clock with a golden hand (23 s, 15 s, 10 s left). |
 | ![Bar](docs/images/debuff-bar.png) | "Bar (grey)": the elapsed part is greyed out from the top, golden edge. |
+| ![Plater icons in the Default profile](docs/images/debuff-icons-default.png) | "Icon style" (*Widgets* → *Debuffs*): "Plater" gives any profile the larger icons with a 1 px border and the remaining time in the center (here the Default profile). "Standard" keeps the small original icons; without a choice the Plater and Classic look use Plater icons. |
 
 > [!IMPORTANT]
 > The original repository has been abandoned for years. This fork revives the addon with critical bug fixes, performance optimizations, and a fully working configuration interface.
