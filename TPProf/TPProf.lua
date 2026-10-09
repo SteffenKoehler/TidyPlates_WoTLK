@@ -14,6 +14,34 @@
 -- /tpprof log     Zeigt, was gespeichert ist
 -- /tpprof clear   Gespeicherte Kämpfe und Fehler löschen
 
+-- Texts: English keys; German for deDE clients, other clients show the key
+local L = setmetatable(GetLocale() == "deDE" and {
+	["Profiling is off. First |cffffff00/tpprof on|r, then /reload."] = "Profiling ist aus. Erst |cffffff00/tpprof on|r und dann /reload.",
+	["Measurement started."] = "Messung gestartet.",
+	["%s %.1f s, all addons together %.0f ms (%.1f ms per second)"] = "%s %.1f s, alle Addons zusammen %.0f ms (%.1f ms pro Sekunde)",
+	["Measured over"] = "Messung über",
+	["(unit calibrated: 1 value = %.0f ms)"] = "(Einheit geeicht: 1 Wert = %.0f ms)",
+	["|cffff6600Warning:|r Almost no CPU time measured - profiling is probably not active. "] = "|cffff6600Achtung:|r Fast keine CPU-Zeit gemessen - das Profiling ist vermutlich nicht aktiv. ",
+	["After /tpprof on a /reload is needed (the client turns it off again on every game start)."] = "Nach /tpprof on ist ein /reload nötig (der Client schaltet es bei jedem Spielstart wieder aus).",
+	["Fight %.0f s: FPS min %.0f / avg %.0f, nameplates max %d"] = "Kampf %.0f s: FPS min %.0f / Schnitt %.0f, Plaketten max %d",
+	["Fight:"] = "Kampf:",
+	["nothing"] = "nichts",
+	["game world"] = "Spielwelt",
+	["nameplate "] = "Plakette ",
+	["Mouselook interrupted - under the cursor: "] = "Mausblick unterbrochen - unter dem Zeiger: ",
+	["Profiling is ON (costs some performance). Turn off: /tpprof off"] = "Profiling ist AN (kostet etwas Leistung). Ausschalten: /tpprof off",
+	["Profiling enabled - takes effect after |cffffff00/reload|r."] = "Profiling eingeschaltet - wirkt nach |cffffff00/reload|r.",
+	["Profiling disabled - takes effect after |cffffff00/reload|r."] = "Profiling ausgeschaltet - wirkt nach |cffffff00/reload|r.",
+	["Measurement restarted."] = "Messung neu gestartet.",
+	["Chat report after every fight: "] = "Bericht im Chat nach jedem Kampf: ",
+	["ON"] = "AN",
+	["OFF"] = "AUS",
+	[" (always saved)"] = " (gespeichert wird immer)",
+	["Saved: %d fights, %d errors, %d mouselook interruptions (%d mouselook ends). Written to the file on /reload or logout."] = "Gespeichert: %d Kämpfe, %d Fehler, %d Mausblick-Abbrüche (%d Mausblick-Enden). In die Datei geschrieben wird bei /reload oder Ausloggen.",
+	["Fight, error and mouselook log cleared."] = "Kampf-, Fehler- und Mausblick-Protokoll gelöscht.",
+	["/tpprof on | off | start | fight | log | clear | (empty = report)"] = "/tpprof on | off | start | kampf | log | clear | (leer = Bericht)",
+} or {}, {__index = function(_, key) return key end})
+
 local PREFIX = "|cff33ff99TPProf:|r "
 local TOP = 10
 local SAVE_TOP = 15
@@ -90,12 +118,12 @@ end
 
 local function Report(label)
 	if not IsProfiling() then
-		Print("Profiling ist aus. Erst |cffffff00/tpprof on|r und dann /reload.")
+		Print(L["Profiling is off. First |cffffff00/tpprof on|r, then /reload."])
 		return
 	end
 	if not startTime then
 		StartMeasure()
-		Print("Messung gestartet.")
+		Print(L["Measurement started."])
 		return
 	end
 	local duration = GetTime() - startTime
@@ -104,20 +132,20 @@ local function Report(label)
 	end
 	local list, total, scale = CollectCPU()
 
-	Print(format("%s %.1f s, alle Addons zusammen %.0f ms (%.1f ms pro Sekunde)",
-		label or "Messung über", duration, total, total / duration))
+	Print(format(L["%s %.1f s, all addons together %.0f ms (%.1f ms per second)"],
+		label or L["Measured over"], duration, total, total / duration))
 	for i = 1, math.min(TOP, #list) do
 		local e = list[i]
 		Print(format("%2d. %-28s %7.1f ms  %5.2f ms/s  %4.1f%%",
 			i, e.name, e.cpu, e.cpu / duration, total > 0 and e.cpu / total * 100 or 0))
 	end
 	if scale ~= 1 then
-		Print(format("(Einheit geeicht: 1 Wert = %.0f ms)", scale))
+		Print(format(L["(unit calibrated: 1 value = %.0f ms)"], scale))
 	end
 	-- Mit echtem Profiling brauchen die Addons zusammen mehrere ms pro Sekunde
 	if duration > 30 and total / duration < 0.1 then
-		Print("|cffff6600Achtung:|r Fast keine CPU-Zeit gemessen - das Profiling ist vermutlich nicht aktiv. "
-			.. "Nach /tpprof on ist ein /reload nötig (der Client schaltet es bei jedem Spielstart wieder aus).")
+		Print(L["|cffff6600Warning:|r Almost no CPU time measured - profiling is probably not active. "]
+			.. L["After /tpprof on a /reload is needed (the client turns it off again on every game start)."])
 	end
 end
 
@@ -271,10 +299,10 @@ local function FightEnd()
 	Push(TPProfDB.fights, entry, MAX_FIGHTS)
 
 	if TPProfDB.fight then
-		Print(format("Kampf %.0f s: FPS min %.0f / Schnitt %.0f, Plaketten max %d",
+		Print(format(L["Fight %.0f s: FPS min %.0f / avg %.0f, nameplates max %d"],
 			duration, entry.fpsMin or 0, entry.fpsAvg or 0, entry.platesMax))
 		if list then
-			Report("Kampf:")
+			Report(L["Fight:"])
 		end
 	end
 end
@@ -344,10 +372,10 @@ local lookStart
 local function DescribeFocus()
 	local f = GetMouseFocus()
 	if not f then
-		return "nichts"
+		return L["nothing"]
 	end
 	if f == WorldFrame then
-		return "Spielwelt"
+		return L["game world"]
 	end
 	local desc = (f.GetName and f:GetName()) or (f.GetObjectType and f:GetObjectType()) or "?"
 	local p = f
@@ -358,7 +386,7 @@ local function DescribeFocus()
 		local ext = p.extended or (p.parentPlate and p)
 		if ext then
 			local unit = ext.unit
-			return "Plakette " .. ((unit and unit.name) or "?"), true
+			return L["nameplate "] .. ((unit and unit.name) or "?"), true
 		end
 		p = p.GetParent and p:GetParent()
 	end
@@ -382,7 +410,7 @@ local function RecordMouselookBreak()
 		profile = Profile()
 	}
 	Push(TPProfDB.mouselook, entry, MAX_MOUSELOOK)
-	Print("Mausblick unterbrochen - unter dem Zeiger: " .. desc)
+	Print(L["Mouselook interrupted - under the cursor: "] .. desc)
 end
 
 local mouselookWatcher = CreateFrame("Frame")
@@ -432,7 +460,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 			TPProfDB.mouselook = TPProfDB.mouselook or {}
 			TPProfDB.mouselookAll = TPProfDB.mouselookAll or {}
 			if IsProfiling() then
-				Print("Profiling ist AN (kostet etwas Leistung). Ausschalten: /tpprof off")
+				Print(L["Profiling is ON (costs some performance). Turn off: /tpprof off"])
 				StartMeasure()
 			end
 			self:UnregisterEvent("ADDON_LOADED")
@@ -456,29 +484,29 @@ SlashCmdList["TPPROF"] = function(msg)
 	msg = strlower(strtrim(msg or ""))
 	if msg == "on" then
 		SetCVar("scriptProfile", "1")
-		Print("Profiling eingeschaltet - wirkt nach |cffffff00/reload|r.")
+		Print(L["Profiling enabled - takes effect after |cffffff00/reload|r."])
 	elseif msg == "off" then
 		SetCVar("scriptProfile", "0")
-		Print("Profiling ausgeschaltet - wirkt nach |cffffff00/reload|r.")
+		Print(L["Profiling disabled - takes effect after |cffffff00/reload|r."])
 	elseif msg == "start" or msg == "reset" then
 		StartMeasure()
-		Print("Messung neu gestartet.")
+		Print(L["Measurement restarted."])
 	elseif msg == "kampf" or msg == "fight" then
 		TPProfDB.fight = not TPProfDB.fight
-		Print("Bericht im Chat nach jedem Kampf: " .. (TPProfDB.fight and "AN" or "AUS")
-			.. " (gespeichert wird immer)")
+		Print(L["Chat report after every fight: "] .. (TPProfDB.fight and L["ON"] or L["OFF"])
+			.. L[" (always saved)"])
 	elseif msg == "log" then
-		Print(format("Gespeichert: %d Kämpfe, %d Fehler, %d Mausblick-Abbrüche (%d Mausblick-Enden). In die Datei geschrieben wird bei /reload oder Ausloggen.",
+		Print(format(L["Saved: %d fights, %d errors, %d mouselook interruptions (%d mouselook ends). Written to the file on /reload or logout."],
 			#TPProfDB.fights, #TPProfDB.errors, #TPProfDB.mouselook, #TPProfDB.mouselookAll))
 	elseif msg == "clear" then
 		wipe(TPProfDB.fights)
 		wipe(TPProfDB.errors)
 		wipe(TPProfDB.mouselook)
 		wipe(TPProfDB.mouselookAll)
-		Print("Kampf-, Fehler- und Mausblick-Protokoll gelöscht.")
+		Print(L["Fight, error and mouselook log cleared."])
 	elseif msg == "" then
 		Report()
 	else
-		Print("/tpprof on | off | start | kampf | log | clear | (leer = Bericht)")
+		Print(L["/tpprof on | off | start | fight | log | clear | (empty = report)"])
 	end
 end

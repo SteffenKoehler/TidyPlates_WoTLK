@@ -485,7 +485,7 @@ local function LookCommand(look, command, msg)
 	msg = strlower(strtrim(msg or ""))
 	if msg == "default" then
 		db:SetProfile("Default")
-		print("|cff89F559Threat Plates|r: Profil \"Default\" aktiv.")
+		print("|cff89F559Threat Plates|r: " .. L["Profile \"Default\" active."])
 		return
 	end
 
@@ -501,7 +501,7 @@ local function LookCommand(look, command, msg)
 		look.apply(db.profile)
 		TidyPlatesThreat:ApplyProfileLive() -- Optik wurde nach dem Profilwechsel geändert
 	end
-	print("|cff89F559Threat Plates|r: Profil \"" .. look.profile .. "\" aktiv (zurück mit " .. command .. " default).")
+	print("|cff89F559Threat Plates|r: " .. format(L["Profile \"%s\" active (back with %s default)."], look.profile, command))
 end
 
 SLASH_TPTPPLATER1 = "/tptpplater"
@@ -513,20 +513,20 @@ end
 local function PrintClassicInfo()
 	local art = TidyPlates.BlizzardArt
 	if not art then
-		print("|cff89F559Threat Plates|r: Noch keine Plakette vermessen.")
+		print("|cff89F559Threat Plates|r: " .. L["No nameplate measured yet."])
 		return
 	end
 	local function rect(r)
 		return r and format("L %.2f R %.2f O %.2f U %.2f", r.left, r.right, r.top, r.bottom) or "-"
 	end
 	local h, c = art.health, art.cast
-	print(format("|cff89F559Classic|r Leiste %s, Stufe am Punkt %s", h and format("%.1f x %.1f", h.width, h.height) or "nicht vermessen", tostring(art.levelPoint)))
+	print(format(L["|cff89F559Classic|r bar %s, level at point %s"], h and format("%.1f x %.1f", h.width, h.height) or L["not measured"], tostring(art.levelPoint)))
 	if h then
 		for _, key in ipairs({"healthborder", "threatglow", "highlight", "eliteicon", "skullicon", "level"}) do
 			print("  " .. key .. ": " .. rect(h[key]) .. "  " .. tostring(art[key] and art[key].texture or ""))
 		end
 	end
-	print("  Zauberleiste " .. (c and format("%.1f x %.1f", c.width, c.height) or "nicht vermessen"))
+	print("  " .. L["Castbar"] .. " " .. (c and format("%.1f x %.1f", c.width, c.height) or L["not measured"]))
 	if c then
 		for _, key in ipairs({"castborder", "castnostop", "spellicon"}) do
 			print("  " .. key .. ": " .. rect(c[key]) .. "  " .. tostring(art[key] and art[key].texture or ""))

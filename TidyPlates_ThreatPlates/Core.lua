@@ -36,9 +36,9 @@ end
 -- Stile (Layout) werden nur beim Laden gebaut: nach einem Profilwechsel im Optionsmenü
 -- anbieten, die Oberfläche neu zu laden. suppressReloadPrompt bei internen Wechseln.
 StaticPopupDialogs["TPTP_PROFILE_RELOAD"] = {
-	text = "Threat Plates: Profil gewechselt.\nFür das komplette Layout die Oberfläche jetzt neu laden?",
-	button1 = "Neu laden",
-	button2 = "Später",
+	text = L["Threat Plates: profile changed.\nReload the UI now for the complete layout?"],
+	button1 = L["Reload"],
+	button2 = L["Later"],
 	OnAccept = function()
 		ReloadUI()
 	end,

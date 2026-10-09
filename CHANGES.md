@@ -148,7 +148,7 @@ the WeakAura** when using this, otherwise both move the plates.
 | `/tptpclassic` / `reset` / `default` | Same for the Classic look (profile "Classic") |
 | `/tptpclassic info` | Print the measured geometry of the original plate |
 | `/tpprof on` / `off` | Toggle CPU profiling (then `/reload`) |
-| `/tpprof kampf` | Chat report after every fight (FPS, plates, CPU) |
+| `/tpprof fight` (or `kampf`) | Chat report after every fight (FPS, plates, CPU) |
 | `/tpprof` | CPU report since the last start |
 | `/tpprof log` / `clear` | Show / clear the saved fight and error log |
 
@@ -158,10 +158,15 @@ profiling is on) and every Lua error with time, zone and stack to `TPProfDB`
 (`WTF\Account\<account>\SavedVariables\TPProf.lua`, written on `/reload` or
 logout), so results can be read outside the game.
 
-Options: `/tptp` → tab **Erweiterungen** with the sub-pages Plater-Optik,
-Classic-Optik, Zauberleiste (interrupt colors), Stapeln and Quest-Symbol.
-Profiles are switched via the regular profile dropdown; each look page has
-an "Optik zurücksetzen" button (enabled only in the matching profile).
+Options: `/tptp` → tab **Extensions** (German client: Erweiterungen) with the
+sub-pages Plater look, Classic look, Castbar (interrupt colors), Stacking and
+Quest icon. Profiles are switched via the regular profile dropdown; each look
+page has a "Reset look" button (enabled only in the matching profile).
+
+All texts of these additions are localized: English keys in
+`Locales/enUS.lua`, German in `Locales/deDE.lua` (section "Rising-Gods
+additions"); other clients fall back to English. TPProf has its own small
+German table and prints English on non-German clients.
 
 No `/reload` needed: the style files register builders
 (`TidyPlatesThreat.StyleBuilders`); a profile change rebuilds all styles,
