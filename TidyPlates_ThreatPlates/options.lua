@@ -182,6 +182,10 @@ local MediaFetch = TidyPlatesUtility.MediaFetch
 local MediaList = TidyPlatesUtility.MediaList
 local MediaRegister = TidyPlatesUtility.MediaRegister
 MediaRegister("statusbar", "ThreatPlatesBar", [[Interface\Addons\TidyPlates_ThreatPlates\Media\Artwork\TP_BarTexture.tga]])
+-- Flache Füllung der originalen Namensplaketten (ohne den Hell-Dunkel-Verlauf von "Blizzard")
+MediaRegister("statusbar", "Blizzard Nameplate", [[Interface\TargetingFrame\UI-TargetingFrame-BarFill]])
+-- Komplett flache Füllung (einfarbig, keine dunklen Kanten oben/unten)
+MediaRegister("statusbar", "Flat", [[Interface\Buttons\WHITE8X8]])
 MediaRegister("font", "Accidental Presidency", [[Interface\Addons\TidyPlates_ThreatPlates\Media\Fonts\Accidental Presidency.ttf]])
 
 -- Functions
@@ -190,6 +194,8 @@ local function GetSpellName(number)
 end
 
 local function Update()
+	-- Stile aus den geänderten Werten neu bauen, damit Größen/Positionen sofort wirken
+	TidyPlatesThreat:RebuildStyles()
 	TidyPlates:ReloadTheme()
 	TidyPlates:ForceUpdate()
 end
@@ -627,6 +633,8 @@ local function GetOptions()
 												SetThemeValue({arg = {"settings", "castborder", "width"}}, (val * 2) + 20)
 												SetThemeValue({arg = {"settings", "castnostop", "width"}}, (val * 2) + 20)
 												SetThemeValue({arg = {"settings", "castbar", "width"}}, val)
+												-- Profile "Plater"/"Classic": abhängige Positionen nachziehen
+												TidyPlatesThreat:RelayoutLook()
 												SetThemeValue(info, val)
 											end,
 											min = 80,
@@ -648,6 +656,8 @@ local function GetOptions()
 												SetThemeValue({arg = {"settings", "healthborder", "height"}}, val + 54)
 												SetThemeValue({arg = {"settings", "castborder", "height"}}, val + 54)
 												SetThemeValue({arg = {"settings", "castnostop", "height"}}, val + 54)
+												-- Profile "Plater"/"Classic": abhängige Positionen nachziehen
+												TidyPlatesThreat:RelayoutLook()
 												SetThemeValue(info, val)
 											end,
 											min = 10,
@@ -937,6 +947,13 @@ local function GetOptions()
 															get = GetColor,
 															set = SetColor,
 															arg = {"HPbarColor"}
+														},
+														PetColor = {
+															name = "Pet Health Bar Color",
+															type = "color",
+															get = GetColor,
+															set = SetColor,
+															arg = {"PetHealthBarColor"}
 														}
 													}
 												}
@@ -1092,7 +1109,9 @@ local function GetOptions()
 												return (GetCVar("ShowVKeyCastbar") == "1")
 											end,
 											set = function(info, val)
-												SetCVar("ShowVKeyCastbar", abs(GetCVar("ShowVKeyCastbar") - 1))
+												-- Wunsch im Profil merken, damit er beim Login wiederhergestellt wird
+												TidyPlatesThreat.db.profile.settings.castbar.enabled = val and true or false
+												SetCVar("ShowVKeyCastbar", val and 1 or 0)
 												Update()
 											end,
 											arg = {"settings", "castbar", "show"}
@@ -3165,6 +3184,17 @@ local function GetOptions()
 											set = SetValue,
 											width = "double",
 											arg = {"threat", "useHPColor"}
+										},
+										AlwaysTank = {
+											name = L["Always tank view"],
+											type = "toggle",
+											order = 2,
+											desc = L["Shows the tank colors on all characters (purple = I have aggro, blue = other tank, red = no aggro), regardless of role and talents."],
+											descStyle = "inline",
+											get = GetValue,
+											set = SetValue,
+											width = "double",
+											arg = {"threat", "alwaysTank"}
 										}
 									}
 								},
@@ -3191,6 +3221,13 @@ local function GetOptions()
 											type = "color",
 											order = 2,
 											arg = {"settings", "tank", "threatcolor", "MEDIUM"},
+											hasAlpha = true
+										},
+										Losing = {
+											name = L["|cffff8000Losing aggro|r"],
+											type = "color",
+											order = 2.5,
+											arg = {"settings", "tank", "threatcolor", "LOSING"},
 											hasAlpha = true
 										},
 										High = {
@@ -3225,6 +3262,13 @@ local function GetOptions()
 											type = "color",
 											order = 2,
 											arg = {"settings", "dps", "threatcolor", "MEDIUM"},
+											hasAlpha = true
+										},
+										Losing = {
+											name = L["|cffff8000Losing aggro|r"],
+											type = "color",
+											order = 2.5,
+											arg = {"settings", "dps", "threatcolor", "LOSING"},
 											hasAlpha = true
 										},
 										High = {
@@ -3643,6 +3687,45 @@ local function GetOptions()
 											descStyle = "inline",
 											width = "double",
 											arg = {"debuffWidget", "ON"}
+										},
+										Spiral = {
+											name = L["Show elapsed time"],
+											desc = L["A dark veil with a golden edge grows down over the debuff icon as time runs out."],
+											type = "toggle",
+											order = 2,
+											disabled = function()
+												return not db.debuffWidget.ON
+											end,
+											arg = {"debuffWidget", "spiral"}
+										},
+										TimerStyle = {
+											name = L["Display"],
+											desc = L["Bar: elapsed part greyed out from the top, golden edge. Clock: dark sector clockwise from 12 o'clock with a golden hand."],
+											type = "select",
+											order = 3,
+											values = {BAR = L["Bar (grey)"], CLOCK = L["Clock"]},
+											disabled = function()
+												return not (db.debuffWidget.ON and db.debuffWidget.spiral)
+											end,
+											arg = {"debuffWidget", "timerStyle"}
+										},
+										IconStyle = {
+											name = L["Icon style"],
+											desc = L["Standard: small original Tidy Plates icons, remaining time at the top right. Plater: larger icons with a 1 px border, large remaining time in the center, stacks above - recommended with the elapsed time display. Without a choice the Plater and Classic look use Plater icons."],
+											type = "select",
+											order = 4,
+											values = {STANDARD = L["Standard"], PLATER = L["Plater"]},
+											disabled = function()
+												return not db.debuffWidget.ON
+											end,
+											get = function()
+												return ThreatPlatesWidgets.UsePlaterAuras(db) and "PLATER" or "STANDARD"
+											end,
+											set = function(info, val)
+												db.debuffWidget.iconStyle = val
+												-- Symbole neu erzeugen: der Plater-Stil wird beim Erzeugen angewendet
+												TidyPlatesThreat:ApplyProfileLive()
+											end
 										}
 									}
 								},
@@ -3990,6 +4073,563 @@ local function GetOptions()
 					childGroups = "list",
 					order = 60,
 					args = {}
+				},
+				-- Plater-Optik und Stapeln (eigene Erweiterungen, Texte bewusst ohne Übersetzungstabelle)
+				Extensions = {
+					name = L["Extensions"],
+					type = "group",
+					order = 70,
+					args = {
+						Intro = {
+							type = "description",
+							order = 0,
+							name = L["Additions of this version of Threat Plates: Plater and Classic look, colored castbar, stacking and quest icon. Preconfigured profiles: \"Plater\" and \"Classic\" (select them under \"Profiles\")."],
+							fontSize = "medium"
+						},
+						PlaterLook = {
+							name = L["Plater look"],
+							type = "group",
+							order = 1,
+							args = {
+								Intro = {
+									type = "description",
+									order = 0,
+									name = L["Thin, crisp border like the Plater addon. Applies to the current profile; the profile \"Plater\" is preconfigured (/tptpplater)."],
+									fontSize = "medium"
+								},
+								Options = {
+									name = "",
+									type = "group",
+									inline = true,
+									order = 1,
+									args = {
+										BorderToggle = {
+											name = L["Plater border"],
+											desc = L["Thin, crisp border around health and cast bar (target white, mouseover grey), remaining time in the castbar, name hidden while casting, Plater-style auras (the aura look is only reverted after /reload)."],
+											type = "toggle",
+											order = 1,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerBorder", "ON"}
+										},
+										BorderSize = {
+											name = L["Border size (pixels)"],
+											type = "range",
+											order = 2,
+											min = 1,
+											max = 4,
+											step = 1,
+											disabled = function()
+												return not db.platerBorder.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerBorder", "size"}
+										},
+										TargetIndicator = {
+											name = L["Target indicator"],
+											desc = L["Graphic around the target's bar (from NotPlater). Default there: Silver."],
+											type = "select",
+											order = 2.1,
+											values = {
+												["NONE"] = L["None"],
+												["Silver"] = "Silver",
+												["Magneto"] = "Magneto",
+												["Gray Bold"] = "Gray Bold",
+												["Pins"] = "Pins",
+												["Ornament"] = "Ornament",
+												["Golden"] = "Golden",
+												["Ornament Gray"] = "Ornament Gray",
+												["Epic"] = "Epic",
+												["Arrow"] = "Arrow",
+												["Arrow Thin"] = "Arrow Thin",
+												["Double Arrows"] = "Double Arrows"
+											},
+											disabled = function()
+												return not db.platerBorder.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerTarget", "indicator"}
+										},
+										TargetGlow = {
+											name = L["Target glow"],
+											desc = L["Blue glow above and below the target's bar (like NotPlater)."],
+											type = "toggle",
+											order = 2.2,
+											disabled = function()
+												return not db.platerBorder.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerTarget", "glow"}
+										},
+										ParensToggle = {
+											name = L["Health as \"4.3k (100%)\""],
+											desc = L["Plater format: amount with percent in parentheses, abbreviates with k from 1000. Off = \"4300 - 100%\"."],
+											type = "toggle",
+											width = "double",
+											order = 3,
+											get = GetValue,
+											set = SetValue,
+											arg = {"text", "parens"}
+										},
+										Reset = {
+											name = L["Reset look"],
+											desc = L["Resets the Plater look in the profile \"Plater\" to its initial values (layout, fonts; your bar size is kept) - like /tptpplater reset. Only possible in the profile \"Plater\"; switch profiles under \"Profiles\"."],
+											type = "execute",
+											order = 10,
+											confirm = true,
+											confirmText = L["Reset the Plater look to its initial values?"],
+											disabled = function()
+												return TidyPlatesThreat.db:GetCurrentProfile() ~= "Plater"
+											end,
+											func = function()
+												SlashCmdList["TPTPPLATER"]("reset")
+											end
+										},
+									}
+								}
+							}
+						},
+						ClassicLook = {
+							name = L["Classic look"],
+							type = "group",
+							order = 2,
+							args = {
+								Intro = {
+									type = "description",
+									order = 0,
+									name = L["Look like the nameplates of the Classic client. Applies to the current profile; the profile \"Classic\" is preconfigured (/tptpclassic)."],
+									fontSize = "medium"
+								},
+								Options = {
+									name = "",
+									type = "group",
+									inline = true,
+									order = 1,
+									args = {
+										ClassicToggle = {
+											name = L["Classic look enabled"],
+											desc = L["Border in the style of the Classic client (simple or Blizzard gold), target highlighted in color, smaller non-targets. The profile \"Classic\" also sets matching sizes, fonts and castbar."],
+											type = "toggle",
+											order = 1,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "ON"}
+										},
+										FrameStyle = {
+											name = L["Border"],
+											desc = L["Simple: thin line, dark background and a separate level box like the Classic Era client. Gold: original Blizzard gold border from WotLK."],
+											type = "select",
+											order = 1.1,
+											values = {SIMPLE = L["Simple (Classic Era)"], GOLD = L["Gold (Blizzard WotLK)"]},
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = function(info, val)
+												db.classicLook.frameStyle = val
+												TidyPlatesThreat:RelayoutLook()
+												Update()
+											end,
+											arg = {"classicLook", "frameStyle"}
+										},
+										LineSize = {
+											name = L["Border size"],
+											type = "range",
+											order = 1.2,
+											min = 1,
+											max = 4,
+											step = 1,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD")
+											end,
+											get = GetValue,
+											set = function(info, val)
+												db.classicLook.lineSize = val
+												TidyPlatesThreat:RelayoutLook()
+												Update()
+											end,
+											arg = {"classicLook", "lineSize"}
+										},
+										TargetBorder = {
+											name = L["Target: color border"],
+											desc = L["Border and level box of the target are highlighted in the chosen color (yellow-green like the Classic client)."],
+											type = "toggle",
+											order = 2,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "targetBorder"}
+										},
+										LineTargetColor = {
+											name = L["Color (simple)"],
+											type = "color",
+											order = 2.5,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.targetBorder and db.classicLook.frameStyle ~= "GOLD")
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"classicLook", "lineTargetColor"}
+										},
+										TargetColor = {
+											name = L["Color (gold)"],
+											type = "color",
+											order = 3,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.targetBorder and db.classicLook.frameStyle == "GOLD")
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"classicLook", "targetColor"}
+										},
+										TargetGlow = {
+											name = L["Target: glow"],
+											desc = L["Additional soft glow behind the target's nameplate."],
+											type = "toggle",
+											order = 4,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "targetGlow"}
+										},
+										GlowColor = {
+											name = L["Color"],
+											type = "color",
+											order = 5,
+											hasAlpha = true,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.targetGlow)
+											end,
+											get = GetColorAlpha,
+											set = SetColorAlpha,
+											arg = {"classicLook", "glowColor"}
+										},
+										NonTargetScale = {
+											name = L["Non-target size"],
+											desc = L["Nameplates that are not your target are scaled down to this fraction (1 = same size)."],
+											type = "range",
+											order = 6,
+											min = 0.5,
+											max = 1,
+											step = 0.05,
+											isPercent = true,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "nonTargetScale"}
+										},
+										LevelSize = {
+											name = L["Level font size"],
+											desc = L["Relative to the Blizzard font in the level box."],
+											type = "range",
+											order = 7,
+											min = 0.5,
+											max = 1.2,
+											step = 0.05,
+											isPercent = true,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "levelSize"}
+										},
+										CastBorder = {
+											name = L["Blizzard castbar"],
+											desc = L["Blizzard's castbar border (with shield on uninterruptible spells) instead of the thin bar. Only fits a taller castbar (/tptpclassic reset sets the thin one)."],
+											type = "toggle",
+											order = 8,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "castBorder"}
+										},
+										KickHighlight = {
+											name = L["Kick ready: highlight border"],
+											desc = L["The castbar border lights up in the chosen color while the spell is interruptible and your interrupt is ready before the cast ends (simple border)."],
+											type = "toggle",
+											width = "double",
+											order = 8.5,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD" and not db.classicLook.castBorder)
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "kickHighlight"}
+										},
+										KickReadyColor = {
+											name = L["Color"],
+											type = "color",
+											order = 8.6,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.kickHighlight and db.classicLook.frameStyle ~= "GOLD" and not db.classicLook.castBorder)
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"classicLook", "kickReadyColor"}
+										},
+										Reset = {
+											name = L["Reset look"],
+											desc = L["Resets the Classic look in the profile \"Classic\" to its initial values (layout, fonts; your bar size is kept) - like /tptpclassic reset. Only possible in the profile \"Classic\"; switch profiles under \"Profiles\"."],
+											type = "execute",
+											order = 20,
+											confirm = true,
+											confirmText = L["Reset the Classic look to its initial values?"],
+											disabled = function()
+												return TidyPlatesThreat.db:GetCurrentProfile() ~= "Classic"
+											end,
+											func = function()
+												SlashCmdList["TPTPCLASSIC"]("reset")
+											end
+										},
+									}
+								}
+							}
+						},
+						Castbar = {
+							name = L["Castbar"],
+							type = "group",
+							order = 3,
+							disabled = function()
+								return not (db.platerBorder.ON or db.classicLook.ON)
+							end,
+							args = {
+								Intro = {
+									type = "description",
+									order = 0,
+									name = L["Colors the castbar by interruptibility. Works with the Plater or the Classic look."],
+									fontSize = "medium"
+								},
+								Options = {
+									name = "",
+									type = "group",
+									inline = true,
+									order = 1,
+									args = {
+										CastToggle = {
+											name = L["Color by interruptibility"],
+											desc = L["Colors the castbar depending on whether the spell is interruptible and whether your own interrupt (Kick, Pummel, Counterspell ...) is ready. Whether a spell is interruptible is learned on target/mouseover and then also used for other nameplates. Requires the Plater border or the Classic look."],
+											type = "toggle",
+											width = "double",
+											order = 1,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerCast", "ON"}
+										},
+										KickCooldown = {
+											name = L["Own interrupt on cooldown"],
+											desc = L["Paler color while your interrupt will not be ready before the cast ends (or is unusable in the wrong stance/form)."],
+											type = "toggle",
+											width = "double",
+											order = 2,
+											disabled = function()
+												return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerCast", "kickCooldown"}
+										},
+										ShieldIcon = {
+											name = L["Lock on uninterruptible"],
+											desc = L["Lock icon on the spell icon, the icon turns grey."],
+											type = "toggle",
+											order = 3,
+											disabled = function()
+												return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"platerCast", "shieldIcon"}
+										},
+										ColorReady = {
+											name = L["Interruptible, ready"],
+											type = "color",
+											order = 4,
+											disabled = function()
+												return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"platerCast", "colorReady"}
+										},
+										ColorCooldown = {
+											name = L["Interruptible, on cooldown"],
+											type = "color",
+											order = 5,
+											disabled = function()
+												return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON and db.platerCast.kickCooldown)
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"platerCast", "colorCooldown"}
+										},
+										ColorShield = {
+											name = L["Not interruptible"],
+											type = "color",
+											order = 6,
+											disabled = function()
+												return not ((db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON)
+											end,
+											get = GetColor,
+											set = SetColor,
+											arg = {"platerCast", "colorShield"}
+										}
+									}
+								}
+							}
+						},
+						Stacking = {
+							name = L["Stacking"],
+							type = "group",
+							order = 4,
+							args = {
+								Intro = {
+									type = "description",
+									order = 0,
+									name = L["Enemy nameplates move up out of each other's way instead of overlapping. Applies to every profile."],
+									fontSize = "medium"
+								},
+								Options = {
+									name = "",
+									type = "group",
+									inline = true,
+									order = 1,
+									args = {
+										StackingToggle = {
+											name = L["Stack nameplates"],
+											desc = L["Enemy nameplates are pushed up instead of overlapping (replaces the WeakAura \"Enhanced Stacking Nameplate\" - do not load both at the same time). Spacing is calculated from bar size and name."],
+											type = "toggle",
+											order = 1,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "ON"}
+										},
+										PinTarget = {
+											name = L["Pin target"],
+											desc = L["The target's nameplate stays directly above the model, the others move out of the way."],
+											type = "toggle",
+											order = 2,
+											disabled = function()
+												return not db.stacking.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "pinTarget"}
+										},
+										Speed = {
+											name = L["Speed"],
+											desc = L["How fast the nameplates move (default 0.7)."],
+											type = "range",
+											order = 3,
+											min = 0.2,
+											max = 2,
+											step = 0.1,
+											disabled = function()
+												return not db.stacking.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "speed"}
+										},
+										TallBossFix = {
+											name = L["Keep tall bosses visible"],
+											desc = L["Extends the game area upwards so nameplates of very tall bosses do not slide off the screen. Turning it off only takes effect after /reload."],
+											type = "toggle",
+											width = "double",
+											order = 4,
+											disabled = function()
+												return not db.stacking.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "tallBossFix"}
+										},
+										Columns = {
+											name = L["Two stacks side by side"],
+											desc = L["When many enemies stand close together, their nameplates are split into two columns left and right instead of forming a tall tower. The target stays in place."],
+											type = "toggle",
+											order = 5,
+											disabled = function()
+												return not db.stacking.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "columns"}
+										},
+										ColumnsAt = {
+											name = L["Two stacks from"],
+											desc = L["From this many stacked nameplates on, two columns are formed (default 6)."],
+											type = "range",
+											order = 6,
+											min = 3,
+											max = 20,
+											step = 1,
+											disabled = function()
+												return not (db.stacking.ON and db.stacking.columns)
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "columnsAt"}
+										},
+										OnlyEngaged = {
+											name = L["Only stack engaged enemies"],
+											desc = L["In combat only enemies fighting you, your pet or your group are stacked (according to combat log, aggro, target/mouseover). Uninvolved nameplates stay in place and push nobody away. Out of combat everything is stacked."],
+											type = "toggle",
+											width = "double",
+											order = 7,
+											disabled = function()
+												return not db.stacking.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "onlyEngaged"}
+										}
+									}
+								}
+							}
+						},
+						QuestIcon = {
+							name = L["Quest icon"],
+							type = "group",
+							order = 5,
+							args = {
+								Intro = {
+									type = "description",
+									order = 0,
+									name = L["Icon in front of the name of mobs from open kill quests. Applies to every profile."],
+									fontSize = "medium"
+								},
+								Options = {
+									name = "",
+									type = "group",
+									inline = true,
+									order = 1,
+									args = {
+										QuestIcon = {
+											name = L["Quest icon"],
+											desc = L["Icon in front of the name of mobs that are an open kill objective in the quest log (matched by name). Collect objectives are not detected, neither are quests under collapsed headers. Applies to every profile."],
+											type = "toggle",
+											order = 1,
+											get = GetValue,
+											set = SetValue,
+											arg = {"questIcon", "ON"}
+										},
+									}
+								}
+							}
+						},
+					}
 				},
 				About = {
 					name = L["About"],

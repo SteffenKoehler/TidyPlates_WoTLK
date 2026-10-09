@@ -1,0 +1,7 @@
+## Interface: 30300
+## Title: TPProf
+## Notes: CPU usage per addon (/tpprof)
+## Notes-deDE: CPU-Messung pro Addon (/tpprof)
+## SavedVariables: TPProfDB
+
+TPProf.lua

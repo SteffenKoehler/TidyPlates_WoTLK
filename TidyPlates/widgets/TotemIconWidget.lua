@@ -137,12 +137,25 @@ local function TotemSlot(name)
 	end
 end
 
+-- Ergebnis pro Name zwischenspeichern (false = kein Totem), da diese Funktion
+-- für jede Plakette mehrfach pro Update aufgerufen wird und sonst jedes Mal die
+-- komplette Tabelle durchläuft.
+local FallbackCache = {}
 local function TotemNameFallback(totem)
+	if not totem then
+		return nil
+	end
+	local cached = FallbackCache[totem]
+	if cached ~= nil then
+		return cached or nil
+	end
 	for name, tbl in pairs(Totem_InfoTable) do
 		if (tbl[3] and tbl[3] == totem) then
+			FallbackCache[totem] = name
 			return name
 		end
 	end
+	FallbackCache[totem] = false
 end
 
 local function UpdateTotemIconWidget(self, unit)

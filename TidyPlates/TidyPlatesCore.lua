@@ -5,6 +5,24 @@
 local addonName, TidyPlates = ...
 _G.TidyPlates = TidyPlates
 
+-- Stelle sicher, dass TidyPlatesData immer existiert (auch vor ADDON_LOADED)
+TidyPlatesData = TidyPlatesData or {}
+
+-- Merkt sich pro Zauber(name), ob er unterbrechbar ist. Verlässlich weiß der Client das
+-- nur beim Ziel und Mouseover; gespeichert gilt es dann auch für Nicht-Ziel-Zauberleisten
+-- (über das Kampflog ist die Information nicht verfügbar).
+local function LearnCastShield(spell, notInterruptible)
+	if not spell then
+		return
+	end
+	local known = TidyPlatesData.CastShield
+	if not known then
+		known = {}
+		TidyPlatesData.CastShield = known
+	end
+	known[spell] = notInterruptible and true or false
+end
+
 TidyPlates.callbacks = TidyPlates.callbacks or LibStub("CallbackHandler-1.0"):New(TidyPlates)
 
 local _
@@ -17,6 +35,11 @@ local weaktable = {__mode = "k"}
 local massQueue = setmetatable({}, weaktable)
 local functionQueue = setmetatable({}, weaktable)
 local targetQueue = setmetatable({}, weaktable)
+-- Eigene Warteschlangen, damit während der Abarbeitung von targetQueue keine neuen
+-- Schlüssel in dieselbe Tabelle geschrieben werden (in Lua bei pairs() undefiniert)
+local healthQueue = setmetatable({}, weaktable)
+local delegateQueue = setmetatable({}, weaktable)
+local widgetQueue = setmetatable({}, weaktable) -- Widgets nach neuer GUID-Zuordnung auffrischen
 
 local ForEachPlate
 local EMPTY_TEXTURE = "Interface\\Addons\\TidyPlates\\Media\\Empty"
@@ -78,6 +101,12 @@ local OnNewNameplate, OnShowNameplate, OnHideNameplate, OnUpdateNameplate, OnRes
 local OnUpdateHealth, OnUpdateLevel, OnUpdateThreatSituation, OnUpdateRaidIcon, OnUpdateHealthRange
 local OnMouseoverNameplate, OnRequestWidgetUpdate, OnRequestDelegateUpdate
 local OnShowCastbar, OnHideCastbar, OnValueChangedCastbar
+local PollPlateState, ProcessHealthUpdate, OnTargetChangedNameplate, LearnGUIDs
+local CorrelateDamage, AssignFromMarkers, NameNeedsGUID
+local ResetStackedPlate
+-- Gegner, die mit mir/meinem Pet/meiner Gruppe im Kampf sind (aus dem Kampflog)
+local EngagedGUID, EngagedNames = {}, {} -- [guid] = name / [name] = Anzahl
+local StartTargetCastFallback, StopTargetCastFallback
 
 -- Spell Casting
 local StartCastAnimation, StopCastAnimation, OnUpdateTargetCastbar
@@ -296,6 +325,14 @@ do
 	end
 	-- UpdateIndicator_UnitColor: Update the health bar coloring, if needed
 	function UpdateIndicator_UnitColor()
+		-- Crowd Control Farbänderung
+		if TidyPlatesWidgets and TidyPlatesWidgets.IsUnitCrowdControlled and TidyPlatesWidgets.IsUnitCrowdControlled(unit) then
+			local color = CROWD_CONTROL_COLOR or {r=0.2, g=0.5, b=1.0}
+			bars.healthbar:SetForegroundColor(color.r, color.g, color.b)
+			visual.name:SetTextColor(color.r, color.g, color.b, 1)
+			return
+		end
+
 		-- Set Health Bar
 		if activetheme.SetHealthbarColor then
 			--bars.healthbar:SetForegroundColor(activetheme.SetHealthbarColor(unit))
@@ -404,6 +441,412 @@ do
 		visual = extended.visual
 		style = extended.style
 	end
+
+	--------------------------------
+	-- GUID-Zuordnung
+	-- Plaketten haben in 3.3.5a keine GUID. Neben Ziel/Mouseover (sicher) gibt es
+	-- zwei Heuristiken, die NUR bei Eindeutigkeit zuordnen:
+	--  1. Fingerabdruck: Beim Verschwinden einer Plakette werden GUID, Name, Stufe,
+	--     Lebenspunkte usw. gemerkt und beim Wiederauftauchen abgeglichen.
+	--  2. Schadens-Abgleich: Kampflog-Schaden an GUID X in Höhe Y wird mit einer
+	--     Plakette abgeglichen, deren Lebenspunkte im selben Moment um Y sanken.
+	-- Ziel/Mouseover sind maßgeblich und korrigieren falsche Zuordnungen.
+	--------------------------------
+	local HiddenFingerprints = {} -- [guid] = {name, level, healthmax, health, isElite, time}
+	local FINGERPRINT_TTL = 30
+
+	-- authoritative = true bei Ziel/Mouseover: darf bestehende Zuordnungen überschreiben
+	local function AssignGUID(plate, guid, authoritative)
+		if not plate or not guid then
+			return false
+		end
+		local u = plate.extended.unit
+		if u.guid == guid then
+			return true
+		end
+
+		local other = GUID[guid]
+		if other and other ~= plate then
+			if not authoritative then
+				return false
+			end
+			local ou = other.extended.unit
+			if ou.guid == guid then
+				ou.guid = nil
+				widgetQueue[other] = true
+			end
+		end
+		if u.guid then
+			if not authoritative then
+				return false
+			end
+			if GUID[u.guid] == plate then
+				GUID[u.guid] = nil
+			end
+		end
+
+		u.guid = guid
+		GUID[guid] = plate
+		HiddenFingerprints[guid] = nil
+		widgetQueue[plate] = true -- Debuffs, Tank-Status, laufende Zauber nachziehen
+		return true
+	end
+
+	-- Fingerabdruck: Darf die (sichtbare) Plakette u der gemerkte Gegner fp sein?
+	-- Lebenspunkte dürfen seit dem Verschwinden nur gesunken sein (DoTs ticken weiter),
+	-- mit kleiner Toleranz für Regeneration, und nicht beliebig stark.
+	local function FingerprintMatches(fp, u, now)
+		if fp.name ~= u.name or fp.level ~= u.level or fp.healthmax ~= u.healthmax or fp.isElite ~= u.isElite then
+			return false
+		end
+		local hp = u.health
+		if not hp or hp <= 0 then
+			return false
+		end
+		local hidden = now - fp.time
+		local maxDrop = fp.healthmax * math.min(0.5, 0.05 + 0.03 * hidden)
+		return hp <= fp.health + fp.healthmax * 0.05 and hp >= fp.health - maxDrop
+	end
+
+	local function RememberFingerprint(u)
+		if not (u.guid and u.name and u.healthmax and u.healthmax > 0 and u.health) then
+			return
+		end
+		-- Unverletzte Gegner sind in Gruppen gleichnamiger Mobs nicht unterscheidbar
+		if u.health >= u.healthmax or u.reaction == "FRIENDLY" or u.type == "PLAYER" then
+			return
+		end
+		local fp = HiddenFingerprints[u.guid] or {}
+		fp.name, fp.level, fp.healthmax, fp.health = u.name, u.level, u.healthmax, u.health
+		fp.isElite, fp.time = u.isElite, GetTime()
+		HiddenFingerprints[u.guid] = fp
+	end
+
+	-- Versucht für alle sichtbaren Plaketten ohne GUID einen gemerkten Gegner zu finden.
+	-- Zugeordnet wird nur, wenn Plakette und Fingerabdruck sich gegenseitig eindeutig sind.
+	local function RestoreFromFingerprints()
+		if not next(HiddenFingerprints) then
+			return
+		end
+		local now = GetTime()
+		for guid, fp in pairs(HiddenFingerprints) do
+			if GUID[guid] or (now - fp.time) > FINGERPRINT_TTL then
+				HiddenFingerprints[guid] = nil
+			end
+		end
+		for plate in pairs(PlatesVisible) do
+			local u = plate.extended.unit
+			if not u.guid and u.name then
+				local found
+				for guid, fp in pairs(HiddenFingerprints) do
+					if FingerprintMatches(fp, u, now) then
+						if found then
+							found = false -- mehrdeutig
+							break
+						end
+						found = guid
+					end
+				end
+				if found then
+					local fp = HiddenFingerprints[found]
+					local unique = true
+					for other in pairs(PlatesVisible) do
+						local ou = other.extended.unit
+						if other ~= plate and not ou.guid and FingerprintMatches(fp, ou, now) then
+							unique = false
+							break
+						end
+					end
+					if unique then
+						AssignGUID(plate, found)
+					end
+				end
+			end
+		end
+	end
+
+	-- Schadens-Abgleich
+	local PendingDamage = {} -- Kampflog: {guid, name, amount, t}
+	local PlateDamage = {}   -- Plaketten: {plate, amount, t}
+	local CORRELATE_WINDOW = 0.35
+	local MAX_PENDING = 200
+
+	local DamageDirty = false -- neue Einträge seit dem letzten Abgleich
+
+	local function PruneDamage(list, now)
+		local j = 0
+		for i = 1, #list do
+			local r = list[i]
+			if not r.done and (now - r.t) <= CORRELATE_WINDOW then
+				j = j + 1
+				list[j] = r
+			end
+		end
+		for i = #list, j + 1, -1 do
+			list[i] = nil
+		end
+	end
+
+	local function AddDamageRecord(list, key, keyField, name, amount, now)
+		-- Mehrere Treffer im selben Frame zusammenfassen
+		for i = #list, 1, -1 do
+			local r = list[i]
+			if r.t ~= now then
+				break
+			end
+			if r[keyField] == key then
+				r.amount = r.amount + amount
+				r.new = true
+				DamageDirty = true
+				return
+			end
+		end
+		if #list >= MAX_PENDING then
+			PruneDamage(list, now) -- alte Einträge zuerst verwerfen
+			if #list >= MAX_PENDING then
+				return
+			end
+		end
+		list[#list + 1] = {[keyField] = key, name = name, amount = amount, t = now, new = true}
+		DamageDirty = true
+	end
+
+	local function RecordCombatDamage(guid, name, amount)
+		AddDamageRecord(PendingDamage, guid, "guid", name, amount, GetTime())
+	end
+
+	local function RecordPlateDamage(plate, amount)
+		AddDamageRecord(PlateDamage, plate, "plate", nil, amount, GetTime())
+	end
+
+	-- Läuft nur, wenn seit dem letzten Frame neue Einträge kamen, und prüft nur Paare,
+	-- an denen ein neuer Eintrag beteiligt ist (vorher: jeden Frame alle gegen alle).
+	local abs = math.abs
+	function CorrelateDamage()
+		if not DamageDirty then
+			return
+		end
+		DamageDirty = false
+		local now = GetTime()
+		PruneDamage(PendingDamage, now)
+		PruneDamage(PlateDamage, now)
+
+		-- Neue Plaketten-Einträge: passende Kampflog-Einträge erneut prüfen
+		for k = 1, #PlateDamage do
+			local d = PlateDamage[k]
+			if d.new then
+				d.new = nil
+				local du = d.plate.extended.unit
+				if not d.done and not du.guid then
+					for i = 1, #PendingDamage do
+						local e = PendingDamage[i]
+						if e.amount == d.amount and e.name == du.name then
+							e.new = true
+						end
+					end
+				end
+			end
+		end
+
+		for i = 1, #PendingDamage do
+			local e = PendingDamage[i]
+			local isNew = e.new
+			e.new = nil
+			if isNew and not e.done and not GUID[e.guid] then
+				local match, count = nil, 0
+				for k = 1, #PlateDamage do
+					local d = PlateDamage[k]
+					local du = d.plate.extended.unit
+					if not d.done and d.amount == e.amount and abs(d.t - e.t) <= CORRELATE_WINDOW
+						and not du.guid and du.name == e.name then
+						count = count + 1
+						match = d
+					end
+				end
+				if count == 1 then
+					-- Gegenprobe: kein anderer Gegner mit gleichem Namen und gleichem Schaden
+					local unique = true
+					for k = 1, #PendingDamage do
+						local e2 = PendingDamage[k]
+						if e2 ~= e and e2.guid ~= e.guid and not e2.done and e2.amount == e.amount
+							and e2.name == e.name and abs(e2.t - match.t) <= CORRELATE_WINDOW then
+							unique = false
+							break
+						end
+					end
+					if unique and AssignGUID(match.plate, e.guid) then
+						match.done = true
+						for k = 1, #PendingDamage do
+							if PendingDamage[k].guid == e.guid then
+								PendingDamage[k].done = true
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- Raid-Marker: Kampflog-Flags (und Einheiten wie raidXtarget) verraten, welche GUID
+	-- welches Symbol trägt. Da jedes Symbol nur einmal vergeben ist, ist die Zuordnung zur
+	-- Plakette mit demselben Symbol (und gleichem Namen) eindeutig - auch bei gleichnamigen
+	-- Mobs mit voller Gesundheit.
+	local MarkerGUID, MarkerName = {}, {} -- [icon] = guid / name
+	local MarkersDirty = false
+	local MarkerByIndex = {"STAR", "CIRCLE", "DIAMOND", "TRIANGLE", "MOON", "SQUARE", "CROSS", "SKULL"}
+	local RAIDTARGET_MASK = 0x0FF00000
+	local MarkerByBit = {}
+	for i = 1, 8 do
+		MarkerByBit[0x00080000 * 2 ^ i] = MarkerByIndex[i] -- 0x00100000 .. 0x08000000
+	end
+
+	local function RecordMarker(icon, guid, name)
+		if icon and guid and MarkerGUID[icon] ~= guid then
+			MarkerGUID[icon] = guid
+			MarkerName[icon] = name
+			MarkersDirty = true
+		end
+	end
+
+	-- force = false: nur wenn seit dem letzten Lauf neue Marker-Informationen kamen
+	function AssignFromMarkers(force)
+		if not (force or MarkersDirty) then
+			return
+		end
+		MarkersDirty = false
+		if not next(MarkerGUID) then
+			return
+		end
+		for plate in pairs(PlatesVisible) do
+			local u = plate.extended.unit
+			-- Symbol direkt aus der Region lesen: unit.raidIcon wird erst im nächsten Frame
+			-- aktualisiert und wäre direkt nach dem Umsetzen eines Markers veraltet
+			local raidicon = plate.extended.regions.raidicon
+			local icon
+			if raidicon:IsShown() then
+				local ux, uy = raidicon:GetTexCoord()
+				icon = MarkerByIndex[floor(ux * 4 + 0.5) + 1 + (uy > 0.1 and 4 or 0)]
+			end
+			if icon then
+				local guid = MarkerGUID[icon]
+				if guid and u.guid ~= guid and u.name == MarkerName[icon] then
+					AssignGUID(plate, guid, true)
+				end
+			end
+		end
+	end
+
+	-- Symbole wurden umverteilt: alte Zuordnungen verwerfen, Kampflog füllt sie neu
+	do
+		local MarkerWatcher = CreateFrame("Frame")
+		MarkerWatcher:RegisterEvent("RAID_TARGET_UPDATE")
+		MarkerWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+		MarkerWatcher:SetScript("OnEvent", function()
+			wipe(MarkerGUID)
+			wipe(MarkerName)
+		end)
+	end
+
+	-- Kampflog: Schaden an Gegnern ohne bekannte Plakette vormerken
+	do
+		local band = bit.band
+		local CONTROL_NPC = COMBATLOG_OBJECT_CONTROL_NPC
+		local REACTION_FRIENDLY = COMBATLOG_OBJECT_REACTION_FRIENDLY
+		local SpellDamageEvents = {
+			SPELL_DAMAGE = true, SPELL_PERIODIC_DAMAGE = true, RANGE_DAMAGE = true,
+			DAMAGE_SHIELD = true, DAMAGE_SPLIT = true
+		}
+		-- Namen sichtbarer Plaketten ohne GUID, höchstens einmal pro Frame neu erfasst.
+		-- Schaden an Gegnern, die gar nicht zuzuordnen sind, wird so nicht gespeichert.
+		local UnassignedNames, namesStamp = {}, nil
+		function NameNeedsGUID(name)
+			local now = GetTime()
+			if namesStamp ~= now then
+				namesStamp = now
+				wipe(UnassignedNames)
+				for plate in pairs(PlatesVisible) do
+					local u = plate.extended.unit
+					if not u.guid and u.name then
+						UnassignedNames[u.name] = true
+					end
+				end
+			end
+			return UnassignedNames[name]
+		end
+
+		local AFFILIATION_OURS = 0x00000007 -- MINE, PARTY, RAID
+		local NotEngaging = {
+			UNIT_DIED = true, UNIT_DESTROYED = true, PARTY_KILL = true,
+			SPELL_AURA_REMOVED = true, SPELL_AURA_REMOVED_DOSE = true, SPELL_AURA_BROKEN = true,
+			SPELL_AURA_BROKEN_SPELL = true, ENCHANT_APPLIED = true, ENCHANT_REMOVED = true
+		}
+
+		local DamageWatcher = CreateFrame("Frame")
+		DamageWatcher:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+		DamageWatcher:SetScript("OnEvent", function(self, event, ...)
+			local _, subevent, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags = ...
+			local raid = sourceFlags and band(sourceFlags, RAIDTARGET_MASK)
+			if raid and raid ~= 0 then
+				RecordMarker(MarkerByBit[raid], sourceGUID, sourceName)
+			end
+			raid = destFlags and band(destFlags, RAIDTARGET_MASK)
+			if raid and raid ~= 0 then
+				RecordMarker(MarkerByBit[raid], destGUID, destName)
+			end
+
+			-- Beteiligte Gegner merken: eine Seite gehört zu mir/meiner Gruppe/meinem Raid,
+			-- die andere ist ein nicht freundlicher NPC (Schaden, Verfehlen, Debuffs ...)
+			if InCombat and sourceFlags and destFlags and not NotEngaging[subevent] then
+				local gid, gname
+				if band(sourceFlags, AFFILIATION_OURS) ~= 0 then
+					if band(destFlags, CONTROL_NPC) ~= 0 and band(destFlags, REACTION_FRIENDLY) == 0 then
+						gid, gname = destGUID, destName
+					end
+				elseif band(destFlags, AFFILIATION_OURS) ~= 0 then
+					if band(sourceFlags, CONTROL_NPC) ~= 0 and band(sourceFlags, REACTION_FRIENDLY) == 0 then
+						gid, gname = sourceGUID, sourceName
+					end
+				end
+				if gid and gname and not EngagedGUID[gid] then
+					EngagedGUID[gid] = gname
+					EngagedNames[gname] = (EngagedNames[gname] or 0) + 1
+				end
+			end
+
+			local amount, overkill
+			if subevent == "SWING_DAMAGE" then
+				amount, overkill = select(9, ...)
+			elseif SpellDamageEvents[subevent] then
+				amount, overkill = select(12, ...)
+			elseif subevent == "UNIT_DIED" then
+				if destGUID then
+					HiddenFingerprints[destGUID] = nil
+					local gname = EngagedGUID[destGUID]
+					if gname then
+						EngagedGUID[destGUID] = nil
+						local n = (EngagedNames[gname] or 1) - 1
+						EngagedNames[gname] = n > 0 and n or nil
+					end
+				end
+				return
+			else
+				return
+			end
+			if not InCombat or not destGUID or GUID[destGUID] or not amount then
+				return
+			end
+			if band(destFlags, CONTROL_NPC) == 0 or band(destFlags, REACTION_FRIENDLY) ~= 0 then
+				return
+			end
+			if overkill and overkill > 0 then
+				amount = amount - overkill
+			end
+			if amount > 0 and NameNeedsGUID(destName) then
+				RecordCombatDamage(destGUID, destName, amount)
+			end
+		end)
+	end
+
 	--------------------------------
 	-- Data Conversion Functions
 	local ClassReference = {}
@@ -436,6 +879,7 @@ do
 				end
 				return "HIGH", 3
 			end
+			return "LOW", 0
 		end
 	end
 	-- GetUnitReaction: Determines the reaction, and type of unit from the health bar color
@@ -482,12 +926,10 @@ do
 		if unit.isTarget then
 			currentTarget = plate
 			OnUpdateTargetCastbar(plate)
-			if not unit.guid then
-				-- UpdateCurrentGUID
-				unit.guid = UnitGUID("target")
-				if unit.guid then
-					GUID[unit.guid] = plate
-				end
+			-- UpdateCurrentGUID: Ziel ist maßgeblich und korrigiert ggf. eine heuristische Zuordnung
+			local targetGUID = UnitGUID("target")
+			if targetGUID and unit.guid ~= targetGUID then
+				AssignGUID(plate, targetGUID, true)
 			end
 			extended:SetFrameLevel(127)
 		else
@@ -567,6 +1009,7 @@ do
 		for key, value in pairs(unit) do
 			if unitcache[key] ~= value then
 				unitchanged = true
+				break
 			end
 		end
 
@@ -628,10 +1071,18 @@ do
 	-- OnHideNameplate
 	function OnHideNameplate(source)
 		local plate = source.parentPlate
+		-- Wiederverwendete Plakette darf den Stapel-Versatz des alten Gegners nicht erben
+		if ResetStackedPlate then
+			ResetStackedPlate(plate)
+		end
 		UpdateReferences(plate)
 		if unit.guid then
-			GUID[unit.guid] = nil
+			RememberFingerprint(unit) -- für das Wiederauftauchen merken
+			if GUID[unit.guid] == plate then
+				GUID[unit.guid] = nil
+			end
 		end
+		extended.deltaHealth = nil
 
 		bars.castbar:Hide()
 		unit.isCasting = false
@@ -663,6 +1114,7 @@ do
 		UpdateReferences(plate)
 		PrepareNameplate(plate)
 		GatherData_BasicInfo()
+		extended.deltaHealth = unit.health -- Ausgangswert für den Schadens-Abgleich
 
 		-- Alternative to reduce initial CPU load
 		CheckNameplateStyle()
@@ -691,6 +1143,7 @@ do
 		UpdateReferences(plate)
 		PrepareNameplate(plate)
 		GatherData_BasicInfo()
+		extended.deltaHealth = unit.health -- Ausgangswert für den Schadens-Abgleich
 
 		CheckNameplateStyle()
 		UpdateIndicator_CustomAlpha()
@@ -700,6 +1153,7 @@ do
 	end
 
 	function OnShowCastbar(cast)
+		StopTargetCastFallback() -- Blizzards Leiste übernimmt wieder
 		cast.castbar:SetMinMaxValues(cast:GetMinMaxValues())
 	end
 
@@ -722,6 +1176,27 @@ do
 		GatherData_BasicInfo()
 		ProcessUnitChanges()
 	end
+	-- OnTargetChangedNameplate: Bei einem Zielwechsel brauchen nur das alte und das
+	-- neue Ziel ein Vollupdate. Alle anderen Plaketten ändern nur Transparenz/Größe
+	-- (Blizzard-Alpha für Nicht-Ziele, Ausblenden von Nicht-Zielen).
+	function OnTargetChangedNameplate(plate)
+		if not plate:IsShown() then
+			return
+		end
+		UpdateReferences(plate)
+
+		local alpha = HasTarget and plate.alpha or 1
+		local isTarget = HasTarget and alpha == 1
+		if unit.isTarget or isTarget then
+			OnUpdateNameplate(plate)
+			return
+		end
+
+		unit.alpha = alpha
+		UpdateIndicator_CustomAlpha()
+		UpdateIndicator_CustomScaleText()
+	end
+
 	-- OnUpdateLevel
 	function OnUpdateLevel(plate)
 		if not IsPlateShown(plate) then
@@ -796,11 +1271,10 @@ do
 
 		if unit.isMouseover then
 			visual.highlight:Show()
-			if (not unit.guid) then
-				unit.guid = UnitGUID("mouseover")
-				if unit.guid then
-					GUID[unit.guid] = plate
-				end
+			-- Mouseover ist maßgeblich und korrigiert ggf. eine heuristische Zuordnung
+			local mouseoverGUID = UnitGUID("mouseover")
+			if mouseoverGUID and unit.guid ~= mouseoverGUID then
+				AssignGUID(plate, mouseoverGUID, true)
 			end
 		else
 			visual.highlight:Hide()
@@ -812,6 +1286,22 @@ do
 		end
 		if activetheme.OnUpdate then
 			activetheme.OnUpdate(extended, unit)
+		end
+
+		-- Mouseover über ein Nicht-Ziel: Laufenden Zauber mit exakten Zeiten anzeigen
+		local u = plate.extended.unit
+		if u.isMouseover and not u.isTarget and TidyPlates.StartTimedCastOnNameplate
+			and (not u.guid or u.guid == UnitGUID("mouseover")) then
+			local spell, _, _, icon, startTime, endTime, _, _, notInterruptible = UnitCastingInfo("mouseover")
+			local channel = false
+			if not spell then
+				spell, _, _, icon, startTime, endTime, _, notInterruptible = UnitChannelInfo("mouseover")
+				channel = true
+			end
+			if spell and startTime and endTime then
+				LearnCastShield(spell, notInterruptible)
+				TidyPlates.StartTimedCastOnNameplate(plate, u.guid, spell, nil, icon, notInterruptible, startTime / 1000, endTime / 1000, channel)
+			end
 		end
 	end
 
@@ -840,15 +1330,31 @@ do
 		UpdateIndicator_CustomScaleText()
 	end
 
-	-- OnUpdateHealth
+	-- OnUpdateHealth: Nur vormerken. Mehrere Lebenspunkte-Ticks einer Plakette
+	-- innerhalb eines Frames werden so zu einem Update zusammengefasst.
 	function OnUpdateHealth(source)
 		local plate = source.parentPlate
+		if plate then
+			healthQueue[plate] = true
+		end
+	end
+
+	-- ProcessHealthUpdate: Wird einmal pro Frame aus OnUpdate aufgerufen
+	function ProcessHealthUpdate(plate)
 		if not IsPlateShown(plate) then
 			return
 		end
 		UpdateReferences(plate)
 		unit.health = bars.health:GetValue() or 0
 		_, unit.healthmax = bars.health:GetMinMaxValues()
+
+		-- Lebenspunkte-Abzug für den Schadens-Abgleich merken (nur Plaketten ohne GUID)
+		local lastHealth = extended.deltaHealth
+		extended.deltaHealth = unit.health
+		if lastHealth and unit.health < lastHealth and not unit.guid and InCombat then
+			RecordPlateDamage(plate, lastHealth - unit.health)
+		end
+
 		UpdateIndicator_HealthBar()
 		UpdateIndicator_CustomAlpha()
 		UpdateIndicator_CustomScaleText()
@@ -857,15 +1363,24 @@ do
 	-- OnUpdateHealthRange
 	function OnUpdateHealthRange(source)
 		local plate = source.parentPlate
+		plate.extended.deltaHealth = nil -- max. Lebenspunkte geändert: kein Abzug ableitbar
 		OnUpdateNameplate(plate)
 	end
 
 	-- Shows the Cast Animation (requires references)
-	function StartCastAnimation(plate, spell, spellid, icon, notInterruptible, channel)
+	-- minOverride/maxOverride: Für Nicht-Ziele gibt es keine Blizzard-Zauberleiste,
+	-- dann wird die Dauer direkt übergeben (siehe TidyPlatesSpellCastMonitor.lua).
+	-- Rückgabe: true, wenn die Zauberleiste angezeigt wird.
+	function StartCastAnimation(plate, spell, spellid, icon, notInterruptible, channel, minOverride, maxOverride)
 		UpdateReferences(plate)
 		if (tonumber(GetCVar("showVKeyCastbar")) == 1) and spell then
 			local castbar = bars.castbar
-			local minval, maxval = castbar.cast:GetMinMaxValues()
+			local minval, maxval
+			if maxOverride then
+				minval, maxval = minOverride or 0, maxOverride
+			else
+				minval, maxval = castbar.cast:GetMinMaxValues()
+			end
 			if not (minval or maxval) or maxval == 0 or minval == maxval then
 				StopCastAnimation(plate)
 				return
@@ -875,8 +1390,15 @@ do
 			unit.isCasting = true
 			unit.spellName = spell
 			unit.spellID = spellid
+			-- Unbekannt (Kampflog): gespeichertes Wissen über den Zauber verwenden
+			if not notInterruptible and TidyPlatesData.CastShield and TidyPlatesData.CastShield[spell] then
+				notInterruptible = true
+			end
 			unit.spellIsShielded = notInterruptible
 			unit.spellInterruptible = not notInterruptible
+			-- Restzeit für die Startfarbe (Kick bis Zauberende bereit?); ab dem ersten Frame
+			-- führt das Theme sie mit der echten Restzeit nach
+			unit.castRemaining = maxval - minval
 
 			if activetheme.SetCastbarColor then
 				r, g, b, a = activetheme.SetCastbarColor(unit)
@@ -890,18 +1412,28 @@ do
 			visual.spelltext:SetText(spell)
 
 			visual.spellicon:SetTexture(icon)
+			-- Rahmengrafiken nur, wenn der Stil sie zeigt (sonst z.B. Plater-Optik überdeckt)
 			if notInterruptible then
-				visual.castnostop:Show()
 				visual.castborder:Hide()
+				if style.castnostop.show then
+					visual.castnostop:Show()
+				else
+					visual.castnostop:Hide()
+				end
 			else
 				visual.castnostop:Hide()
-				visual.castborder:Show()
+				if style.castborder.show then
+					visual.castborder:Show()
+				else
+					visual.castborder:Hide()
+				end
 			end
 
 			castbar:Show()
 
 			UpdateIndicator_CustomScaleText()
 			UpdateIndicator_CustomAlpha()
+			return true
 		end
 	end
 
@@ -915,6 +1447,37 @@ do
 	end
 
 	-- OnUpdateTargetCastbar: Called from hooking into the original nameplate castbar's "OnValueChanged"
+	-- Ersatz-Steuerung der Ziel-Zauberleiste (siehe OnUpdateTargetCastbar). Werte im
+	-- GetTime-Maßstab: Zauber laufen von Start bis Ende, Kanalisieren rückwärts.
+	local fallback = {}
+	local TargetCastTicker = CreateFrame("Frame")
+	TargetCastTicker:Hide()
+	TargetCastTicker:SetScript("OnUpdate", function(self)
+		local plate, now = fallback.plate, GetTime()
+		if not plate or not plate:IsShown() or not plate.extended.unit.isTarget then
+			fallback.plate = nil
+			self:Hide()
+		elseif now >= fallback.endTime then
+			fallback.plate = nil
+			self:Hide()
+			StopCastAnimation(plate)
+		elseif fallback.channel then
+			plate.extended.bars.castbar:SetValue(fallback.startTime + fallback.endTime - now)
+		else
+			plate.extended.bars.castbar:SetValue(now)
+		end
+	end)
+
+	function StartTargetCastFallback(plate, startTime, endTime, channel)
+		fallback.plate, fallback.startTime, fallback.endTime, fallback.channel = plate, startTime, endTime, channel
+		TargetCastTicker:Show()
+	end
+
+	function StopTargetCastFallback()
+		fallback.plate = nil
+		TargetCastTicker:Hide()
+	end
+
 	function OnUpdateTargetCastbar(source)
 		if not source then
 			return
@@ -928,19 +1491,125 @@ do
 
 		if plate and plate.extended.unit.isTarget then
 			-- Grabs the target's casting information
-			local spell, icon, nonInt, channel, spellid
+			local spell, icon, nonInt, channel, spellid, startMS, endMS
 
-			spell, _, _, icon, _, _, _, spellid, nonInt = UnitCastingInfo("target")
+			spell, _, _, icon, startMS, endMS, _, spellid, nonInt = UnitCastingInfo("target")
 
 			if not spell then
-				spell, _, _, icon, _, _, spellid, nonInt = UnitChannelInfo("target")
+				spell, _, _, icon, startMS, endMS, spellid, nonInt = UnitChannelInfo("target")
 				channel = true
 			end
 
+			StopTargetCastFallback()
 			if spell then
-				StartCastAnimation(plate, spell, spellid, icon, nonInt, channel)
+				LearnCastShield(spell, nonInt)
+				-- Blizzards Ziel-Zauberleiste läuft erst beim nächsten Zauberbeginn an. Wird ein
+				-- Gegner mitten im Zauber anvisiert, hat sie keine Werte: dann selbst steuern.
+				local blizz = plate.extended.bars.cast
+				local bmin, bmax = blizz:GetMinMaxValues()
+				if blizz:IsShown() and bmin and bmax and bmax > bmin then
+					StartCastAnimation(plate, spell, spellid, icon, nonInt, channel)
+				elseif startMS and endMS and endMS > startMS then
+					local st, et = startMS / 1000, endMS / 1000
+					if StartCastAnimation(plate, spell, spellid, icon, nonInt, channel, st, et) then
+						StartTargetCastFallback(plate, st, et, channel)
+					end
+				else
+					StopCastAnimation(plate)
+				end
 			else
 				StopCastAnimation(plate)
+			end
+		end
+	end
+
+	-- PollPlateState: 3.3.5a liefert kein Event, wenn sich das Aggro-Leuchten oder der
+	-- Kampfstatus einer einzelnen Plakette ändert. Darum wird das hier zyklisch geprüft
+	-- und nur die Plakette aktualisiert, die sich tatsächlich geändert hat.
+	function PollPlateState(plate)
+		local ext = plate.extended
+		local u = ext.unit
+		if not u.name then
+			return
+		end
+		local regs = ext.regions
+
+		local threatSituation = "LOW"
+		if InCombat then
+			threatSituation = GetUnitAggroStatus(regs.threatglow)
+		end
+		local isInCombat = GetUnitCombatStatus(regs.name:GetTextColor())
+
+		if threatSituation ~= u.threatSituation or isInCombat ~= u.isInCombat then
+			-- Vollupdate (inkl. Widgets wie Threat-Art), überschreibt kleinere Updates
+			targetQueue[plate] = OnUpdateNameplate
+		end
+
+		-- Crowd-Control-Farbe zurücksetzen/setzen, wenn der Effekt beginnt oder ausläuft
+		local isCC = TidyPlatesWidgets and TidyPlatesWidgets.IsUnitCrowdControlled and TidyPlatesWidgets.IsUnitCrowdControlled(u) or false
+		if isCC ~= (ext.isCrowdControlled or false) then
+			ext.isCrowdControlled = isCC
+			if not targetQueue[plate] then
+				targetQueue[plate] = OnRequestDelegateUpdate
+			end
+		end
+	end
+
+	-- LearnGUIDs: Plaketten haben in 3.3.5a keine GUID. Bisher wurde sie nur über
+	-- Ziel/Mouseover gelernt. Zusätzlich werden hier die Ziele von Fokus, Pet und
+	-- Gruppenmitgliedern genutzt: Passt genau EINE sichtbare Plakette ohne GUID zu
+	-- Name + Lebenspunkte + max. Lebenspunkte, bekommt sie die GUID. Bei mehreren
+	-- Treffern (z.B. Gruppe gleichnamiger Mobs mit voller Gesundheit) wird nichts
+	-- zugeordnet, um falsche Debuffs/Zauberleisten zu vermeiden.
+	-- boss1-4: Boss-Einheiten (falls der Server sie liefert, sonst wirkungslos)
+	local LearnUnits = {"focus", "focustarget", "targettarget", "pettarget", "boss1", "boss2", "boss3", "boss4"}
+	local partyTargets, raidTargets = {}, {}
+	for i = 1, 4 do partyTargets[i] = "party" .. i .. "target" end
+	for i = 1, 40 do raidTargets[i] = "raid" .. i .. "target" end
+
+	local function LearnGUIDFromUnit(uid)
+		if not UnitExists(uid) or UnitIsFriend("player", uid) then
+			return
+		end
+		local guid = UnitGUID(uid)
+		if not guid then
+			return
+		end
+		local name = UnitName(uid)
+		RecordMarker(MarkerByIndex[GetRaidTargetIndex(uid) or 0], guid, name)
+		if GUID[guid] then
+			return
+		end
+		local hp, hpmax = UnitHealth(uid), UnitHealthMax(uid)
+		local match
+		for plate in pairs(PlatesVisible) do
+			local u = plate.extended.unit
+			if not u.guid and u.name == name and u.health == hp and u.healthmax == hpmax then
+				if match then
+					return -- mehrdeutig
+				end
+				match = plate
+			end
+		end
+		if match then
+			AssignGUID(match, guid)
+		end
+	end
+
+	function LearnGUIDs()
+		AssignFromMarkers(true) -- auch neu aufgetauchte markierte Plaketten erfassen
+		RestoreFromFingerprints()
+		for i = 1, #LearnUnits do
+			LearnGUIDFromUnit(LearnUnits[i])
+		end
+		local numRaid = GetNumRaidMembers()
+		if numRaid > 0 then
+			for i = 1, numRaid do
+				LearnGUIDFromUnit(raidTargets[i])
+			end
+		else
+			for i = 1, GetNumPartyMembers() do
+				LearnGUIDFromUnit(partyTargets[i])
 			end
 		end
 	end
@@ -967,6 +1636,61 @@ do
 		regions.threatglow, regions.healthborder, regions.castborder, regions.castnostop, regions.spellicon, regions.highlight, regions.name, regions.level, regions.skullicon, regions.raidicon, regions.eliteicon = plate:GetRegions()
 	end
 
+	-- Blizzard-Optik für Themes (TidyPlates.BlizzardArt): Pfad und Ausschnitt der Original-
+	-- grafiken sowie ihre Lage relativ zur Original-Lebens- bzw. Zauberleiste (Anteile von
+	-- Balkenbreite/-höhe ab der linken unteren Ecke). Muss vor dem Unsichtbarmachen und vor
+	-- dem Ändern der Hitbox-Größe laufen; gemessen wird, bis es einmal gelingt.
+	local function MeasureRect(region, bar)
+		local l, r, t, b = region:GetLeft(), region:GetRight(), region:GetTop(), region:GetBottom()
+		local bl, bb, bw, bh = bar:GetLeft(), bar:GetBottom(), bar:GetWidth(), bar:GetHeight()
+		if not (l and r and t and b and bl and bb and bw and bh) or bw < 1 or bh < 1 then
+			return
+		end
+		return {left = (l - bl) / bw, right = (r - bl) / bw, top = (t - bb) / bh, bottom = (b - bb) / bh}
+	end
+
+	-- Erster Schlüssel ist Pflicht (Rahmen), die übrigen werden nur übernommen, wenn messbar
+	local function MeasureGroup(regions, bar, keys)
+		local geo = {width = bar:GetWidth(), height = bar:GetHeight()}
+		for index, key in ipairs(keys) do
+			local rect = MeasureRect(regions[key], bar)
+			if not rect and index == 1 then
+				return
+			end
+			geo[key] = rect
+		end
+		return geo
+	end
+
+	local function CaptureBlizzardArt(regions, bars)
+		local art = TidyPlates.BlizzardArt
+		if not art then
+			art = {}
+			for _, key in ipairs({"threatglow", "healthborder", "castborder", "castnostop", "highlight", "eliteicon", "skullicon"}) do
+				local region = regions[key]
+				art[key] = {texture = region:GetTexture(), coords = {region:GetTexCoord()}}
+			end
+			art.levelFont = {regions.level:GetFont()}
+			art.levelPoint = regions.level:GetPoint(1)
+			TidyPlates.BlizzardArt = art
+		end
+		if not art.health then
+			art.health = MeasureGroup(regions, bars.health, {"healthborder", "threatglow", "highlight", "eliteicon", "skullicon", "level"})
+		end
+		if not art.cast then
+			art.cast = MeasureGroup(regions, bars.cast, {"castborder", "castnostop", "spellicon"})
+		end
+	end
+
+	-- Zauberleiste nachmessen, falls sie beim Erzeugen noch keine Lage hatte. Rahmen und
+	-- Symbol hängen an der Zauberleiste selbst, die Hitbox-Größe spielt hier keine Rolle.
+	function TidyPlates.MeasureBlizzardCast(extended)
+		local art = TidyPlates.BlizzardArt
+		if art and not art.cast then
+			art.cast = MeasureGroup(extended.regions, extended.bars.cast, {"castborder", "castnostop"})
+		end
+	end
+
 	function ApplyPlateExtension(plate)
 		Plates[plate] = true
 		plate.extended = CreateFrame("Frame", nil, plate)
@@ -988,6 +1712,8 @@ do
 
 		-- Set Frame Levels and Parent
 		GetNameplateRegions(plate, regions, bars.cast)
+
+		CaptureBlizzardArt(regions, bars)
 
 		-- This block makes the Blizz nameplate invisible
 		regions.threatglow:SetTexCoord(0, 0, 0, 0)
@@ -1062,6 +1788,426 @@ do
 end
 
 --------------------------------------------------------------------------------------------------------------
+-- Stapeln: Gegnerische Plaketten werden nach oben geschoben, statt sich zu überlappen.
+-- Übernommen aus der WeakAura "Cheeta - Enhanced Stacking Nameplate" (gleiche Formeln),
+-- aber über die bekannten sichtbaren Plaketten statt aller WorldFrame-Kinder. Ohne den
+-- Secure-Trick für die Klickfläche im Kampf (der hat offene Fenster geschlossen).
+-- Aktiviert/konfiguriert vom Theme über TidyPlates:SetStacking().
+--------------------------------------------------------------------------------------------------------------
+local UpdateStacking
+do
+	local abs, exp = math.abs, math.exp
+	local cfg = {
+		enabled = false,
+		xspace = 130, yspace = 20,                         -- Mindestabstand zwischen Plaketten
+		speed = 0.7, speedraise = 1, speedlower = 1, speedreset = 1,
+		originpos = 20, upperborder = 30,
+		interval = 0.02,
+		tallBossFix = true,
+		pinTarget = true,                                  -- Ziel bleibt an seinem Platz
+		extraTop = nil,                                    -- function(extended): zusätzlicher Platz über der Plakette (z.B. Debuffs)
+		columnsAt = 0,                                     -- ab so vielen Plaketten in einem Turm zwei Spalten (0 = aus)
+		onlyEngaged = false                                -- im Kampf nur beteiligte Gegner stapeln
+	}
+	local delta = cfg.speed * 5
+	local Stacked = {} -- [plate] = {xpos, ypos, position, bottom}
+	local nextRun = 0
+	local worldFrameEnlarged = false
+
+	local function ResetPlate(plate)
+		Stacked[plate] = nil
+		plate:SetClampRectInsets(0, 0, 0, 0)
+		plate:SetClampedToScreen(false)
+	end
+	function ResetStackedPlate(plate)
+		if Stacked[plate] then
+			ResetPlate(plate)
+		end
+	end
+
+	-- Nach x sortiert; verglichen werden nur Nachbarn innerhalb von xspace
+	-- (vorher alle Paare, 50x pro Sekunde)
+	local Order, ExOrder, ActiveOrder = {}, {}, {}
+	local function ByX(a, b)
+		return a.xpos < b.xpos
+	end
+	local function ByEx(a, b)
+		return a.ex < b.ex
+	end
+	local HSPEED = 0.25 -- Anteil der Reststrecke pro Lauf beim seitlichen Gleiten (~0,2 s)
+
+	-- Ist der Gegner an meinem Kampf beteiligt? true/false = sicher, nil = unklar (keine GUID,
+	-- Name gehört zu einem beteiligten Gegner, aber der Client zeigt noch keinen Kampf an -
+	-- so ist es direkt nach dem Pull, bevor man selbst Schaden austeilt).
+	local function EngagedState(unit)
+		if unit.isTarget or unit.isMouseover then
+			return true
+		end
+		if unit.threatSituation and unit.threatSituation ~= "LOW" then
+			return true
+		end
+		if unit.guid then
+			return EngagedGUID[unit.guid] ~= nil
+		end
+		if not (unit.name and EngagedNames[unit.name]) then
+			return false
+		end
+		if unit.isInCombat then
+			return true
+		end
+		return nil
+	end
+
+	-- Bestimmt p.passive für alle Plaketten (10x pro Sekunde). Unklare Plaketten: Laut
+	-- Kampflog sind n Gegner dieses Namens beteiligt; davon fehlen noch so viele, wie
+	-- nicht schon sicher zugeordnet sind. Genommen werden die untersten Plaketten im Bild
+	-- (näher an der Kamera, also eher bei mir); die weiter oben bleiben unbeteiligt.
+	local ENGAGE_INTERVAL = 0.1
+	local nextEngage = 0
+	local Cands, NameUsed = {}, {}
+	local function ByNameY(a, b)
+		if a.name ~= b.name then
+			return a.name < b.name
+		end
+		return a.ypos < b.ypos
+	end
+	local function UpdateEngagement(now, order, count)
+		if not (cfg.onlyEngaged and InCombat) then
+			for i = 1, count do
+				order[i].passive = nil
+			end
+			return
+		end
+		if now < nextEngage then
+			return
+		end
+		nextEngage = now + ENGAGE_INTERVAL
+		wipe(NameUsed)
+		local nc = 0
+		for i = 1, count do
+			local p = order[i]
+			local u = p.plate.extended.unit
+			local state = EngagedState(u)
+			if state == nil then
+				nc = nc + 1
+				Cands[nc] = p
+				p.name = u.name
+				p.passive = true
+			else
+				p.passive = not state or nil
+				if state and u.name then
+					NameUsed[u.name] = (NameUsed[u.name] or 0) + 1
+				end
+			end
+		end
+		for i = #Cands, nc + 1, -1 do
+			Cands[i] = nil
+		end
+		if nc > 0 then
+			table.sort(Cands, ByNameY)
+			for k = 1, nc do
+				local p = Cands[k]
+				local name = p.name
+				if (EngagedNames[name] or 0) > (NameUsed[name] or 0) then
+					p.passive = nil
+					NameUsed[name] = (NameUsed[name] or 0) + 1
+				end
+			end
+		end
+	end
+
+	-- Zwei Spalten: Ein "Turm" sind Plaketten, deren natürliche x-Position innerhalb von
+	-- xspace der linken liegt (alle überlappen sich). Ab columnsAt Plaketten bekommt jede
+	-- eine Seite (links/rechts); die Spalten liegen eine Plakettenbreite auseinander und
+	-- stapeln dadurch unabhängig. Seiten bleiben erhalten, solange die Spalten nicht um mehr
+	-- als eine Plakette ungleich sind (kein Springen, wenn sich Mobs bewegen). Das Ziel bleibt
+	-- an seinem Platz (zwischen den Spalten).
+	local function AssignColumns(order, count, xspace, splitAt)
+		local i = 1
+		while i <= count do
+			local first = order[i]
+			local j = i
+			while j < count and order[j + 1].xpos - first.xpos < xspace do
+				j = j + 1
+			end
+			local size = j - i + 1
+			local wasSplit = false
+			for k = i, j do
+				if order[k].side then
+					wasSplit = true
+					break
+				end
+			end
+			-- Etwas Spielraum beim Zurückschalten, damit es an der Grenze nicht flackert
+			if splitAt > 1 and (size >= splitAt or (wasSplit and size >= splitAt - 1)) then
+				local sum = 0
+				for k = i, j do
+					sum = sum + order[k].xpos
+				end
+				local cx = sum / size
+				local left, right = 0, 0
+				for k = i, j do
+					local p = order[k]
+					if p.isTarget then
+						p.side = nil
+					elseif p.side == -1 then
+						left = left + 1
+					elseif p.side == 1 then
+						right = right + 1
+					end
+				end
+				-- Neue Mitglieder auf die kleinere Seite (bei Gleichstand nach Lage zur Mitte)
+				for k = i, j do
+					local p = order[k]
+					if not p.isTarget and not p.side then
+						if left < right or (left == right and p.xpos < cx) then
+							p.side, left = -1, left + 1
+						else
+							p.side, right = 1, right + 1
+						end
+					end
+				end
+				-- Ausgleichen: von der größeren Seite die Plakette, die am nächsten an der
+				-- anderen Seite liegt
+				while left - right > 1 or right - left > 1 do
+					local from = left > right and -1 or 1
+					local best
+					for k = i, j do
+						local p = order[k]
+						if p.side == from and (not best or (from == -1 and p.xpos > best.xpos) or (from == 1 and p.xpos < best.xpos)) then
+							best = p
+						end
+					end
+					best.side = -from
+					if from == -1 then
+						left, right = left - 1, right + 1
+					else
+						left, right = left + 1, right - 1
+					end
+				end
+				local half = xspace / 2 + 1
+				for k = i, j do
+					local p = order[k]
+					p.hgoal = p.side and (cx + p.side * half - p.xpos) or 0
+				end
+			else
+				for k = i, j do
+					order[k].side = nil
+					order[k].hgoal = 0
+				end
+			end
+			i = j + 1
+		end
+	end
+	local EXTRA_INTERVAL = 0.1 -- Platz für Debuffs seltener abfragen als gestapelt wird
+
+	-- Plaketten sehr großer Bosse sollen nicht oben aus dem Bild rutschen (wie in der Aura)
+	local function EnlargeWorldFrame()
+		if worldFrameEnlarged or InCombatLockdown() then
+			return
+		end
+		worldFrameEnlarged = true
+		WorldFrame:ClearAllPoints()
+		WorldFrame:SetWidth(GetScreenWidth() * UIParent:GetEffectiveScale())
+		WorldFrame:SetHeight(768 * 5)
+		WorldFrame:SetPoint("BOTTOM")
+	end
+
+	-- options = nil schaltet das Stapeln ab
+	function TidyPlates:SetStacking(options)
+		if options and options.enabled then
+			for key, value in pairs(options) do
+				cfg[key] = value
+			end
+			delta = cfg.speed * 5
+			if GetCVar("nameplateAllowOverlap") == "0" then
+				SetCVar("nameplateAllowOverlap", 1)
+			end
+			if cfg.tallBossFix then
+				EnlargeWorldFrame()
+			end
+		else
+			cfg.enabled = false
+			for plate in pairs(Stacked) do
+				ResetPlate(plate)
+			end
+		end
+	end
+
+	function UpdateStacking(now)
+		if not cfg.enabled or now < nextRun then
+			return
+		end
+		nextRun = now + cfg.interval
+		local xspace, yspace, originpos, upperborder = cfg.xspace, cfg.yspace, cfg.originpos, cfg.upperborder
+
+		-- Verschwundene oder freundliche Plaketten zurücksetzen
+		for plate in pairs(Stacked) do
+			if not PlatesVisible[plate] or not plate:IsShown() or plate.extended.unit.reaction == "FRIENDLY" then
+				ResetPlate(plate)
+			end
+		end
+		-- Ursprüngliche Position aller gegnerischen Plaketten
+		for plate in pairs(PlatesVisible) do
+			if plate:IsShown() and plate.extended.unit.reaction ~= "FRIENDLY" then
+				local p = Stacked[plate]
+				if not p then
+					p = {xpos = 0, ypos = 0, position = 0}
+					Stacked[plate] = p
+				end
+				local _, _, _, x, y = plate:GetPoint(1)
+				p.xpos, p.ypos = x or 0, y or 0 -- (Sortieren verträgt kein nil)
+				p.plate = plate
+				p.isTarget = cfg.pinTarget and plate.extended.unit.isTarget
+				if not p.extraAt or now >= p.extraAt then
+					p.extraAt = now + EXTRA_INTERVAL
+					p.extra = cfg.extraTop and cfg.extraTop(plate.extended) or 0
+				end
+			end
+		end
+
+		local order = Order
+		local count = 0
+		for _, p in pairs(Stacked) do
+			count = count + 1
+			order[count] = p
+		end
+		for i = #order, count + 1, -1 do
+			order[i] = nil
+		end
+		table.sort(order, ByX)
+
+		-- Unbeteiligte (nur im Kampf; außerhalb wird wie bisher alles gestapelt) schieben
+		-- niemanden weg und gleiten selbst an ihren Platz zurück
+		UpdateEngagement(now, order, count)
+
+		-- Spalten bestimmen (nur aus beteiligten Plaketten) und seitlich dorthin gleiten
+		local active, nActive = ActiveOrder, 0
+		for i = 1, count do
+			local p = order[i]
+			if p.passive then
+				p.side, p.hgoal = nil, 0
+			else
+				nActive = nActive + 1
+				active[nActive] = p
+			end
+		end
+		for i = #active, nActive + 1, -1 do
+			active[i] = nil
+		end
+		AssignColumns(active, nActive, xspace, cfg.columnsAt or 0)
+		for i = 1, count do
+			local p = order[i]
+			local h, goal = p.hoff or 0, p.hgoal or 0
+			local diff = goal - h
+			if abs(diff) < 0.5 then
+				h = goal
+			else
+				h = h + diff * HSPEED
+			end
+			p.hoff = h
+			p.ex = p.xpos + h
+		end
+		-- Für das Stapeln zählt die tatsächliche (verschobene) x-Position
+		local exorder = ExOrder
+		for i = 1, count do
+			exorder[i] = order[i]
+		end
+		for i = #exorder, count + 1, -1 do
+			exorder[i] = nil
+		end
+		table.sort(exorder, ByEx)
+		order = exorder
+		local screenWidth = GetScreenWidth() * UIParent:GetEffectiveScale()
+
+		-- Für jede Plakette den Abstand zur nächsten darunter bestimmen und sanft
+		-- anheben, absenken oder zurücksetzen (Formeln unverändert aus der Aura).
+		-- Ausnahme Ziel: bleibt an seinem Platz über dem Modell, die anderen weichen aus.
+		for i = 1, count do
+			local p1 = order[i]
+			local plate1 = p1.plate
+			local min, reset = 1000, true
+			-- erst nach links, dann nach rechts, solange der x-Abstand < xspace ist
+			local j, step = i - 1, -1
+			while true do
+				local p2 = order[j]
+				if not p2 or abs(p1.ex - p2.ex) >= xspace then
+					if step < 0 then
+						j, step = i + 1, 1
+						p2 = order[j]
+						if not p2 or abs(p1.ex - p2.ex) >= xspace then
+							break
+						end
+					else
+						break
+					end
+				end
+				if not p2.passive then
+					local ydiff = p1.ypos + p1.position - p2.ypos - p2.position
+					-- Eine Plakette, die das Ziel von unten überlappt, gilt als direkt darüber
+					-- und wird über das Ziel hinweg nach oben geschoben
+					if p2.isTarget and ydiff < 0 and ydiff > -yspace then
+						ydiff = 0
+					end
+					-- Zeigt die Plakette darunter Debuffs, braucht sie nach oben mehr Platz:
+					-- ihr Abstand zählt um diesen Betrag kleiner
+					if ydiff >= 0 and ydiff - p2.extra < min then
+						min = ydiff - p2.extra
+					end
+					if abs(p1.ypos - p2.ypos - p2.position) < yspace + p2.extra + 2 * delta then
+						reset = false
+					end
+				end
+				j = j + step
+			end
+
+			local old = p1.position
+			local new = old
+			if p1.isTarget or p1.passive then
+				-- Zügig (ca. 0,2 s) an den natürlichen Platz zurückgleiten
+				new = old > 3 * delta and old - 3 * delta or 0
+			elseif old >= 2 * delta and reset then
+				new = old - exp(-10 / old) * delta * cfg.speedreset
+			elseif min < yspace then
+				new = old + exp(-min / yspace) * delta * cfg.speedraise
+			elseif old >= 2 * delta and min > yspace + 2 * delta then
+				new = old - exp(-yspace / min) * delta * 0.8 * cfg.speedlower
+			end
+			p1.position = new
+
+			-- Seitlich: linke Kante der Plakette ohne Verschiebung merken (Abstand zur
+			-- Ankerposition); mit Verschiebung beide Seiten des Clamp-Rechtecks so setzen,
+			-- dass genau die gewünschte x-Lage auf den Bildschirm passt
+			local left, right = -10, 10
+			local hoff = p1.hoff
+			if hoff == 0 then
+				if p1.wasUnshifted then
+					local l = plate1:GetLeft()
+					if l then
+						p1.kx = l - p1.xpos
+					end
+				end
+				p1.wasUnshifted = true
+			else
+				p1.wasUnshifted = false
+				local w = plate1:GetWidth()
+				local nl = p1.xpos + (p1.kx or -w / 2)
+				left = -(nl + hoff)
+				right = screenWidth - (nl + w + hoff)
+			end
+
+			-- Clamp-Rechteck nur neu setzen, wenn es sich spürbar ändert
+			local bottom = -p1.ypos - new - originpos + plate1:GetHeight()
+			if not p1.bottom or abs(bottom - p1.bottom) > 0.5 or abs(left - p1.left) > 0.5 or abs(right - p1.right) > 0.5 then
+				p1.bottom, p1.left, p1.right = bottom, left, right
+				plate1:SetClampedToScreen()
+				plate1:SetClampRectInsets(left, right, upperborder, bottom)
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------------------------------------
 -- VII. World Update Functions: Refers new plates to 'ApplyPlateExtension()', and watches for Alpha/Transparency
 -- and Highlight/Mouseover changes, and sends those changes to the appropriate handler.
 -- Also processes the update queue (ie. echos)
@@ -1120,10 +2266,50 @@ do
 	-- OnUpdate: This function is processed every frame!
 	local queuedFunction
 	local HasMouseover, LastMouseover, CurrentMouseover
-	local PollTime, PollIndex = 0, 0
+	local highlightRegion
+	local POLL_INTERVAL = 0.1
+	local NextPoll = 0
+	local LastPoll = 0
+	local POLL_MIN_GAP = 0.05
+	local GUID_LEARN_INTERVAL = 0.5
+	local NextGUIDLearn = 0
+
+	-- Erzwingt die Zustandsabfrage im nächsten Frame (z.B. bei Threat-Events)
+	-- Höchstens 20x pro Sekunde: Das Event kommt im Raid für jedes Mitglied und
+	-- hat vorher die 10-Hz-Drossel praktisch auf "jeden Frame" gesetzt.
+	function TidyPlates:RequestStatePoll()
+		local soon = LastPoll + POLL_MIN_GAP
+		if NextPoll > soon then
+			NextPoll = soon
+		end
+	end
 
 	function OnUpdate(self)
 		HasMouseover = false
+
+		-- Zustandsabfrage (Aggro/Kampf/CC), gedrosselt auf POLL_INTERVAL
+		local now = GetTime()
+		if now >= NextPoll then
+			NextPoll = now + POLL_INTERVAL
+			LastPoll = now
+			for plate in pairs(PlatesVisible) do
+				if plate.extended:IsShown() then
+					PollPlateState(plate)
+				end
+			end
+		end
+
+		-- GUIDs über Fokus/Pet/Gruppenziele und Fingerabdrücke lernen (2x pro Sekunde)
+		if now >= NextGUIDLearn then
+			NextGUIDLearn = now + GUID_LEARN_INTERVAL
+			LearnGUIDs()
+		end
+		-- Schadens-Abgleich (Kampflog <-> Lebensbalken), jeden Frame, meist leer
+		CorrelateDamage()
+		-- Neue Marker-Information aus dem Kampflog sofort anwenden
+		AssignFromMarkers()
+		-- Plaketten stapeln (gedrosselt, nur wenn vom Theme aktiviert)
+		UpdateStacking(now)
 
 		-- Alpha - Highlight - Poll Loop
 		for plate in pairs(PlatesVisible) do
@@ -1177,6 +2363,32 @@ do
 			end
 		end
 
+		-- Gebündelte Lebenspunkte-Updates (max. eines pro Plakette und Frame)
+		for plate in pairs(healthQueue) do
+			healthQueue[plate] = nil
+			ProcessHealthUpdate(plate)
+		end
+
+		-- Delegate-Updates einzelner Plaketten (z.B. vom Debuff-Widget)
+		for plate in pairs(delegateQueue) do
+			delegateQueue[plate] = nil
+			OnRequestDelegateUpdate(plate)
+		end
+
+		-- Nach neuer GUID-Zuordnung: Widgets (Debuffs) und Farbe auffrischen,
+		-- laufenden Zauber des Gegners fortsetzen
+		for plate in pairs(widgetQueue) do
+			widgetQueue[plate] = nil
+			if plate:IsShown() then
+				OnRequestWidgetUpdate(plate)
+				OnRequestDelegateUpdate(plate)
+				local u = plate.extended.unit
+				if u.guid and not u.isTarget and TidyPlates.ResumeCastForGUID then
+					TidyPlates.ResumeCastForGUID(plate, u.guid)
+				end
+			end
+		end
+
 		-- Process Mouseover
 		if HasMouseover then
 			if LastMouseover ~= CurrentMouseover then
@@ -1212,11 +2424,22 @@ do
 	PlateHandler:SetScript("OnEvent", EventHandler)
 
 	-- Events
+	function events:ADDON_LOADED(name)
+		if name == addonName then
+			-- SavedVariables werden erst nach vollständigen Laden des Addons vom Client eingespielt
+			-- Initialisierung an diesem Zeitpunkt garantiert dass die Tabelle korrekt initialisiert wird
+			TidyPlatesData = TidyPlatesData or {}
+			PlateHandler:UnregisterEvent("ADDON_LOADED")
+		end
+	end
+
 	function events:PLAYER_ENTERING_WORLD()
 		PlateHandler:SetScript("OnUpdate", OnUpdate)
 	end
 	function events:PLAYER_REGEN_ENABLED()
 		InCombat = false
+		wipe(EngagedGUID)
+		wipe(EngagedNames)
 		SetMassQueue(OnUpdateNameplate)
 	end
 	function events:PLAYER_REGEN_DISABLED()
@@ -1229,15 +2452,18 @@ do
 		if (not HasTarget) then
 			currentTarget = nil
 		end
-		SetMassQueue(OnUpdateNameplate) -- Could be "SetMassQueue(UpdateTarget), someday...  :-o
+		-- Nur altes/neues Ziel komplett, alle anderen nur Transparenz/Größe
+		SetMassQueue(OnTargetChangedNameplate)
 	end
 
 	function events:RAID_TARGET_UPDATE()
 		SetMassQueue(OnUpdateNameplate)
 	end
+	-- Statt alle Plaketten neu zu berechnen (feuert im Raid sehr oft), nur sofort
+	-- abfragen; aktualisiert werden dann nur Plaketten, deren Aggro sich geändert hat.
 	function events:UNIT_THREAT_SITUATION_UPDATE()
-		SetMassQueue(OnUpdateThreatSituation)
-	end -- Only fired when a target changes
+		TidyPlates:RequestStatePoll()
+	end
 	function events:UNIT_LEVEL()
 		ForEachPlate(OnUpdateLevel)
 	end
@@ -1283,6 +2509,12 @@ function TidyPlates:RequestWidgetUpdate()
 end
 function TidyPlates:RequestDelegateUpdate()
 	SetMassQueue(OnRequestDelegateUpdate)
+end
+-- Delegate-Update nur für eine einzelne Plakette (im nächsten Frame)
+function TidyPlates:RequestDelegateUpdateForPlate(plate)
+	if plate then
+		delegateQueue[plate] = true
+	end
 end
 function TidyPlates:ActivateTheme(theme)
 	if theme and type(theme) == "table" then

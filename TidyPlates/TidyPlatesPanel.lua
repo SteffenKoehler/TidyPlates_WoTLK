@@ -45,7 +45,7 @@ TidyPlatesOptions = {
 	secondary = defaultSecondaryTheme,
 	FriendlyAutomation = L["No Automation"],
 	EnemyAutomation = L["No Automation"],
-	EnableCastWatcher = false,
+	EnableCastWatcher = true,
 	WelcomeShown = false,
 	EnableMinimapButton = false
 }
@@ -102,7 +102,9 @@ local function LoadTheme(incomingtheme)
 		currentThemeName = incomingtheme
 		return theme
 	else
-		TidyPlatesOptions[activespec] = "None"
+		-- Theme (noch) nicht vorhanden, z.B. weil das Theme-Addon wegen eines Fehlers
+		-- nicht geladen hat: nur für diese Sitzung "None" nutzen, die gespeicherte Wahl
+		-- aber behalten (früher wurde sie dauerhaft mit "None" überschrieben)
 		currentThemeName = "None"
 		TidyPlates:ActivateTheme(TidyPlatesThemeList["None"])
 		return nil
@@ -491,6 +493,12 @@ function panelevents:PLAYER_LOGIN()
 	UpdateThemeNames()
 	ActivateInterfacePanel()
 	ShowWelcome()
+	-- Nicht-Ziel-Zauberleisten einmalig für jeden Charakter einschalten (neuer Standard).
+	-- Danach bleibt die eigene Wahl im Optionsmenü erhalten.
+	if not TidyPlatesOptions.CastWatcherDefaultOn then
+		TidyPlatesOptions.EnableCastWatcher = true
+		TidyPlatesOptions.CastWatcherDefaultOn = true
+	end
 	LoadTheme("None")
 	ApplyAutomationSettings()
 end

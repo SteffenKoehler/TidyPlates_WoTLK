@@ -52,7 +52,7 @@ local function EventHandler(self, event, ...)
 	end
 end
 
-f:SetScript("OnEvent", function(self, event, ...) EventHandler(self, event, ...) end)
+f:SetScript("OnEvent", EventHandler)
 
 local path = "Interface\\AddOns\\TidyPlates_ThreatPlates\\Widgets\\SocialWidget\\"
 
@@ -71,10 +71,16 @@ local function UpdateSocialWidget(frame, unit)
 		else
 			frame:Hide()
 		end
-		f:SetScript("OnEvent", function(self, event, ...) EventHandler(self, event, ...) end)
+		if not eventsRegistered then
+			f:SetScript("OnEvent", EventHandler)
+			eventsRegistered = true
+		end
 	else
 		frame:Hide()
-		f:SetScript("OnEvent", nil)
+		if eventsRegistered then
+			f:SetScript("OnEvent", nil)
+			eventsRegistered = false
+		end
 	end
 end
 local function CreateSocialWidget(parent)

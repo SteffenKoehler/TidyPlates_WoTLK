@@ -7,21 +7,19 @@ local function UpdateUniqueIconWidget(self, unit)
 	local T, custom = TidyPlatesThreat.UnitType(unit)
 
 	if db.uniqueWidget.ON then
-		if tContains(db.uniqueSettings.list, unit.name) or (custom and tContains(db.uniqueSettings.list, "GROUP")) then
-			for k_c, k_v in pairs(db.uniqueSettings.list) do
-				if k_v == unit.name or (custom and k_v == "GROUP") then
-					if db.uniqueSettings[k_c].icon and db.uniqueSettings[k_c].showIcon then
-						if tonumber(db.uniqueSettings[k_c].icon) == nil then
-							self.Icon:SetTexture(db.uniqueSettings[k_c].icon)
-						else
-							local icon = select(3, GetSpellInfo(tonumber(db.uniqueSettings[k_c].icon)))
-							self.Icon:SetTexture(icon or "Interface\\Icons\\Temp")
-						end
-						self:Show()
-					else
-						self:Hide()
-					end
+		-- Name-Index statt zweier linearer Suchen pro Update
+		local k_c = TidyPlatesThreat.UniqueIndex(unit.name) or (custom and TidyPlatesThreat.UniqueIndex("GROUP"))
+		if k_c then
+			if db.uniqueSettings[k_c].icon and db.uniqueSettings[k_c].showIcon then
+				if tonumber(db.uniqueSettings[k_c].icon) == nil then
+					self.Icon:SetTexture(db.uniqueSettings[k_c].icon)
+				else
+					local icon = select(3, GetSpellInfo(tonumber(db.uniqueSettings[k_c].icon)))
+					self.Icon:SetTexture(icon or "Interface\\Icons\\Temp")
 				end
+				self:Show()
+			else
+				self:Hide()
 			end
 		else
 			self:Hide()

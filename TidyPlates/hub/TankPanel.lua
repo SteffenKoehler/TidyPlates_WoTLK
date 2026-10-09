@@ -53,6 +53,7 @@ TidyPlatesHubTankVariables = {
 	ColorAttackingOtherTank = {r = 15 / 255, g = 133 / 255, b = 255 / 255}, -- Bright Blue
 	ColorDangerGlowOnParty = false,
 	ClassColorPartyMembers = false,
+	PetHealthBarColor = { r = 0.76, g = 0.42, b = 1 },  -- Violett
 	-- Widgets
 	---------------------------------------
 	WidgetTargetHighlight = true,
@@ -67,6 +68,7 @@ TidyPlatesHubTankVariables = {
 	WidgetsRangeMode = 1,
 	WidgetsDebuff = true,
 	WidgetsDebuffMode = 3,
+	WidgetsDebuffMaxPerLine = 6,
 	WidgetsDebuffList = {["Obsolete"] = true},
 	--WidgetsDebuffTrackList = "Moonfire",
 	WidgetsDebuffTrackList = "My Rake\nMy Rip\nMy Moonfire\nAll 339",
@@ -104,6 +106,10 @@ local function OnPanelItemChange()
 		TidyPlatesHubTankVariables.WidgetsDebuffPriority
 	)
 	ConvertStringToTable(TidyPlatesHubTankVariables.OpacityFilterList, TidyPlatesHubTankVariables.OpacityFilterLookup)
+	-- Synchronisiere Pet-Farbe ins ThreatPlates-Profil
+	if TidyPlatesThreat and TidyPlatesThreat.db then
+		TidyPlatesThreat.db.profile.PetHealthBarColor = TidyPlatesHubTankVariables.PetHealthBarColor
+	end
 end
 
 local TidyPlatesHubRapidPanel = TidyPlatesHubRapidPanel
@@ -404,10 +410,11 @@ local function CreateInterfacePanel(panelName, panelTitle, heading, parentTitle)
 	panel.ColorAttackingOtherTank = CreateQuickColorbox(panelName .. "ColorAttackingOtherTank", L["Attacking Another Tank"], AlignmentColumn, panel.ColorAttackingOthers, 16)
 	panel.ColorDangerGlowOnParty = CreateQuickCheckbutton(panelName .. "ColorDangerGlowOnParty", L["Show Warning around Group Members with Aggro"], AlignmentColumn, panel.ColorAttackingOtherTank)
 	panel.ClassColorPartyMembers = CreateQuickCheckbutton(panelName .. "ClassColorPartyMembers", L["Show Class Color for Party and Raid Members"], AlignmentColumn, panel.ColorDangerGlowOnParty)
+	panel.PetHealthBarColor = CreateQuickColorbox(panelName .. "PetHealthBarColor", "Pet Health Bar Color", AlignmentColumn, panel.ClassColorPartyMembers, 16)
 
 	--Widgets
 	------------------------------
-	panel.WidgetsLabel = CreateQuickHeadingLabel(nil, L["Widgets"], AlignmentColumn, panel.ClassColorPartyMembers, 0, 4)
+	panel.WidgetsLabel = CreateQuickHeadingLabel(nil, L["Widgets"], AlignmentColumn, panel.PetHealthBarColor, 0, 4)
 	panel.WidgetTargetHighlight = CreateQuickCheckbutton(panelName .. "WidgetTargetHighlight", L["Show Highlight on Current Target"], AlignmentColumn, panel.WidgetsLabel)
 	panel.WidgetEliteIndicator = CreateQuickCheckbutton(panelName .. "WidgetEliteIndicator", L["Show Elite Indicator"], AlignmentColumn, panel.WidgetTargetHighlight)
 	panel.ClassEnemyIcon = CreateQuickCheckbutton(panelName .. "ClassEnemyIcon", L["Show Enemy Class Icons"], AlignmentColumn, panel.WidgetEliteIndicator)
@@ -420,7 +427,20 @@ local function CreateInterfacePanel(panelName, panelTitle, heading, parentTitle)
 	panel.WidgetsRangeMode = CreateQuickDropdown(panelName .. "WidgetsRangeMode", L["Range:"], RangeModes, 1, AlignmentColumn, panel.WidgetsRangeIndicator, 16)
 	panel.WidgetsDebuff = CreateQuickCheckbutton(panelName .. "WidgetsDebuff", L["Show My Debuff Timers"], AlignmentColumn, panel.WidgetsRangeMode)
 	panel.WidgetsDebuffMode = CreateQuickDropdown(panelName .. "WidgetsDebuffMode", L["Debuff Filter:"], DebuffModes, 1, AlignmentColumn, panel.WidgetsDebuff, 16)
-	panel.WidgetsDebuffListLabel = CreateQuickItemLabel(nil, L["Debuff Names:"], AlignmentColumn, panel.WidgetsDebuffMode, 16)
+
+	local DebuffMaxDropdownItems = {
+		{text = L["Off (0)"], notCheckable = 1},
+		{text = "2", notCheckable = 1},
+		{text = "4", notCheckable = 1},
+		{text = "6", notCheckable = 1}
+	}
+	panel.WidgetsDebuffMaxPerLine = CreateQuickDropdown(panelName .. "WidgetsDebuffMaxPerLine", L["Debuffs per Line:"], DebuffMaxDropdownItems, 4, AlignmentColumn, panel.WidgetsDebuffMode, 16)
+	panel.WidgetsDebuffMaxPerLine.OnValueChanged = function()
+		OnPanelItemChange()
+		TidyPlates:ForceUpdate()
+	end
+
+	panel.WidgetsDebuffListLabel = CreateQuickItemLabel(nil, L["Debuff Names:"], AlignmentColumn, panel.WidgetsDebuffMaxPerLine, 16)
 	panel.WidgetsDebuffTrackList = CreateQuickEditbox(panelName .. "WidgetsDebuffTrackList", AlignmentColumn, panel.WidgetsDebuffListLabel, 16)
 	-- TIP
 	panel.WidgetsDebuffTrackListDescription = CreateQuickItemLabel(nil, L["WidgetsDebuffTrackList_Description"], AlignmentColumn, panel.WidgetsDebuffListLabel, 210)
@@ -500,6 +520,10 @@ local function CreateInterfacePanel(panelName, panelTitle, heading, parentTitle)
 		if event == "PLAYER_LOGIN" then
 		elseif event == "PLAYER_ENTERING_WORLD" then
 			GetSavedVariables(TidyPlatesHubTankVariables, TidyPlatesHubTankSavedVariables)
+			-- Pet-Farbe aus ThreatPlates-Profil übernehmen, damit der Picker sie anzeigt
+			if TidyPlatesThreat and TidyPlatesThreat.db and TidyPlatesThreat.db.profile and TidyPlatesThreat.db.profile.PetHealthBarColor then
+				TidyPlatesHubTankVariables.PetHealthBarColor = TidyPlatesThreat.db.profile.PetHealthBarColor
+			end
 			CallForStyleUpdate()
 
 			-- Convert old list values for Opacity Filter

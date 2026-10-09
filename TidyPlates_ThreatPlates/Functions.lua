@@ -19,14 +19,14 @@ do
 		if style == "unique" then
 			for k_c, k_v in pairs(db.uniqueSettings.list) do
 				if k_v == unit.name or (custom and k_v == "GROUP") then
-					u = db.uniqueSettings[k_c]
+					local u = db.uniqueSettings[k_c]
 					if not u.overrideAlpha then
 						return (u.alpha + nonTargetAlpha), db.blizzFade.toggle
 					elseif db.threat.ON and InCombatLockdown() and db.threat.useAlpha and u.overrideAlpha then
 						if unit.isMarked and TidyPlatesThreat.db.profile.threat.marked.alpha then
 							return (db.nameplate.alpha["Marked"] + nonTargetAlpha), db.blizzFade.toggle
 						else
-							if TidyPlatesThreat.db.char.threat.tanking then
+							if TidyPlatesThreat.IsTanking() then
 								return (db.threat["tank"].alpha[unit.threatSituation] + nonTargetAlpha), db.blizzFade.toggle
 							else
 								return (db.threat["dps"].alpha[unit.threatSituation] + nonTargetAlpha), db.blizzFade.toggle
@@ -112,11 +112,11 @@ do
 					local u = db.uniqueSettings[k_c]
 					if not u.overrideScale then
 						return u.scale
-					elseif db.threat.ON and InCombatLockdown and db.threat.useScale and u.overrideScale then
+					elseif db.threat.ON and InCombatLockdown() and db.threat.useScale and u.overrideScale then
 						if unit.isMarked and db.threat.marked.scale then
 							return (db.nameplate.scale["Marked"])
 						elseif not custom then
-							if TidyPlatesThreat.db.char.threat.tanking then
+							if TidyPlatesThreat.IsTanking() then
 								return (db.threat["tank"].scale[unit.threatSituation] + (TypeScale(unit)))
 							else
 								return (db.threat["dps"].scale[unit.threatSituation] + (TypeScale(unit)))
@@ -156,7 +156,17 @@ do
 		end
 	end
 
-	TidyPlatesThreat.SetScale = SetScale
+	-- Classic-Optik: Plaketten, die nicht das Ziel sind, kleiner (wie im Classic-Client)
+	local function SetScaleClassic(unit)
+		local scale = SetScale(unit)
+		local cl = TidyPlatesThreat.db.profile.classicLook
+		if cl.ON and not unit.isTarget and cl.nonTargetScale and cl.nonTargetScale < 1 then
+			return (scale or 1) * cl.nonTargetScale
+		end
+		return scale
+	end
+
+	TidyPlatesThreat.SetScale = SetScaleClassic
 end
 
 -------------------------------------------------------------------------------
@@ -168,7 +178,8 @@ do
 		if TidyPlatesThreat.db.profile.text.truncate then
 			if value >= 1e6 then
 				return format("%.1fm", value / 1e6)
-			elseif value >= 1e4 then
+			elseif value >= 1e4 or (value >= 1e3 and TidyPlatesThreat.db.profile.text.parens) then
+				-- Plater-Format kürzt schon ab 1000 ("4.3k")
 				return format("%.1fk", value / 1e3)
 			else
 				return value
@@ -187,6 +198,8 @@ do
 				if (TidyPlatesThreat.db.profile.text.amount or TidyPlatesThreat.db.profile.text.max) then
 					if TidyPlatesThreat.db.profile.text.deficit and not TidyPlatesThreat.db.profile.text.max and unit.health == unit.healthmax then
 						HpPct = floor(100 * (unit.health / unit.healthmax)) .. "%"
+					elseif TidyPlatesThreat.db.profile.text.parens then
+						HpPct = " (" .. floor(100 * (unit.health / unit.healthmax)) .. "%)" -- Plater: "4.3k (100%)"
 					else
 						HpPct = " - " .. floor(100 * (unit.health / unit.healthmax)) .. "%"
 					end
@@ -240,7 +253,31 @@ do
 		end
 	end
 
-	TidyPlatesThreat.SetCustomText = SetCustomText
+	-- Der Text hängt nur von Lebenspunkten und Optionen ab. Er wird pro Plakette gemerkt
+	-- und nur bei geänderten Lebenspunkten neu gebaut (vorher bei jedem Delegate-Update
+	-- 3-5 neue Strings). Optionen/Profil ändern -> ForceUpdate -> Cache leeren.
+	local TextMemo = setmetatable({}, {__mode = "k"})
+	local function SetCustomTextCached(unit)
+		if not TidyPlatesThreat.db.profile.settings.customtext.show then
+			return ""
+		end
+		local m = TextMemo[unit]
+		if m and m.health == unit.health and m.healthmax == unit.healthmax then
+			return m.text
+		end
+		if not m then
+			m = {}
+			TextMemo[unit] = m
+		end
+		m.health, m.healthmax = unit.health, unit.healthmax
+		m.text = SetCustomText(unit)
+		return m.text
+	end
+	hooksecurefunc(TidyPlates, "ForceUpdate", function()
+		wipe(TextMemo)
+	end)
+
+	TidyPlatesThreat.SetCustomText = SetCustomTextCached
 end
 
 -------------------------------------------------------------------------------
@@ -260,11 +297,29 @@ do
 		local db = TidyPlatesThreat.db.profile
 		local style, custom = TidyPlatesThreat.SetStyle(unit)
 
+		-- Pet-Farbe: Überschreibt alle anderen Farbmodi für Begleiter, sodass sie sofort erkennbar sind.
+		-- 3.3.5a: unit.name kann Server-Suffix enthalten, deshalb mit strsplit bereinigen.
+		-- Nur freundliche Einheiten, damit gleichnamige Gegner/NPCs nicht eingefärbt werden.
+		if TidyPlatesUtility.PetNames and unit.name and unit.reaction == "FRIENDLY" then
+			local shortName = unit.name
+			-- Entferne optionales Server-Suffix (z.B. "Bear-Mograine" -> "Bear")
+			local dashPos = strfind(shortName, "-")
+			if dashPos then
+				shortName = strsub(shortName, 1, dashPos - 1)
+			end
+			if TidyPlatesUtility.PetNames[shortName] then
+				local petCol = TidyPlatesThreat.db.profile.PetHealthBarColor
+				if petCol then
+					return petCol.r, petCol.g, petCol.b, petCol.r, petCol.g, petCol.b
+				end
+			end
+		end
+
 		if custom == true then
 			for k_c, k_v in pairs(db.uniqueSettings.list) do
 				if k_v == "GROUP" then
 					if db.uniqueSettings[k_c].useColor == false and (db.uniqueSettings[k_c].allowMarked == false or not unit.isMarked) then
-						style = TidyPlatesThreat.db.char.threat.tanking and "tank" or "dps"
+						style = TidyPlatesThreat.IsTanking() and "tank" or "dps"
 					end
 					break
 				end
@@ -278,7 +333,7 @@ do
 			else
 				local tS = db.totemSettings[TPtotemList[unit.name] or TPtotemList[TotemNameFallback(unit.name)]]
 				if tS[2] then
-					c = tS.color
+					local c = tS.color
 					return c.r, c.g, c.b
 				else
 					return unit.red, unit.green, unit.blue
@@ -301,11 +356,11 @@ do
 							local R = db.settings.raidicon.hpMarked[unit.raidIcon]
 							return R.r, R.g, R.b
 						elseif not unit.isMarked and db.threat.useHPColor and InCombatLockdown() and db.threat.ON then
-							if TidyPlatesThreat.db.char.threat.tanking then
+							if TidyPlatesThreat.IsTanking() then
 								if unit.threatValue < 2 then
 									if isTanked(unit) then
 										local S = db.tHPbarColor
-										return S.r, S.b, S.b
+										return S.r, S.g, S.b
 									else
 										local T = db.settings["tank"].threatcolor[unit.threatSituation]
 										return T.r, T.g, T.b
@@ -325,13 +380,25 @@ do
 				end
 			end
 		elseif (((style == "tank") or (style == "dps")) and db.threat.useHPColor and InCombatLockdown()) then
-			if db.settings.raidicon.hpColor and unit.isMarked and not custom then
-				local R = db.settings.raidicon.hpMarked[unit.raidIcon]
-				return R.r, R.g, R.b
+			-- Bedrohungsfarbe hat Vorrang vor Raidmarkierungen. Reihenfolge:
+			-- 3 = ich habe sicher Aggro, 2 = habe Aggro, verliere sie gleich,
+			-- 1 = ziehe gleich Aggro, sonst: anderer Tank hält ihn -> Tank-Farbe,
+			-- sonst keine Aggro. (Crowd Control färbt bereits der TidyPlates-Kern.)
+			local colors = db.settings[style].threatcolor
+			local threatValue = unit.threatValue or 0
+			local T
+			if threatValue >= 3 then
+				T = colors.HIGH
+			elseif threatValue == 2 then
+				T = colors.LOSING or colors.MEDIUM
+			elseif threatValue == 1 then
+				T = colors.MEDIUM
+			elseif isTanked(unit) then
+				T = db.tHPbarColor
 			else
-				local T = db.settings[style].threatcolor[unit.threatSituation]
-				return T.r, T.g, T.b
+				T = colors.LOW
 			end
+			return T.r, T.g, T.b
 		else
 			if db.settings.raidicon.hpColor and unit.isMarked and not custom then
 				local R = db.settings.raidicon.hpMarked[unit.raidIcon]
@@ -416,6 +483,11 @@ do
 	local c = {r = 1, g = 1, b = 0, a = 1}
 	local function SetCastbarColor(unit)
 		local db = TidyPlatesThreat.db.profile
+		-- Plater: Farbe nach Unterbrechbarkeit und eigener Unterbrechung (laufend aktualisiert
+		-- von der Zauberleiste, siehe Widgets.lua)
+		if (db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON and ThreatPlatesWidgets and ThreatPlatesWidgets.PlaterCastColor then
+			return ThreatPlatesWidgets.PlaterCastColor(unit, unit.castRemaining)
+		end
 		c.r, c.g, c.b, c.a = 1, 1, 0, 1
 		if db.castbarColor.toggle and not unit.spellIsShielded then
 			c.r, c.g, c.b, c.a = db.castbarColor.r, db.castbarColor.g, db.castbarColor.b, db.castbarColor.a

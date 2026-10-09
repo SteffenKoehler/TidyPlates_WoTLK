@@ -640,3 +640,36 @@ do
 	TidyPlatesUtility.NewTable = new
 	TidyPlatesUtility.DelTable = del
 end
+
+----------------------
+-- Pet-Name-Tracking
+----------------------
+local PetNames = {}
+
+function TidyPlatesUtility.UpdatePetList()
+    wipe(PetNames)
+    local function AddPetName(unit)
+        local name = UnitName(unit)
+        if name then
+            PetNames[name] = true
+        end
+    end
+    -- Eigenes Pet (Spieler)
+    if UnitExists("pet") then
+        AddPetName("pet")
+    end
+    -- Gruppen-Pets durchgehen
+    for unit in TidyPlatesUtility.UnitIterator() do
+        if unit:find("pet") then
+            AddPetName(unit)
+        end
+    end
+    TidyPlatesUtility.PetNames = PetNames
+end
+
+local PetWatcherFrame = CreateFrame("Frame")
+PetWatcherFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+PetWatcherFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
+PetWatcherFrame:RegisterEvent("RAID_ROSTER_UPDATE")
+PetWatcherFrame:RegisterEvent("UNIT_PET") -- Behebt Verzögerung nach /reload, wird ausgelöst sobald das eigene Pet geladen ist
+PetWatcherFrame:SetScript("OnEvent", TidyPlatesUtility.UpdatePetList)

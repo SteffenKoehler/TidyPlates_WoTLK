@@ -119,6 +119,8 @@ local L = TidyPlates.L
 -- L["Show My Debuff Timers"] = true
 -- L["Debuff Filter:"] = true
 -- L["Debuff Names:"] = true
+-- L["Off (0)"] = "Aus (0)"
+-- L["Debuffs per Line:"] = "Debuffs pro Zeile:"
 -- L["WidgetsDebuffTrackList_Description"] = [[
 -- Tip: |cffCCCCCCDebuffs should be listed with the exact name, or a spell ID number.
 -- You can use the prefixes, "My" or "All", to distinguish personal damage spells from global crowd control spells.

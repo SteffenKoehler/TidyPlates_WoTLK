@@ -11,7 +11,12 @@ local WidgetGUID = setmetatable({}, weaktable)
 
 local UpdateWidget
 local TargetOfGroupMembers = {}
-local MaximumDisplayableDebuffs = 6
+local function GetMaxDebuffs()
+    local hub = TidyPlatesHubDamageVariables or TidyPlatesHubTankVariables
+    local index = hub and hub.WidgetsDebuffMaxPerLine or 4  -- Default 4 = 6
+    local map = {0, 2, 4, 6}
+    return map[index] or 6
+end
 
 local AURA_TARGET_HOSTILE = 1
 local AURA_TARGET_FRIENDLY = 2
@@ -142,8 +147,11 @@ end
 -----------------------------------------------------
 -- Aura Durations
 -----------------------------------------------------
-TidyPlatesData = TidyPlatesData or {}
-TidyPlatesData.CachedAuraDurations = {}
+-- Sicherstellen dass TidyPlatesData existiert bevor zugegriffen wird
+if not TidyPlatesData then
+	TidyPlatesData = {}
+end
+TidyPlatesData.CachedAuraDurations = TidyPlatesData.CachedAuraDurations or {}
 
 local function GetSpellDuration(spellid)
 	if spellid then
@@ -165,7 +173,10 @@ end
 local newTable = TidyPlatesUtility.NewTable
 local delTable = TidyPlatesUtility.DelTable
 
-local Aura_List = setmetatable({}, weaktable) -- Two Dimensional
+-- Kein schwacher Table: Die Unterlisten hängen nur hier und würden sonst vom
+-- Garbage Collector weggeräumt (Debuffs auf Nicht-Zielen verschwanden).
+-- Aufgeräumt wird über CleanAuraLists und UNIT_DIED.
+local Aura_List = {} -- Two Dimensional
 local Aura_Spellid = {}
 local Aura_Expiration = {}
 local Aura_Stacks = {}
@@ -195,7 +206,7 @@ end
 local function GetAuraInstance(guid, aura_id)
 	if guid and aura_id then
 		local aura_instance_id = guid .. aura_id
-		local spellid, expiration, stacks, caster, duration, texture, auratype
+		local spellid, expiration, stacks, caster, duration, texture, auratype, auratarget
 		spellid = Aura_Spellid[aura_instance_id]
 		expiration = Aura_Expiration[aura_instance_id]
 		stacks = Aura_Stacks[aura_instance_id]
@@ -252,10 +263,10 @@ end
 local function CleanAuraLists()
 	local currentTime = GetTime()
 	for guid, instance_list in pairs(Aura_List) do
-		local auracount = 0
+		local auracount = 0 -- verbleibende (nicht abgelaufene) Auren
 		for aura_id, aura_instance_id in pairs(instance_list) do
 			local expiration = Aura_Expiration[aura_instance_id]
-			if expiration and expiration < currentTime then
+			if not expiration or expiration < currentTime then
 				Aura_List[guid][aura_id] = nil
 				Aura_Spellid[aura_instance_id] = nil
 				Aura_Expiration[aura_instance_id] = nil
@@ -265,12 +276,24 @@ local function CleanAuraLists()
 				Aura_Texture[aura_instance_id] = nil
 				Aura_Type[aura_instance_id] = nil
 				Aura_Target[aura_instance_id] = nil
+			else
 				auracount = auracount + 1
 			end
 		end
+		-- Vorher genau verkehrt herum: Listen mit laufenden Auren wurden gelöscht,
+		-- Listen mit nur abgelaufenen blieben ewig liegen
 		if auracount == 0 then
-			Aura_List[guid] = delTable(Aura_List[guid])
+			Aura_List[guid] = nil
+			delTable(instance_list)
 		end
+	end
+end
+
+local function RemoveAuraList(guid)
+	if guid and Aura_List[guid] then
+		WipeAuraList(guid)
+		delTable(Aura_List[guid])
+		Aura_List[guid] = nil
 	end
 end
 
@@ -330,19 +353,35 @@ local function UpdateAurasByUnitID(unitid)
 	CallForWidgetUpdate(guid, raidicon, name)
 end
 
+local TargetOfGroupMembersDirty = true
+local function RebuildTargetOfGroupMembers()
+	wipe(TargetOfGroupMembers)
+	for name, unitid in pairs(TidyPlatesUtility.GroupMembers.UnitId) do
+		local targetOf = unitid .. "target"
+		if UnitExists(targetOf) then
+			TargetOfGroupMembers[UnitGUID(targetOf)] = targetOf
+		end
+	end
+	TargetOfGroupMembersDirty = false
+end
+
+-- Liefert true, wenn die Auren direkt über die API (UnitDebuff) aktualisiert wurden
 local function UpdateAuraByLookup(guid)
 	if guid == UnitGUID("target") then
 		UpdateAurasByUnitID("target")
+		return true
 	elseif guid == UnitGUID("mouseover") then
 		UpdateAurasByUnitID("mouseover")
-	elseif TargetOfGroupMembers[guid] then
-		local unit = TargetOfGroupMembers[guid]
-		if unit then
-			local unittarget = UnitGUID(unit .. "target")
-			if guid == unittarget then
-				UpdateAurasByUnitID(unittarget)
-			end
-		end
+		return true
+	end
+	if TargetOfGroupMembersDirty then
+		RebuildTargetOfGroupMembers()
+	end
+	local unit = TargetOfGroupMembers[guid]
+	-- unit ist bereits die Unit-ID des Ziels (z.B. "raid5target")
+	if unit and UnitGUID(unit) == guid then
+		UpdateAurasByUnitID(unit)
+		return true
 	end
 	return false
 end
@@ -374,15 +413,9 @@ end
 -- General Events
 -----------------------------------------------------
 
+-- UNIT_TARGET feuert im Raid sehr oft; die Zuordnung wird erst bei Bedarf neu aufgebaut
 local function EventUnitTarget()
-	wipe(TargetOfGroupMembers)
-
-	for name, unitid in pairs(TidyPlatesUtility.GroupMembers.UnitId) do
-		local targetOf = unitid .. ("target" or "")
-		if UnitExists(targetOf) then
-			TargetOfGroupMembers[UnitGUID(targetOf)] = targetOf
-		end
-	end
+	TargetOfGroupMembersDirty = true
 end
 
 local function EventPlayerTarget()
@@ -396,6 +429,9 @@ local function EventUnitAura(unitid)
 		UpdateAurasByUnitID("target")
 	elseif unitid == "focus" then
 		UpdateAurasByUnitID("focus")
+	elseif unitid == "mouseover" then
+		-- Live-Aktualisierung, solange man über einer Plakette schwebt
+		UpdateAurasByUnitID("mouseover")
 	end
 end
 
@@ -425,6 +461,51 @@ local GeneralEvents = {
 	["ACTIVE_TALENT_GROUP_CHANGED"] = UpdatePlayerDispelTypes
 }
 
+-- Gebündelte Verarbeitung: Mehrere Debuff-Ereignisse auf denselben Gegner im selben
+-- Frame (Raid: 10-30 pro Sekunde) führen nur zu einem Neu-Scan und einem Neuzeichnen.
+local RAIDTARGET_MASK = 0x0FF00000
+local PendingGUID, PendingIcon, PendingName = {}, {}, {}
+local CLEAN_INTERVAL = 30
+local nextClean = 0
+
+local function ProcessPending(self)
+	self:SetScript("OnUpdate", nil)
+	for guid in pairs(PendingGUID) do
+		local raidicon, name = PendingIcon[guid], PendingName[guid]
+		PendingGUID[guid], PendingIcon[guid], PendingName[guid] = nil, nil, nil
+
+		local widget = FindWidgetByGUID(guid)
+			or (name and FindWidgetByName(name))
+			or (raidicon and FindWidgetByIcon(raidicon))
+		if widget then
+			-- Genauere Daten über die API, falls jemand den Gegner im Ziel hat
+			-- (aktualisiert das Widget dabei selbst)
+			local updatedViaAPI = UpdateAuraByLookup(guid)
+			if not (updatedViaAPI and WidgetGUID[guid]) then
+				UpdateWidget(widget)
+			end
+		end
+	end
+	-- Lange Kämpfe ohne PLAYER_REGEN_ENABLED: abgelaufene Einträge zwischendurch freigeben
+	local now = GetTime()
+	if now >= nextClean then
+		nextClean = now + CLEAN_INTERVAL
+		CleanAuraLists()
+	end
+end
+
+local function QueueGUID(guid, raidicon, name)
+	if not guid then
+		return
+	end
+	if not next(PendingGUID) then
+		AuraMonitor:SetScript("OnUpdate", ProcessPending)
+	end
+	PendingGUID[guid] = true
+	PendingIcon[guid] = raidicon or PendingIcon[guid]
+	PendingName[guid] = name or PendingName[guid]
+end
+
 local function GetCombatEventResults(...)
 	local timestamp, combatevent, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, spellid, spellName, spellSchool, auraType, stackCount = ...
 	return timestamp, combatevent, sourceGUID, destGUID, destName, destFlags, destFlags, auraType, spellid, stackCount
@@ -439,32 +520,41 @@ local function CombatEventHandler(frame, event, ...)
 		return
 	end
 
+	-- Früher Filter statt Drossel: Die allermeisten Kampflog-Einträge (Schaden,
+	-- Heilung, ...) sind keine Aura-Ereignisse und werden hier sofort verworfen.
+	-- Aura-Ereignisse gehen dadurch nie verloren.
+	local _, subevent = ...
+	local CombatLogUpdateFunction = CombatLogEvents[subevent]
+	if not CombatLogUpdateFunction then
+		if subevent == "UNIT_DIED" then
+			-- Auren toter Gegner sofort freigeben statt bis Kampfende zu horten
+			local destGUID = select(6, ...)
+			RemoveAuraList(destGUID)
+		end
+		return
+	end
+
 	-- Combat Log Unfiltered
 	local timestamp, combatevent, sourceGUID, destGUID, destName, destFlags, destRaidFlag, auraType, spellid, stackCount = GetCombatEventResults(...)
 
 	-- Evaluate only for enemy units, for now
 	if (bit.band(destFlags, COMBATLOG_OBJECT_REACTION_FRIENDLY) == 0) then -- FILTER: ENEMY UNIT
-		local CombatLogUpdateFunction = CombatLogEvents[combatevent]
-		-- Evaluate only for certain combat log events
-		if CombatLogUpdateFunction then
-			-- Evaluate only for debuffs
-			if auraType == "DEBUFF" then -- FILTER: DEBUFF
-				-- Update Auras via API/UnitID Search
-				if not UpdateAuraByLookup(destGUID) then
-					-- Update Auras via Combat Log
-					CombatLogUpdateFunction(timestamp, sourceGUID, destGUID, destName, spellid, stackCount)
-				end
-				-- To Do: Need to write something to detect when a change was made to the destID
-				-- Return values on functions?
+		-- Evaluate only for debuffs
+		if auraType == "DEBUFF" then -- FILTER: DEBUFF
+			-- Daten aus dem Kampflog sofort merken (billig). Ein Neu-Scan über die API
+			-- und das Neuzeichnen passieren gebündelt einmal pro Gegner und Frame, und
+			-- nur, wenn es für den Gegner überhaupt eine Plakette gibt.
+			CombatLogUpdateFunction(timestamp, sourceGUID, destGUID, destName, spellid, stackCount)
 
-				local name, raidicon
-				-- Cache Unit Name for alternative lookup strategy
-				if bit.band(destFlags, COMBATLOG_OBJECT_CONTROL_PLAYER) > 0 then
-					local rawName = strsplit("-", destName) -- Strip server name from players
-					ByName[rawName] = destGUID
-					name = rawName
-				end
-				-- Cache Raid Icon Data for alternative lookup strategy
+			local name, raidicon
+			-- Cache Unit Name for alternative lookup strategy
+			if bit.band(destFlags, COMBATLOG_OBJECT_CONTROL_PLAYER) > 0 then
+				local rawName = strsplit("-", destName) -- Strip server name from players
+				ByName[rawName] = destGUID
+				name = rawName
+			end
+			-- Cache Raid Icon Data for alternative lookup strategy
+			if bit.band(destRaidFlag, RAIDTARGET_MASK) > 0 then
 				for iconname, bitmask in pairs(RaidIconBit) do
 					if bit.band(destRaidFlag, bitmask) > 0 then
 						ByRaidIcon[iconname] = destGUID
@@ -472,9 +562,9 @@ local function CombatEventHandler(frame, event, ...)
 						break
 					end
 				end
-
-				CallForWidgetUpdate(destGUID, raidicon, name)
 			end
+
+			QueueGUID(destGUID, raidicon, name)
 		end
 	end
 end
@@ -491,10 +581,214 @@ local function UpdateWidgetTime(frame, expiration)
 	end
 end
 
-local function UpdateIcon(frame, texture, expiration, stacks)
+-- Ablauf-Schleier (Spiralen/Cooldown-Modelle werden an Plaketten in 3.3.5a nicht gezeichnet)
+local SHADE_INTERVAL = 0.033
+-- Uhr: Die abgelaufene Zeit wird als dunkler Kreisausschnitt ab 12 Uhr im Uhrzeigersinn
+-- gezeichnet. Cooldown-Modelle gehen an Plaketten nicht, deshalb aus Teilen: volle Viertel
+-- als Rechtecke, das angeschnittene Viertel aus einem Dreieck (Grafik ClockTriangle =
+-- obere linke Hälfte deckend, je Viertel gespiegelt) plus ggf. einem Rechteck. Dazu ein
+-- goldener Zeiger (ClockHand, über Texturkoordinaten gedreht).
+-- Jedes Viertel wird lokal betrachtet: v zeigt in Startrichtung des Viertels (Q1 oben,
+-- Q2 rechts, Q3 unten, Q4 links), u in Drehrichtung; a/b = Ausdehnung entlang u/v.
+local CLOCK_TRIANGLE = "Interface\\AddOns\\TidyPlates\\media\\ClockTriangle"
+local CLOCK_HAND = "Interface\\AddOns\\TidyPlates\\media\\ClockHand"
+local CLOCK_ALPHA = 0.6
+-- Anteil der Zeigerlinie an der halben Zeiger-Grafik (Linie von der Mitte bis 3 px vor
+-- den oberen Rand einer 64er-Grafik)
+local HAND_LENGTH = (32 - 3) / 32
+local HALF_PI, TWO_PI = math.pi / 2, math.pi * 2
+local msin, mcos, mtan, matan2, mfloor, mabs = math.sin, math.cos, math.tan, math.atan2, math.floor, math.abs
+-- Dreieck je Viertel spiegeln (links, rechts, oben, unten)
+local TRI_COORDS = {{0, 1, 0, 1}, {1, 0, 0, 1}, {1, 0, 1, 0}, {0, 1, 1, 0}}
+
+-- Lokales Rechteck [u0,u1] x [v0,v1] des Viertels q auf das Symbol legen
+local function PlaceClockRect(tex, frame, q, cx, cy, u0, u1, v0, v1)
+	local xa, ya, xb, yb
+	if q == 1 then
+		xa, ya, xb, yb = cx + u0, cy + v0, cx + u1, cy + v1
+	elseif q == 2 then
+		xa, ya, xb, yb = cx + v0, cy - u0, cx + v1, cy - u1
+	elseif q == 3 then
+		xa, ya, xb, yb = cx - u0, cy - v0, cx - u1, cy - v1
+	else
+		xa, ya, xb, yb = cx - v0, cy + u0, cx - v1, cy + u1
+	end
+	local x0, x1 = min(xa, xb), max(xa, xb)
+	local y0, y1 = min(ya, yb), max(ya, yb)
+	if x1 - x0 < 0.05 or y1 - y0 < 0.05 then
+		tex:Hide()
+		return
+	end
+	tex:ClearAllPoints()
+	tex:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", x0, y0)
+	tex:SetWidth(x1 - x0)
+	tex:SetHeight(y1 - y0)
+	tex:Show()
+end
+
+local function CreateClock(frame)
+	local clock = {quarters = {}}
+	for q = 1, 4 do
+		local t = frame:CreateTexture(nil, "OVERLAY")
+		t:SetTexture(0, 0, 0, CLOCK_ALPHA)
+		t:Hide()
+		clock.quarters[q] = t
+	end
+	clock.extra = frame:CreateTexture(nil, "OVERLAY")
+	clock.extra:SetTexture(0, 0, 0, CLOCK_ALPHA)
+	clock.extra:Hide()
+	clock.triangle = frame:CreateTexture(nil, "OVERLAY")
+	clock.triangle:SetTexture(CLOCK_TRIANGLE)
+	clock.triangle:SetVertexColor(0, 0, 0, CLOCK_ALPHA)
+	clock.triangle:Hide()
+	clock.hand = frame:CreateTexture(nil, "OVERLAY")
+	clock.hand:SetTexture(CLOCK_HAND)
+	clock.hand:SetVertexColor(1, 0.82, 0.2, 1)
+	clock.hand:Hide()
+	frame.Clock = clock
+	return clock
+end
+
+local function HideClock(frame)
+	local clock = frame.Clock
+	if clock then
+		for q = 1, 4 do
+			clock.quarters[q]:Hide()
+		end
+		clock.extra:Hide()
+		clock.triangle:Hide()
+		clock.hand:Hide()
+	end
+end
+
+local function UpdateClock(frame, frac)
+	local clock = frame.Clock or CreateClock(frame)
+	local w, h = frame:GetWidth(), frame:GetHeight()
+	local cx, cy = w / 2, h / 2
+	local angle = frac * TWO_PI
+	local full = mfloor(angle / HALF_PI)
+	for q = 1, 4 do
+		local a, b = cx, cy
+		if q == 2 or q == 4 then
+			a, b = cy, cx
+		end
+		if q <= full then
+			PlaceClockRect(clock.quarters[q], frame, q, cx, cy, 0, a, 0, b)
+		else
+			clock.quarters[q]:Hide()
+		end
+	end
+	local q = full + 1
+	if q <= 4 then
+		local a, b = cx, cy
+		if q == 2 or q == 4 then
+			a, b = cy, cx
+		end
+		local phi = angle - full * HALF_PI
+		local tri = clock.triangle
+		local c = TRI_COORDS[q]
+		tri:SetTexCoord(c[1], c[2], c[3], c[4])
+		if phi <= matan2(a, b) then
+			-- Strahl trifft die äußere Kante in Startrichtung
+			PlaceClockRect(tri, frame, q, cx, cy, 0, b * mtan(phi), 0, b)
+			clock.extra:Hide()
+		else
+			-- Strahl trifft die Seitenkante: Rechteck oberhalb + Dreieck darunter
+			local v1 = a / mtan(phi)
+			PlaceClockRect(clock.extra, frame, q, cx, cy, 0, a, v1, b)
+			PlaceClockRect(tri, frame, q, cx, cy, 0, a, 0, v1)
+		end
+	else
+		clock.triangle:Hide()
+		clock.extra:Hide()
+	end
+	-- Zeiger: quadratische Textur um die Mitte, Bild per Texturkoordinaten im
+	-- Uhrzeigersinn gedreht. Die Größe wird je Winkel so gewählt, dass die Linie genau am
+	-- Rand des (nicht quadratischen) Symbols endet: Abstand Mitte -> Rand in Zeigerrichtung,
+	-- geteilt durch den Anteil der Linie an der halben Grafik.
+	local hand = clock.hand
+	local co, si = mcos(angle), msin(angle)
+	local reach = min(si ~= 0 and cx / mabs(si) or cx * 100, co ~= 0 and cy / mabs(co) or cy * 100)
+	local size = 2 * reach / HAND_LENGTH
+	hand:ClearAllPoints()
+	hand:SetPoint("CENTER", frame, "BOTTOMLEFT", cx, cy)
+	hand:SetWidth(size)
+	hand:SetHeight(size)
+	-- Texturpunkt = Mitte + inverse Drehung des Bildschirmpunkts (y nach unten)
+	hand:SetTexCoord(
+		0.5 - 0.5 * co - 0.5 * si, 0.5 + 0.5 * si - 0.5 * co, -- oben links
+		0.5 - 0.5 * co + 0.5 * si, 0.5 + 0.5 * si + 0.5 * co, -- unten links
+		0.5 + 0.5 * co - 0.5 * si, 0.5 - 0.5 * si - 0.5 * co, -- oben rechts
+		0.5 + 0.5 * co + 0.5 * si, 0.5 - 0.5 * si + 0.5 * co) -- unten rechts
+	hand:Show()
+end
+
+local function ShadeOnUpdate(frame, elapsed)
+	local tick = frame.shadeTick + elapsed
+	if tick < SHADE_INTERVAL then
+		frame.shadeTick = tick
+		return
+	end
+	frame.shadeTick = 0
+	local frac = (GetTime() - frame.shadeStart) / frame.shadeDuration
+	if frame.timerStyle == "CLOCK" then
+		if frac <= 0.01 or frac >= 1 then
+			HideClock(frame)
+		else
+			UpdateClock(frame, frac)
+		end
+		return
+	end
+	if frac <= 0.02 or frac >= 1 then
+		frame.Shade:Hide()
+		frame.ShadeEdge:Hide()
+		frame.Grey:Hide()
+	else
+		local height = frame:GetHeight() * frac
+		frame.Shade:SetHeight(height)
+		-- Graue Kopie des Symbols auf den abgelaufenen (oberen) Teil zuschneiden; die
+		-- Ausschnitt-Koordinaten des Symbols (Themes schneiden Ränder ab) übernehmen
+		local grey = frame.Grey
+		local left, top, _, bottom, right = frame.Icon:GetTexCoord()
+		grey:SetTexCoord(left, right, top, top + (bottom - top) * frac)
+		grey:SetHeight(height)
+		grey:Show()
+		frame.Shade:Show()
+		frame.ShadeEdge:Show()
+	end
+end
+
+local function UpdateIcon(frame, texture, expiration, stacks, duration)
 	if frame and texture and expiration then
 		-- Icon
 		frame.Icon:SetTexture(texture)
+
+		-- Ablauf-Anzeige, wenn das Theme sie wünscht (widget.showSpiral) und die Dauer
+		-- bekannt ist: der abgelaufene Teil wächst von oben nach unten (ausgegraut, leicht
+		-- abgedunkelt), goldene Kante an seiner Unterseite
+		local widget = frame:GetParent()
+		if widget.showSpiral and duration and duration > 0 then
+			frame.shadeStart, frame.shadeDuration = expiration - duration, duration
+			frame.shadeTick = SHADE_INTERVAL
+			-- Darstellung: "BAR" (grauer Balken, Standard) oder "CLOCK" (Uhr)
+			local style = widget.timerStyle == "CLOCK" and "CLOCK" or "BAR"
+			if frame.timerStyle ~= style then
+				frame.timerStyle = style
+				frame.Shade:Hide()
+				frame.ShadeEdge:Hide()
+				frame.Grey:Hide()
+				HideClock(frame)
+			end
+			frame:SetScript("OnUpdate", ShadeOnUpdate)
+			frame.Grey:SetTexture(texture)
+			frame.Grey:SetDesaturated(true)
+		else
+			frame:SetScript("OnUpdate", nil)
+			frame.Shade:Hide()
+			frame.ShadeEdge:Hide()
+			frame.Grey:Hide()
+			HideClock(frame)
+		end
 
 		-- Stacks
 		if stacks > 1 then
@@ -520,11 +814,14 @@ local function debuffSort(a, b)
 end
 
 local DebuffCache = {}
+-- Wiederverwendete Aura-Tabellen (vorher bei jedem Neuzeichnen neu angelegt)
+local AuraPool = {}
 
 local function UpdateIconGrid(frame, guid)
 	local AuraIconFrames = frame.AuraIconFrames
 	local AurasOnUnit = GetAuraList(guid)
 	local AuraSlotIndex = 1
+	local maxDebuffs = GetMaxDebuffs()
 
 	wipe(DebuffCache)
 	local debuffCount = 0
@@ -532,8 +829,13 @@ local function UpdateIconGrid(frame, guid)
 	-- Cache displayable debuffs
 	if AurasOnUnit then
 		frame:Show()
+		local now = GetTime()
 		for instanceid in pairs(AurasOnUnit) do
-			local aura = {}
+			local aura = AuraPool[debuffCount + 1]
+			if not aura then
+				aura = {}
+				AuraPool[debuffCount + 1] = aura
+			end
 			aura.spellid, aura.expiration, aura.stacks, aura.caster, aura.duration, aura.texture, aura.type, aura.target =
 				GetAuraInstance(guid, instanceid)
 
@@ -546,7 +848,7 @@ local function UpdateIconGrid(frame, guid)
 				aura.priority = priority or 10
 
 				-- Get Order/Priority
-				if show and aura.expiration > GetTime() then
+				if show and aura.expiration and aura.expiration > now then
 					debuffCount = debuffCount + 1
 					DebuffCache[debuffCount] = aura
 				end
@@ -560,17 +862,17 @@ local function UpdateIconGrid(frame, guid)
 		for index = 1, #DebuffCache do
 			local cachedaura = DebuffCache[index]
 			if cachedaura.spellid and cachedaura.expiration then
-				UpdateIcon(AuraIconFrames[AuraSlotIndex], cachedaura.texture, cachedaura.expiration, cachedaura.stacks)
+				UpdateIcon(AuraIconFrames[AuraSlotIndex], cachedaura.texture, cachedaura.expiration, cachedaura.stacks, cachedaura.duration)
 				AuraSlotIndex = AuraSlotIndex + 1
 			end
-			if AuraSlotIndex > MaximumDisplayableDebuffs then
+			if AuraSlotIndex > maxDebuffs then
 				break
 			end
 		end
 	end
 
 	-- Clear Extra Slots
-	for index = AuraSlotIndex, MaximumDisplayableDebuffs do
+	for index = AuraSlotIndex, maxDebuffs do
 		UpdateIcon(AuraIconFrames[index])
 	end
 
@@ -599,7 +901,14 @@ function UpdateWidget(frame)
 	end
 
 	UpdateIconGrid(frame, guid)
-	TidyPlates:RequestDelegateUpdate() -- Delegate Update, For Debuff Widget-Controlled Scale and Opacity Functions
+	-- Delegate Update (für debuff-abhängige Skalierung/Transparenz) nur für die
+	-- betroffene Plakette statt für alle
+	local extended = frame:GetParent()
+	if extended and extended.parentPlate and TidyPlates.RequestDelegateUpdateForPlate then
+		TidyPlates:RequestDelegateUpdateForPlate(extended.parentPlate)
+	else
+		TidyPlates:RequestDelegateUpdate()
+	end
 end
 
 local function UpdateWidgetTarget(frame)
@@ -670,7 +979,9 @@ end
 
 local function Disable()
 	AuraMonitor:SetScript("OnEvent", nil)
+	AuraMonitor:SetScript("OnUpdate", nil)
 	AuraMonitor:UnregisterAllEvents()
+	wipe(PendingGUID)
 	--TidyPlatesUtility:DisableGroupWatcher()
 end
 
@@ -693,8 +1004,34 @@ local function CreateAuraIconFrame(parent)
 	frame.Glow = frame:CreateTexture(nil, "ARTWORK")
 	frame.Glow:SetAllPoints(frame.Border)
 	frame.Glow:SetTexture(AuraGlowArt)
+	-- Ablauf-Anzeige (nur aktiv, wenn das Theme sie einschaltet): abgelaufener Teil
+	-- ausgegraut (entsättigte Kopie des Symbols) und abgedunkelt, goldene Kante
+	local grey = frame:CreateTexture(nil, "BORDER")
+	grey:SetDesaturated(true)
+	grey:SetPoint("TOPLEFT", frame, "TOPLEFT")
+	grey:SetPoint("TOPRIGHT", frame, "TOPRIGHT")
+	grey:Hide()
+	frame.Grey = grey
+	local shade = frame:CreateTexture(nil, "OVERLAY")
+	shade:SetTexture(0, 0, 0, 0.6)
+	shade:SetPoint("TOPLEFT", frame, "TOPLEFT")
+	shade:SetPoint("TOPRIGHT", frame, "TOPRIGHT")
+	shade:Hide()
+	frame.Shade = shade
+	local edge = frame:CreateTexture(nil, "OVERLAY")
+	edge:SetTexture(1, 0.82, 0.2, 1)
+	edge:SetHeight(2)
+	edge:SetPoint("TOPLEFT", shade, "BOTTOMLEFT")
+	edge:SetPoint("TOPRIGHT", shade, "BOTTOMRIGHT")
+	edge:Hide()
+	frame.ShadeEdge = edge
+	-- Texte auf eigener Ebene über dem Schleier
+	local textFrame = CreateFrame("Frame", nil, frame)
+	textFrame:SetAllPoints(frame)
+	textFrame:SetFrameLevel(frame:GetFrameLevel() + 2)
+	frame.TextFrame = textFrame
 	--  Time Text
-	frame.TimeLeft = frame:CreateFontString(nil, "OVERLAY")
+	frame.TimeLeft = textFrame:CreateFontString(nil, "OVERLAY")
 	frame.TimeLeft:SetFont(AuraFont, 9, "OUTLINE")
 	frame.TimeLeft:SetShadowOffset(1, -1)
 	frame.TimeLeft:SetShadowColor(0, 0, 0, 1)
@@ -703,7 +1040,7 @@ local function CreateAuraIconFrame(parent)
 	frame.TimeLeft:SetHeight(16)
 	frame.TimeLeft:SetJustifyH("RIGHT")
 	--  Stacks
-	frame.Stacks = frame:CreateFontString(nil, "OVERLAY")
+	frame.Stacks = textFrame:CreateFontString(nil, "OVERLAY")
 	frame.Stacks:SetFont(AuraFont, 10, "OUTLINE")
 	frame.Stacks:SetShadowOffset(1, -1)
 	frame.Stacks:SetShadowColor(0, 0, 0, 1)
@@ -731,17 +1068,18 @@ local function CreateAuraWidget(parent)
 	frame.AuraIconFrames = {}
 	local AuraIconFrames = frame.AuraIconFrames
 
-	for index = 1, MaximumDisplayableDebuffs do
+	local maxDebuffs = GetMaxDebuffs()
+	for index = 1, maxDebuffs do
 		AuraIconFrames[index] = CreateAuraIconFrame(frame)
 	end
-	local FirstRowCount = min(MaximumDisplayableDebuffs / 2)
+	local FirstRowCount = min(maxDebuffs / 2)
 	-- Set Anchors
 	AuraIconFrames[1]:SetPoint("LEFT", frame)
 	for index = 2, FirstRowCount do
 		AuraIconFrames[index]:SetPoint("LEFT", AuraIconFrames[index - 1], "RIGHT", 5, 0)
 	end
 	AuraIconFrames[FirstRowCount + 1]:SetPoint("BOTTOMLEFT", AuraIconFrames[1], "TOPLEFT", 0, 8)
-	for index = (FirstRowCount + 2), MaximumDisplayableDebuffs do
+	for index = (FirstRowCount + 2), GetMaxDebuffs() do
 		AuraIconFrames[index]:SetPoint("LEFT", AuraIconFrames[index - 1], "RIGHT", 5, 0)
 	end
 	-- Functions
@@ -751,7 +1089,7 @@ local function CreateAuraWidget(parent)
 		frame:_Hide()
 	end
 	frame:SetScript("OnHide", function()
-		for index = 1, 4 do
+		for index = 1, #AuraIconFrames do
 			PolledHideIn(AuraIconFrames[index], 0)
 		end
 	end)

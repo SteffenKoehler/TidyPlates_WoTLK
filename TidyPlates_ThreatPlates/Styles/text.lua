@@ -220,3 +220,8 @@ local function CreateStyle(self, event, ...)
 end
 f:RegisterEvent("ADDON_LOADED")
 f:SetScript("OnEvent", function(self, event, ...) CreateStyle(self, event, ...) end)
+-- Bei Profilwechsel/Optionsänderung neu bauen, ohne /reload (TidyPlatesThreat:RebuildStyles)
+TidyPlatesThreat.StyleBuilders = TidyPlatesThreat.StyleBuilders or {}
+TidyPlatesThreat.StyleBuilders["text"] = function()
+	CreateStyle(nil, nil, "TidyPlates_ThreatPlates")
+end

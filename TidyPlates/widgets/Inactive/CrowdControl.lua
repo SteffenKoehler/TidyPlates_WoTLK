@@ -1,6 +1,11 @@
 ----------------------
--- PolledHideIn() - Registers a callback, which polls the frame until it expires, then hides the frame and removes the callback
+-- CrowdControl Widget für WoW 3.3.5a
+-- Angepasst für TidyPlates mit Farbintegration
 ----------------------
+
+-- Globale CC Farbe
+CROWD_CONTROL_COLOR = {r=0.2, g=0.5, b=1.0}
+
 local PolledHideIn
 do
 	local Framelist = {} -- Key = Frame, Value = Expiration Time
@@ -20,7 +25,6 @@ do
 		for frame, expiration in pairs(Framelist) do
 			-- If expired...
 			if expiration < curTime then
-				-- If active...
 				frame:Hide()
 				Framelist[frame] = nil
 			else
@@ -64,9 +68,46 @@ local ByRaidIcon = {}
 -- Name to GUID
 local ByName = {}
 
--- ID and Normal Duration (PvP MAX is 10 seconds)
-local CrowdControlSpells = {}
-CrowdControlSpells[339] = true -- Entangling Roots
+-- Komplette CC Spell IDs für 3.3.5a (übernommen aus DebuffWidget)
+local CrowdControlSpells = {
+	-- Allgemein
+	[118] = true,		-- Polymorph
+	[3355] = true,		-- Freezing Trap Effect
+	[2637] = true,		-- Hibernate
+	[339] = true,		-- Entangling Roots
+	[122] = true,		-- Frost Nova
+	[11366] = true,		-- Pyroblast
+	[1776] = true,		-- Gouge
+	[6770] = true,		-- Sap
+	[2094] = true,		-- Blind
+	[8122] = true,		-- Psychic Scream
+	[1513] = true,		-- Scare Beast
+	[51514] = true,		-- Hex
+	[5782] = true,		-- Fear
+	[5484] = true,		-- Howl of Terror
+	[6358] = true,		-- Seduction
+	[710] = true,		-- Banish
+	[5116] = true,		-- Concussive Shot
+	[24698] = true,		-- Conflagrate
+	[15487] = true,		-- Silence
+	[10326] = true,		-- Turn Evil
+	[19386] = true,		-- Wyvern Sting
+	[19503] = true,		-- Scatter Shot
+	[49802] = true,		-- Kidney Shot
+	[19577] = true,		-- Intimidation
+	[1833] = true,		-- Cheap Shot
+	[853] = true,		-- Hammer of Justice
+	[10308] = true,		-- Hammer of Justice Rank 3
+	[2812] = true,		-- Holy Wrath
+	[20066] = true,		-- Repentance
+	[44572] = true,		-- Deep Freeze
+	[5246] = true,		-- Intimidating Shout
+	[12798] = true,		-- Recklessness Stun
+	[20252] = true,		-- Intercept
+	[12809] = true,		-- Concussion Blow
+	[46968] = true,		-- Shockwave
+	[30283] = true,		-- Shadowfury
+}
 
 local function CrowdControlAura_Update(targetguid, targetname, sourceguid, sourcename, spellid, spellname)
 	local targetUnitId
@@ -82,18 +123,28 @@ local function CrowdControlAura_Update(targetguid, targetname, sourceguid, sourc
 	-- Register Crowd Control to Target GUID
 	CrowdControlledUnits[targetguid] = spellid
 
-	-- Attempt to gather Expiration time from Caster, or use 10 seconds (A table of times might be another option)
+	-- Attempt to gather Expiration time from Caster, or use 10 seconds
 	if targetUnitId then
 		local name, rank, icon, count, dispelType, duration, expires = UnitDebuff(targetUnitId, spellname)
 		CrowdControlExpirationTimes[targetguid] = expires
 	else
 		CrowdControlExpirationTimes[targetguid] = GetTime() + 10
 	end
+
+	-- Aktualisiere alle Nameplates sofort
+	if TidyPlates then
+		TidyPlates:ForceUpdate()
+	end
 end
 
 local function CrowdControlAura_Remove(targetguid, ...)
 	CrowdControlledUnits[targetguid] = nil
 	CrowdControlExpirationTimes[targetguid] = 0
+
+	-- Aktualisiere alle Nameplates sofort
+	if TidyPlates then
+		TidyPlates:ForceUpdate()
+	end
 end
 
 local CombatLogEvents = {
@@ -118,7 +169,6 @@ local RaidIconBit = {
 }
 
 local function CrowdControlEventHandler(frame, event, timestamp, combatevent, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, spellId, spellName, ...)
-	print("here", event, combatevent, sourceName, destName, spellId, spellName)
 	local CombatLogFunction = CombatLogEvents[combatevent]
 
 	if CombatLogFunction and (bit.band(destFlags, COMBATLOG_OBJECT_REACTION_HOSTILE) > 0) then
@@ -147,6 +197,31 @@ local function CrowdControlEventHandler(frame, event, timestamp, combatevent, so
 	end
 end
 
+-- Öffentliche Funktion zur Prüfung ob Einheit unter CC steht
+function TidyPlatesWidgets.IsUnitCrowdControlled(unit)
+	if not unit then return false end
+
+	local guid = unit.guid
+	if not guid then
+		if unit.type == "PLAYER" then
+			guid = ByName[unit.name]
+		elseif unit.isMarked then
+			guid = ByRaidIcon[unit.raidIcon]
+		end
+	end
+
+	if guid then
+		local spellid = CrowdControlledUnits[guid]
+		local expiration = CrowdControlExpirationTimes[guid]
+
+		if spellid and expiration and expiration > GetTime() then
+			return true
+		end
+	end
+
+	return false
+end
+
 local function Enable()
 	CrowdControlMonitor:SetScript("OnEvent", CrowdControlEventHandler)
 	CrowdControlMonitor:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
@@ -155,6 +230,10 @@ end
 local function Disable()
 	CrowdControlMonitor:SetScript("OnEvent", nil)
 	CrowdControlMonitor:UnregisterAllEvents()
+	wipe(CrowdControlledUnits)
+	wipe(CrowdControlExpirationTimes)
+	wipe(ByName)
+	wipe(ByRaidIcon)
 end
 
 ------------------------------------------------- Widget Frames
@@ -263,3 +342,6 @@ end
 TidyPlatesWidgets.CreateCrowdControlWidget = CreateCrowdControlWidget
 TidyPlatesWidgets.EnableCrowdControlWatcher = Enable
 TidyPlatesWidgets.DisableCrowdControlWatcher = Disable
+
+-- Automatisch aktivieren beim Laden
+Enable()

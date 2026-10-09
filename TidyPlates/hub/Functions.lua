@@ -835,7 +835,15 @@ local function OnInitializeWidgets(plate, configTable)
 	AddThreatLineWidget(plate, LocalVars.WidgetsThreatIndicator and (LocalVars.WidgetsThreatIndicatorMode == 1), configTable.ThreatLineWidget)
 	AddComboPoints(plate, LocalVars.WidgetsComboPoints, configTable.ComboWidget)
 	AddRangeWidget(plate, LocalVars.WidgetsRangeIndicator, configTable.RangeWidget)
-	AddDebuffWidget(plate, LocalVars.WidgetsDebuff, configTable.DebuffWidget)
+	if LocalVars.WidgetsDebuffMaxPerLine > 0 then
+		AddDebuffWidget(plate, LocalVars.WidgetsDebuff, configTable.DebuffWidget)
+	else
+		-- Remove existing Debuff Widget if present
+		if plate.widgets.DebuffWidget then
+			plate.widgets.DebuffWidget:Hide()
+			plate.widgets.DebuffWidget = nil
+		end
+	end
 end
 
 local function OnContextUpdateDelegate(plate, unit)
@@ -871,11 +879,17 @@ local function EnableWatchers()
 	TidyPlatesUtility:EnableGroupWatcher()
 	TidyPlatesUtility:EnableUnitCache()
 	if LocalVars.WidgetsDebuff then
-		TidyPlatesWidgets:EnableAuraWatcher()
+		if TidyPlatesWidgets and TidyPlatesWidgets.EnableAuraWatcher then
+			TidyPlatesWidgets:EnableAuraWatcher()
+		end
 	else
-		TidyPlatesWidgets:DisableAuraWatcher()
+		if TidyPlatesWidgets and TidyPlatesWidgets.DisableAuraWatcher then
+			TidyPlatesWidgets:DisableAuraWatcher()
+		end
 	end
-	TidyPlatesWidgets:EnableTankWatch()
+	if TidyPlatesWidgets and TidyPlatesWidgets.EnableTankWatch then
+		TidyPlatesWidgets:EnableTankWatch()
+	end
 end
 
 local function UseDamageVariables()
