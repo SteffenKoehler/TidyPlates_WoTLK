@@ -8,59 +8,67 @@
 ---
 
 > [!NOTE]
-> **Rising-Gods fork (branch `rising-gods`).** This branch builds on the
+> **This fork** builds on the
 > [Hypopheria Remaster](https://github.com/hypopheria2k/TidyPlates_3.3.5a) and adds
 > further performance work, non-target castbars without dropped events, GUID
 > assignment without mouseover (raid markers, fingerprints, damage correlation),
-> a Plater-like threat color scheme and an optional **Plater/NotPlater look** with
-> built-in nameplate stacking. See **[CHANGES.md](CHANGES.md)** for details.
+> a Plater-like threat color scheme, an optional **Plater/NotPlater look** and
+> **Classic look**, and built-in nameplate stacking. See **[CHANGES.md](CHANGES.md)**
+> for details.
 >
 > - **Install:** copy `TidyPlates`, `TidyPlates_ThreatPlates` (and optionally
 >   `TPProf`) into `Interface/AddOns/` and **restart the client completely** -
 >   WoW 3.3.5a only picks up new files after a restart, `/reload` is not enough.
 > - **Profiles:** the `Default` profile contains all optimizations and the color
->   scheme. The `Plater` profile is created automatically and adds the Plater
->   look on top: `/tptp` -> *Profiles* -> select `Plater` and reload, or type
->   `/tptpplater`.
+>   scheme. The profiles `Plater` and `Classic` are created automatically and add
+>   their look on top: `/tptp` -> *Profiles* -> select one, or type `/tptpplater`
+>   / `/tptpclassic`. No reload needed.
+> - **Options** for all additions: `/tptp` -> tab *Extensions*. All texts are
+>   localized (English, German).
 > - Disable ElvUI's nameplate module and nameplate stacking WeakAuras when using
 >   this.
 > - The combat log throttling described below (sections "Combat Log Throttling"
->   and "Performance Throttling") was **removed** in this branch because it
+>   and "Performance Throttling") was **removed** in this fork because it
 >   dropped events; the load is reduced by other means instead (see CHANGES.md).
 >
 > The text below the screenshots is the upstream README of the Hypopheria Remaster.
 
-### Screenshots (Rising-Gods fork)
+### Screenshots (this fork)
+
+**Plater look** (profile `Plater`, `/tptpplater`): flat bar with a crisp 1 px
+border, HP as `11.8k (100%)`, name below the bar, small level top right.
+
+| | |
+|---|---|
+| ![Plater target](docs/images/plater-target.png) | Target with NotPlater target indicator (*Extensions* → *Plater look* → "Target indicator") and blue "Target glow". |
+| ![Plater in combat](docs/images/plater-combat.png) | In combat: purple = your aggro. Castbars on non-target plates too, with spell name and remaining time; orange = interruptible and your interrupt is ready (*Extensions* → *Castbar*). |
+| ![Plater stacking](docs/images/plater-stacking.png) | Out of combat (red = hostile) with stacking: plates move out of each other's way instead of overlapping. |
+| ![Plater castbar](docs/images/plater-look.png) | Target castbar with the 1 px border, HP as `72.8k (24%)`. |
 
 **Classic look** (profile `Classic`, `/tptpclassic`): flat bar in a rounded frame,
 separate level box, yellow-green line on the target.
 
 | | |
 |---|---|
+| ![Classic castbar](docs/images/classic-castbar.png) | Castbar like WoW Forever: attached under the bar, as wide as bar + level box, yellow while your interrupt is ready (grey on cooldown, lock for uninterruptible casts); spell name and remaining time below. Purple bar = your aggro. |
 | ![Classic look with combo points](docs/images/classic-combo-points.png) | Combo points as a segmented strip under the target's bar, colored by count (1 blue … 5 red). |
-| ![Quest icon](docs/images/classic-quest-icon.png) | Quest icon in front of the name for mobs that are an open kill objective in the quest log. |
-| ![Castbar](docs/images/classic-castbar.png) | Castbar like WoW Forever: attached under the bar, as wide as bar + level box, gold while your interrupt is ready (gray on cooldown, locked for uninterruptible casts); spell name and remaining time below. |
+| ![Quest icon](docs/images/classic-quest-icon.png) | Quest icon in front of the name for mobs that are an open kill objective in the quest log (*Extensions* → *Quest icon*). |
 
-**Stacking** (`/tptp` → *Erweiterungen* → *Stapeln*): enemy plates move out of each
-other's way, the target stays pinned above its model.
-
-| | |
-|---|---|
-| ![Two columns](docs/images/stacking-two-columns.png) | From 6 plates on (option "Zwei Stapel ab") a tower splits into two columns next to the target. |
-| ![Only engaged enemies](docs/images/stacking-only-engaged.png) | In combat only enemies fighting you or your group are stacked (purple = your aggro); idle mobs (red, left) stay where they are. |
-
-**Debuff timer** (`/tptp` → *Widgets* → *Debuffs* → "Darstellung"): the elapsed
-time of each debuff is shown on its icon.
+**Stacking** (`/tptp` → *Extensions* → *Stacking*): enemy plates move out of each
+other's way, the target stays pinned above its model ("Pin target").
 
 | | |
 |---|---|
-| ![Clock](docs/images/debuff-clock.png) | "Uhr" (default): dark sector from 12 o'clock with a golden hand (23 s, 15 s, 10 s left). |
-| ![Bar](docs/images/debuff-bar.png) | "Balken (grau)": the elapsed part is greyed out from the top, golden edge. |
+| ![Two columns](docs/images/stacking-two-columns.png) | From 6 plates on (option "Two stacks from") a tower splits into two columns next to the target. |
+| ![Only engaged enemies](docs/images/stacking-only-engaged.png) | In combat only enemies fighting you or your group are stacked (option "Only stack engaged enemies", purple = your aggro); idle mobs (red, left) stay where they are. |
 
-**Plater look** (profile `Plater`, `/tptpplater`): 1 px border, HP as `72.8k (24%)`,
-castbar with spell name and timer, NotPlater target indicators.
+**Debuff timer** (`/tptp` → *Widgets* → *Debuffs* → "Display"): the elapsed
+time of each debuff is shown on its icon ("Show elapsed time").
 
-![Plater look](docs/images/plater-look.png)
+| | |
+|---|---|
+| ![Clock](docs/images/debuff-clock.png) | "Clock" (default): dark sector from 12 o'clock with a golden hand (23 s, 15 s, 10 s left). |
+| ![Bar](docs/images/debuff-bar.png) | "Bar (grey)": the elapsed part is greyed out from the top, golden edge. |
 
 > [!IMPORTANT]
 > The original repository has been abandoned for years. This fork revives the addon with critical bug fixes, performance optimizations, and a fully working configuration interface.

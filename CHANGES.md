@@ -1,14 +1,13 @@
-# Rising-Gods changes (branch `rising-gods`)
+# Changes in this fork
 
-Local changes for WoW 3.3.5a on Rising-Gods, on top of the
+Changes for WoW 3.3.5a on top of the
 **Hypopheria Remaster** (TidyPlates 6.6.0 / Threat Plates 6.0):
 
 - Repository: <https://github.com/hypopheria2k/TidyPlates_3.3.5a>
   (itself based on bkader's TidyPlates_WoTLK)
-- Forum thread: <https://www.rising-gods.de/forum/41-addons/871300-tidyplates-335a-remaster.html>
 
 This branch starts at hypopheria's commit `3ad7272` ("added colorpicker for
-pets", 2026-05-05), which is exactly the version that was installed. Every
+pets", 2026-05-05), the published Remaster version. Every
 following commit contains one round of changes, so `git log -p` shows
 exactly what changed. Later hypopheria commits (pet color fix, BG scanner,
 chat bubble visibility) are not merged yet.
@@ -102,8 +101,10 @@ Target and mouseover are authoritative. Additionally, only when unique:
 - Look version 2 (modeled on the Classic Era client): the target's border
   and level box are desaturated and tinted yellow-green (optional soft glow),
   non-target plates are scaled to 75 %, slightly smaller level font, name
-  truncated to bar width, thin orange castbar below the border with the
-  spell name small on the left and the remaining time on the right.
+  truncated to bar width.
+- Castbar like WoW Forever: attached under the bar, as wide as bar + level
+  box, gold/yellow while your interrupt is ready, grey on cooldown, lock for
+  uninterruptible casts; spell name and remaining time below.
 - Name above the bar, health text as in "Default", Plater-style auras above
   the name, interrupt castbar colors and stacking as in the Plater look.
 - Quest icon (any profile, option `questIcon`): shown in front of the name of
@@ -112,9 +113,9 @@ Target and mouseover are authoritative. Additionally, only when unique:
   headers are not detected.
 - Combo points (classic frame): five separate segments with a 2 px gap, same
   colors as the original art (1 blue ... 5 red).
-- Debuff timer on the aura icons (option "Ablauf anzeigen", any look, default "Uhr"):
-  "Balken (grau)" greys out and darkens the elapsed part from the top with a
-  golden edge; "Uhr" draws a dark clock sector from 12 o'clock with a golden
+- Debuff timer on the aura icons (option "Show elapsed time", any look,
+  default "Clock"): "Bar (grey)" greys out and darkens the elapsed part from
+  the top with a golden edge; "Clock" draws a dark clock sector from 12 o'clock with a golden
   hand (built from rectangles and a triangle texture, because cooldown models
   are not drawn on nameplates in 3.3.5a).
 
@@ -126,13 +127,13 @@ target stays above its model and other plates move around it. The WeakAura's
 in-combat hitbox trick is not included (it closed open windows). **Disable
 the WeakAura** when using this, otherwise both move the plates.
 
-- **Two columns** (option "Zwei Stapel ab", default 6): plates that overlap
+- **Two columns** (option "Two stacks from", default 6): plates that overlap
   horizontally form a tower; from the threshold on they split into a left and
   a right column one plate width apart, the target stays pinned between them.
   Sides are sticky (no jumping while mobs move), offsets glide in and are
   applied with left/right clamp insets, so the mouseover area moves along.
-- **Only engaged enemies** (option "Nur beteiligte Gegner stapeln", default
-  on): in combat, plates of enemies not fighting me, my pet or my group stay
+- **Only engaged enemies** (option "Only stack engaged enemies",
+  default on): in combat, plates of enemies not fighting me, my pet or my group stay
   in place and push nobody. Engaged = target/mouseover, threat glow, or a
   combat log exchange with us (by GUID; without GUID by name, and right after
   a pull the lowest plates on screen of that name). Out of combat everything
@@ -164,7 +165,7 @@ Quest icon. Profiles are switched via the regular profile dropdown; each look
 page has a "Reset look" button (enabled only in the matching profile).
 
 All texts of these additions are localized: English keys in
-`Locales/enUS.lua`, German in `Locales/deDE.lua` (section "Rising-Gods
+`Locales/enUS.lua`, German in `Locales/deDE.lua` (section "Fork
 additions"); other clients fall back to English. TPProf has its own small
 German table and prints English on non-German clients.
 

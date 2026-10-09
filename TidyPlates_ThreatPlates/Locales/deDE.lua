@@ -468,9 +468,9 @@ L["Stances"] = "Haltungen"
 L["Off (0)"] = "Aus (0)"
 L["Debuffs per Line:"] = "Debuffs pro Zeile:"
 
--------------------------------
---[[ Rising-Gods additions ]]--
--------------------------------
+-------------------------
+--[[ Fork additions ]]--
+-------------------------
 
 L["Always tank view"] = "Immer Tank-Ansicht"
 L["Shows the tank colors on all characters (purple = I have aggro, blue = other tank, red = no aggro), regardless of role and talents."] = "Zeigt auf allen Charakteren die Tank-Farben (lila = ich habe Aggro, blau = anderer Tank, rot = keine Aggro), unabhängig von Rolle und Talenten."

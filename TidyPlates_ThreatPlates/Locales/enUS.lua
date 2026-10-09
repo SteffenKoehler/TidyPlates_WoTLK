@@ -468,9 +468,9 @@ L["Shapeshifts"] = true
 L["Auras"] = true
 L["Stances"] = true
 
--------------------------------
---[[ Rising-Gods additions ]]--
--------------------------------
+-------------------------
+--[[ Fork additions ]]--
+-------------------------
 
 L["Always tank view"] = true
 L["Shows the tank colors on all characters (purple = I have aggro, blue = other tank, red = no aggro), regardless of role and talents."] = true
