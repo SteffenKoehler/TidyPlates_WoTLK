@@ -164,6 +164,13 @@ sub-pages Plater look, Classic look, Castbar (interrupt colors), Stacking and
 Quest icon. Profiles are switched via the regular profile dropdown; each look
 page has a "Reset look" button (enabled only in the matching profile).
 
+The regular size options keep working in the look profiles: changing the
+health bar width/height in `Plater` or `Classic` (or the Classic frame style /
+line size) recalculates the size-dependent positions (castbar, name, level,
+spell icon, raid icon, auras; `TidyPlatesThreat:RelayoutLook`). "Reset look"
+keeps your bar size. Profiles stay independent: `Plater` and `Classic` are
+created once as a copy of `Default`, later changes do not carry over.
+
 All texts of these additions are localized: English keys in
 `Locales/enUS.lua`, German in `Locales/deDE.lua` (section "Fork
 additions"); other clients fall back to English. TPProf has its own small

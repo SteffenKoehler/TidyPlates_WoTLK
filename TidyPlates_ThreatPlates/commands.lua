@@ -83,7 +83,51 @@ local PLATER_PROFILE = "Plater"
 -- zu überschreiben (kein /tptpplater reset nötig).
 local PLATER_LOOK_VERSION = 3
 
-local function ApplyPlaterLook(p)
+-- Positionen, die von der Balkengröße abhängen. Läuft beim Anwenden der Optik und erneut,
+-- wenn im Profil "Plater" Breite/Höhe geändert wird; Schriftgrößen u. ä. bleiben unberührt.
+local function PlaterLayout(p)
+	local s = p.settings
+	local width, height = s.healthbar.width or 170, s.healthbar.height or 18
+	local top, bottom, left, right = height / 2, -height / 2, -width / 2, width / 2
+
+	-- Zauberleiste unter dem Balken; sie überdeckt beim Zaubern den Namen
+	local castHeight = s.castbar.height or 16
+	local castY = bottom - 2 - castHeight / 2
+	s.castbar.y = castY
+	s.castborder.y = castY
+	s.castnostop.y = castY
+
+	-- Name unter dem Balken, volle Breite, damit lange Namen nicht so früh abgeschnitten werden
+	s.name.width = width
+	s.name.y = castY
+
+	-- Lebenspunkte-Text mittig im Balken
+	s.customtext.width = width - 10
+
+	-- Zaubername links in der Zauberleiste (rechts steht die Restzeit), Symbol links daneben
+	local spellWidth = width - 40
+	s.spelltext.width = spellWidth
+	s.spelltext.x = left + 3 + spellWidth / 2
+	s.spelltext.y = castY
+	s.spellicon.scale = castHeight
+	s.spellicon.x = left - castHeight / 2 - 2
+	s.spellicon.y = castY
+
+	-- Stufe klein über der rechten oberen Ecke
+	s.level.x = right - 15
+	s.level.y = top + 6
+
+	-- Raid-Symbol links neben dem Balken
+	s.raidicon.x = left - (s.raidicon.scale or 20) / 2 - 3
+	s.raidicon.y = 0
+
+	-- Auren direkt über dem Balken (Versatz wird mit der Skalierung des Widgets multipliziert)
+	local auraScale = p.debuffWidget.scale or 1.15
+	p.debuffWidget.y = (top + 3) / auraScale + 9
+end
+
+-- keepSize: Balkengröße des Profils behalten (Optik zurücksetzen), sonst Ausgangsgröße
+local function ApplyPlaterLook(p, keepSize)
 	local s = p.settings
 	p.platerLookVersion = PLATER_LOOK_VERSION
 	p.platerBorder.ON = true
@@ -122,65 +166,40 @@ local function ApplyPlaterLook(p)
 	end
 
 	-- Etwas größer als vorher (150x15), Zauberleiste übernimmt die Breite
-	s.healthbar.width = 170
-	s.healthbar.height = 18
-	local height = s.healthbar.height
-	local width = s.healthbar.width
-	local top, bottom, left, right = height / 2, -height / 2, -width / 2, width / 2
+	if not keepSize then
+		s.healthbar.width = 170
+		s.healthbar.height = 18
+	end
 
-	-- Zauberleiste unter dem Balken, so hoch wie der Name; sie überdeckt beim Zaubern den Namen
-	local castHeight = 16
-	local castY = bottom - 2 - castHeight / 2
-	s.castbar.height = castHeight
-	s.castbar.y = castY
-	s.castborder.y = castY
-	s.castnostop.y = castY
+	-- Zauberleiste so hoch wie der Name
+	s.castbar.height = 16
 
-	-- Name unter dem Balken
 	s.name.size = 13
-	s.name.width = width -- volle Breite, damit lange Namen nicht so früh abgeschnitten werden
-	s.name.y = castY
 	s.name.align = "CENTER"
 
-	-- Lebenspunkte-Text mittig im Balken
 	s.customtext.size = 12
-	s.customtext.width = width - 10
 	s.customtext.x = 0
 	s.customtext.y = 0
 	s.customtext.align = "CENTER"
 
-	-- Zaubername links in der Zauberleiste (rechts steht die Restzeit), Symbol links daneben
-	local spellWidth = width - 40
 	s.spelltext.size = 11
-	s.spelltext.width = spellWidth
 	s.spelltext.align = "LEFT"
-	s.spelltext.x = left + 3 + spellWidth / 2
-	s.spelltext.y = castY
-	s.spellicon.scale = castHeight
-	s.spellicon.x = left - castHeight / 2 - 2
-	s.spellicon.y = castY
 
-	-- Stufe klein über der rechten oberen Ecke
 	s.level.show = true
 	s.level.size = 10
 	s.level.width = 30
 	s.level.align = "RIGHT"
 	s.level.vertical = "CENTER"
-	s.level.x = right - 15
-	s.level.y = top + 6
 
 	-- Raid-Symbol links neben dem Balken (darüber sitzen jetzt die Auren)
 	s.raidicon.scale = 20
-	s.raidicon.x = left - 13
-	s.raidicon.y = 0
 
-	-- Auren direkt über dem Balken, mittig (3 Symbole à 24 px + 2 px Abstand).
-	-- Versatz wird mit der Skalierung des Widgets multipliziert, daher umgerechnet.
-	local auraScale = 1.15
-	p.debuffWidget.scale = auraScale
+	-- Auren mittig (3 Symbole à 24 px + 2 px Abstand)
+	p.debuffWidget.scale = 1.15
 	p.debuffWidget.anchor = "CENTER"
 	p.debuffWidget.x = 64 - (3 * 24 + 2 * 2) / 2 -- Widget ist 128 breit, Symbole beginnen links
-	p.debuffWidget.y = (top + 3) / auraScale + 9
+
+	PlaterLayout(p)
 end
 
 -- Classic-Optik: originale Blizzard-Grafiken (Goldrahmen mit Stufen-Feld) über dem
@@ -193,10 +212,9 @@ local CLASSIC_LOOK_VERSION = 11
 -- dort hell/dunkel verlaufenden Leiste; vorher Cyan)
 local CLASSIC_CAST_READY = {r = 1, g = 0.8, b = 0.2}
 
--- Version 2 (Vorbild Classic-Client): Name auf Balkenbreite gekürzt, dünne orange Zauber-
--- leiste direkt unter dem Rahmen, Zaubername klein links darunter (Restzeit rechts), kein
--- Zaubersymbol, Quest-Symbol an. Rahmenfarbe/Größen kommen aus den classicLook-Vorgaben.
-local function ApplyClassicV2(p)
+-- Positionen, die von Balkengröße und Rahmenstil abhängen. Läuft beim Anwenden der Optik
+-- und erneut, wenn im Profil "Classic" Breite/Höhe, Rahmen oder Rahmenstärke geändert werden.
+local function ClassicLayout(p)
 	local s = p.settings
 	local width, height = s.healthbar.width or 150, s.healthbar.height or 12
 	local top, bottom, left = height / 2, -height / 2, -width / 2
@@ -204,11 +222,8 @@ local function ApplyClassicV2(p)
 	-- Unterkante des Rahmens: schlichte Linie bzw. Blizzard-Goldrahmen (falls schon vermessen)
 	local borderBottom = bottom - 4
 	local art = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
-	if gold then
-		borderBottom = bottom - 4
-		if art and art.healthborder then
-			borderBottom = math.min(bottom, (art.healthborder.bottom - 0.5) * height)
-		end
+	if gold and art and art.healthborder then
+		borderBottom = math.min(bottom, (art.healthborder.bottom - 0.5) * height)
 	end
 
 	-- Name gekürzt auf Balkenbreite, beim schlichten Rahmen näher am Balken
@@ -217,12 +232,15 @@ local function ApplyClassicV2(p)
 	local auraScale = p.debuffWidget.scale or 1.15
 	p.debuffWidget.y = (s.name.y + s.name.size / 2 + 2) / auraScale + 9
 
+	-- Lebenspunkte-Text mittig im Balken, Raid-Symbol links neben dem Rahmen
+	s.customtext.width = width - 10
+	s.raidicon.x = left - 22
+
 	local castHeight, castY
 	if gold then
-		-- Gold: dünne Leiste direkt unter dem Rahmen, Zaubername klein darunter
+		-- Gold: dünne Leiste direkt unter dem Rahmen, Zaubername klein darunter, kein Symbol
 		castHeight = 5
 		castY = borderBottom - 1 - castHeight / 2
-		s.spelltext.size = 9
 		s.spelltext.width = width - 30
 		s.spelltext.align = "LEFT"
 		s.spelltext.x = left + (width - 30) / 2
@@ -236,9 +254,6 @@ local function ApplyClassicV2(p)
 		-- direkt unter dem Balkenrahmen; mit Combo-Punkten rückt das Widget die Leiste tiefer
 		castY = bottom - inset - 2 - inset - castHeight / 2
 		local textWidth = width - 34
-		s.spelltext.size = 9
-		s.spelltext.flags = "OUTLINE"
-		s.spelltext.shadow = false
 		s.spelltext.width = textWidth
 		s.spelltext.align = "LEFT"
 		s.spelltext.x = left + 3 + textWidth / 2
@@ -253,11 +268,23 @@ local function ApplyClassicV2(p)
 	s.castbar.y = castY
 	s.castborder.y = castY
 	s.castnostop.y = castY
+end
 
+-- Version 2 (Vorbild Classic-Client): Name auf Balkenbreite gekürzt, Zauberleiste direkt
+-- unter dem Rahmen, Zaubername klein, Quest-Symbol an. Auch als Migration verwendet.
+local function ApplyClassicV2(p)
+	local s = p.settings
+	s.spelltext.size = 9
+	if p.classicLook.frameStyle ~= "GOLD" then
+		s.spelltext.flags = "OUTLINE"
+		s.spelltext.shadow = false
+	end
+	ClassicLayout(p)
 	p.questIcon.ON = true
 end
 
-local function ApplyClassicLook(p)
+-- keepSize: Balkengröße des Profils behalten (Optik zurücksetzen), sonst Ausgangsgröße
+local function ApplyClassicLook(p, keepSize)
 	local s = p.settings
 	p.classicLook.frameStyle = "SIMPLE"
 	p.classicLookVersion = CLASSIC_LOOK_VERSION
@@ -285,19 +312,20 @@ local function ApplyClassicLook(p)
 	p.platerCast.colorReady = {r = c.r, g = c.g, b = c.b}
 	p.stacking.ON = true
 
-	-- Blizzard-Balkengrafik, Breite etwas größer als das Original. Höhe im Seitenverhältnis
+	-- Flache Balkenfüllung, Breite etwas größer als das Original. Höhe im Seitenverhältnis
 	-- der Original-Leiste, damit der Rahmen nicht verzerrt (falls schon vermessen).
 	s.healthbar.texture = "Flat"
 	s.castbar.texture = "Flat"
-	local width = 150
-	local height = 12
-	local art = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
-	if art and art.width > 0 then
-		height = math.floor(width * art.height / art.width + 0.5)
+	if not keepSize then
+		local width = 150
+		local height = 12
+		local art = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
+		if art and art.width > 0 then
+			height = math.floor(width * art.height / art.width + 0.5)
+		end
+		s.healthbar.width = width
+		s.healthbar.height = height
 	end
-	s.healthbar.width = width
-	s.healthbar.height = height
-	local top, bottom, left = height / 2, -height / 2, -width / 2
 
 	-- Schriften wie Blizzard (Friz Quadrata mit Schatten), Lebenspunkte-Text mit Kontur
 	for _, key in ipairs({"name", "spelltext", "level"}) do
@@ -312,15 +340,12 @@ local function ApplyClassicLook(p)
 	-- Name weiß über dem Rahmen
 	s.name.show = true
 	s.name.size = 12
-	s.name.width = width + 30
 	s.name.align = "CENTER"
 	s.name.vertical = "CENTER"
 	s.name.x = 0
-	s.name.y = top + 11
 
 	-- Lebenspunkte-Text mittig im Balken (Format bleibt wie im Default-Profil)
 	s.customtext.size = 10
-	s.customtext.width = width - 10
 	s.customtext.x = 0
 	s.customtext.y = 0
 	s.customtext.align = "CENTER"
@@ -330,36 +355,13 @@ local function ApplyClassicLook(p)
 	s.level.size = 10
 	s.level.width = 30
 
-	-- Zauberleiste unter dem Balken, Zaubername mittig, Symbol links (das Widget setzt
-	-- Rahmen und Symbol an Blizzards Platz, sobald die Zauberleiste vermessen ist)
-	local castHeight = height
-	local castY = bottom - 8 - castHeight / 2
-	s.castbar.height = castHeight
-	s.castbar.y = castY
-	s.castborder.y = castY
-	s.castnostop.y = castY
-	s.spelltext.size = 9
-	s.spelltext.width = width - 40
-	s.spelltext.align = "CENTER"
-	s.spelltext.x = 0
-	s.spelltext.y = castY
-	s.spellicon.scale = castHeight + 6
-	s.spellicon.x = left - castHeight / 2 - 5
-	s.spellicon.y = castY
-	s.spellicon.show = true
-
-	-- Raid-Symbol links neben dem Rahmen
 	s.raidicon.scale = 20
-	s.raidicon.x = left - 22
 	s.raidicon.y = 0
 
 	-- Auren im Plater-Stil mittig über dem Namen
-	local auraScale = 1.15
-	local nameTop = s.name.y + s.name.size / 2
-	p.debuffWidget.scale = auraScale
+	p.debuffWidget.scale = 1.15
 	p.debuffWidget.anchor = "CENTER"
 	p.debuffWidget.x = 64 - (3 * 24 + 2 * 2) / 2
-	p.debuffWidget.y = (nameTop + 2) / auraScale + 9
 
 	ApplyClassicV2(p)
 end
@@ -457,6 +459,16 @@ function TidyPlatesThreat:UpgradePlaterProfile()
 	end
 end
 
+-- Im Profil "Plater" bzw. "Classic" die größenabhängigen Positionen neu berechnen
+-- (aus den Optionen bei Änderung von Balkenbreite/-höhe, Rahmen oder Rahmenstärke)
+local Layouts = {[PLATER_PROFILE] = PlaterLayout, [CLASSIC_PROFILE] = ClassicLayout}
+function TidyPlatesThreat:RelayoutLook()
+	local layout = self.db and Layouts[self.db:GetCurrentProfile()]
+	if layout then
+		layout(self.db.profile)
+	end
+end
+
 -- Legt die Optik-Profile an, falls sie auf diesem Account noch fehlen (Kopie von
 -- "Default" + Optik), ohne den aktuellen Charakter umzustellen. So stehen sie
 -- jedem Charakter im Profil-Dropdown zur Auswahl.
@@ -498,7 +510,8 @@ local function LookCommand(look, command, msg)
 		end
 	end
 	if isNew or msg == "reset" then
-		look.apply(db.profile)
+		-- reset behält die eigene Balkengröße
+		look.apply(db.profile, not isNew)
 		TidyPlatesThreat:ApplyProfileLive() -- Optik wurde nach dem Profilwechsel geändert
 	end
 	print("|cff89F559Threat Plates|r: " .. format(L["Profile \"%s\" active (back with %s default)."], look.profile, command))

@@ -633,6 +633,8 @@ local function GetOptions()
 												SetThemeValue({arg = {"settings", "castborder", "width"}}, (val * 2) + 20)
 												SetThemeValue({arg = {"settings", "castnostop", "width"}}, (val * 2) + 20)
 												SetThemeValue({arg = {"settings", "castbar", "width"}}, val)
+												-- Profile "Plater"/"Classic": abhängige Positionen nachziehen
+												TidyPlatesThreat:RelayoutLook()
 												SetThemeValue(info, val)
 											end,
 											min = 80,
@@ -654,6 +656,8 @@ local function GetOptions()
 												SetThemeValue({arg = {"settings", "healthborder", "height"}}, val + 54)
 												SetThemeValue({arg = {"settings", "castborder", "height"}}, val + 54)
 												SetThemeValue({arg = {"settings", "castnostop", "height"}}, val + 54)
+												-- Profile "Plater"/"Classic": abhängige Positionen nachziehen
+												TidyPlatesThreat:RelayoutLook()
 												SetThemeValue(info, val)
 											end,
 											min = 10,
@@ -4154,7 +4158,7 @@ local function GetOptions()
 										},
 										Reset = {
 											name = L["Reset look"],
-											desc = L["Resets the Plater look in the profile \"Plater\" to its initial values (layout, sizes, fonts) - like /tptpplater reset. Only possible in the profile \"Plater\"; switch profiles under \"Profiles\"."],
+											desc = L["Resets the Plater look in the profile \"Plater\" to its initial values (layout, fonts; your bar size is kept) - like /tptpplater reset. Only possible in the profile \"Plater\"; switch profiles under \"Profiles\"."],
 											type = "execute",
 											order = 10,
 											confirm = true,
@@ -4206,7 +4210,11 @@ local function GetOptions()
 												return not db.classicLook.ON
 											end,
 											get = GetValue,
-											set = SetValue,
+											set = function(info, val)
+												db.classicLook.frameStyle = val
+												TidyPlatesThreat:RelayoutLook()
+												Update()
+											end,
 											arg = {"classicLook", "frameStyle"}
 										},
 										LineSize = {
@@ -4220,7 +4228,11 @@ local function GetOptions()
 												return not (db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD")
 											end,
 											get = GetValue,
-											set = SetValue,
+											set = function(info, val)
+												db.classicLook.lineSize = val
+												TidyPlatesThreat:RelayoutLook()
+												Update()
+											end,
 											arg = {"classicLook", "lineSize"}
 										},
 										TargetBorder = {
@@ -4351,7 +4363,7 @@ local function GetOptions()
 										},
 										Reset = {
 											name = L["Reset look"],
-											desc = L["Resets the Classic look in the profile \"Classic\" to its initial values (layout, sizes, fonts) - like /tptpclassic reset. Only possible in the profile \"Classic\"; switch profiles under \"Profiles\"."],
+											desc = L["Resets the Classic look in the profile \"Classic\" to its initial values (layout, fonts; your bar size is kept) - like /tptpclassic reset. Only possible in the profile \"Classic\"; switch profiles under \"Profiles\"."],
 											type = "execute",
 											order = 20,
 											confirm = true,

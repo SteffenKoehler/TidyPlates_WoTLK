@@ -495,7 +495,7 @@ L["Blue glow above and below the target's bar (like NotPlater)."] = true
 L["Health as \"4.3k (100%)\""] = true
 L["Plater format: amount with percent in parentheses, abbreviates with k from 1000. Off = \"4300 - 100%\"."] = true
 L["Reset look"] = true
-L["Resets the Plater look in the profile \"Plater\" to its initial values (layout, sizes, fonts) - like /tptpplater reset. Only possible in the profile \"Plater\"; switch profiles under \"Profiles\"."] = true
+L["Resets the Plater look in the profile \"Plater\" to its initial values (layout, fonts; your bar size is kept) - like /tptpplater reset. Only possible in the profile \"Plater\"; switch profiles under \"Profiles\"."] = true
 L["Reset the Plater look to its initial values?"] = true
 L["Classic look"] = true
 L["Look like the nameplates of the Classic client. Applies to the current profile; the profile \"Classic\" is preconfigured (/tptpclassic)."] = true
@@ -520,7 +520,7 @@ L["Blizzard castbar"] = true
 L["Blizzard's castbar border (with shield on uninterruptible spells) instead of the thin bar. Only fits a taller castbar (/tptpclassic reset sets the thin one)."] = true
 L["Kick ready: highlight border"] = true
 L["The castbar border lights up in the chosen color while the spell is interruptible and your interrupt is ready before the cast ends (simple border)."] = true
-L["Resets the Classic look in the profile \"Classic\" to its initial values (layout, sizes, fonts) - like /tptpclassic reset. Only possible in the profile \"Classic\"; switch profiles under \"Profiles\"."] = true
+L["Resets the Classic look in the profile \"Classic\" to its initial values (layout, fonts; your bar size is kept) - like /tptpclassic reset. Only possible in the profile \"Classic\"; switch profiles under \"Profiles\"."] = true
 L["Reset the Classic look to its initial values?"] = true
 L["Colors the castbar by interruptibility. Works with the Plater or the Classic look."] = true
 L["Color by interruptibility"] = true
