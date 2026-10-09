@@ -2,7 +2,7 @@
 ## Title: Tidy Plates
 ## Notes: Enjoys long walks on Darkshore
 ## Author: Binbwen and Friends (Hypopheria Remaster)
-## Version: 6.6.0
+## Version: 6.7.0
 ## SavedVariables: TidyPlatesData, TidyPlatesHubTankCache, TidyPlatesHubDamageCache
 ## SavedVariablesPerCharacter: TidyPlatesOptions, TidyPlatesHubTankSavedVariables, TidyPlatesHubDamageSavedVariables
 ## X-Date: 2022-08-07 @ 03:19 PM |cff808080UTC|r
