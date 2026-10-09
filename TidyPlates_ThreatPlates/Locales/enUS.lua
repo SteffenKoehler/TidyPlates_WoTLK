@@ -559,3 +559,7 @@ L["Profile \"%s\" active (back with %s default)."] = true
 L["No nameplate measured yet."] = true
 L["|cff89F559Classic|r bar %s, level at point %s"] = true
 L["not measured"] = true
+L["Icon style"] = true
+L["Standard: small original Tidy Plates icons, remaining time at the top right. Plater: larger icons with a 1 px border, large remaining time in the center, stacks above - recommended with the elapsed time display. Without a choice the Plater and Classic look use Plater icons."] = true
+L["Standard"] = true
+L["Plater"] = true

@@ -121,6 +121,10 @@ Target and mouseover are authoritative. Additionally, only when unique:
   the top with a golden edge; "Clock" draws a dark clock sector from 12 o'clock with a golden
   hand (built from rectangles and a triangle texture, because cooldown models
   are not drawn on nameplates in 3.3.5a).
+- Aura icon style (option "Icon style" under *Widgets* → *Debuffs*, any profile):
+  "Standard" (small original icons) or "Plater" (24x18 with 1 px border, large
+  centered timer, stacks above). Without an explicit choice the Plater and
+  Classic look use Plater icons, every other profile the standard ones.
 
 ## Stacking
 

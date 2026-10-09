@@ -3708,6 +3708,24 @@ local function GetOptions()
 												return not (db.debuffWidget.ON and db.debuffWidget.spiral)
 											end,
 											arg = {"debuffWidget", "timerStyle"}
+										},
+										IconStyle = {
+											name = L["Icon style"],
+											desc = L["Standard: small original Tidy Plates icons, remaining time at the top right. Plater: larger icons with a 1 px border, large remaining time in the center, stacks above - recommended with the elapsed time display. Without a choice the Plater and Classic look use Plater icons."],
+											type = "select",
+											order = 4,
+											values = {STANDARD = L["Standard"], PLATER = L["Plater"]},
+											disabled = function()
+												return not db.debuffWidget.ON
+											end,
+											get = function()
+												return ThreatPlatesWidgets.UsePlaterAuras(db) and "PLATER" or "STANDARD"
+											end,
+											set = function(info, val)
+												db.debuffWidget.iconStyle = val
+												-- Symbole neu erzeugen: der Plater-Stil wird beim Erzeugen angewendet
+												TidyPlatesThreat:ApplyProfileLive()
+											end
 										}
 									}
 								},

@@ -1007,6 +1007,16 @@ function ThreatPlatesWidgets.UpdateQuestIcon(plate, unit, icon, size)
 	end
 end
 
+-- Symbolstil der Auren: eigene Wahl (debuffWidget.iconStyle "STANDARD"/"PLATER") oder,
+-- solange nichts gewählt ist, automatisch Plater-Stil zur Plater- bzw. Classic-Optik
+function ThreatPlatesWidgets.UsePlaterAuras(db)
+	local style = db.debuffWidget.iconStyle
+	if style then
+		return style == "PLATER"
+	end
+	return db.platerBorder.ON or db.classicLook.ON
+end
+
 -- Aura-Symbole im Plater-Stil: rechteckig mit 1-px-Rahmen, große Restzeit mittig,
 -- Stapel darüber, enger Abstand. Wird einmal pro Debuff-Widget angewendet.
 function ThreatPlatesWidgets.StylePlaterAuras(widget)
@@ -1378,8 +1388,8 @@ local function OnInitialize(plate)
 		w.QuestIcon = nil
 	end
 
-	-- Auren im Plater-Stil (auch zur Classic-Optik)
-	if (db.platerBorder.ON or db.classicLook.ON) and w.WidgetDebuff then
+	-- Auren im Plater-Stil (Option Symbolstil, sonst automatisch zur Plater-/Classic-Optik)
+	if w.WidgetDebuff and ThreatPlatesWidgets.UsePlaterAuras(db) then
 		ThreatPlatesWidgets.StylePlaterAuras(w.WidgetDebuff)
 	end
 
