@@ -60,6 +60,56 @@ local PlateSetAlpha, PlateGetAlpha
 local InCombat, HasTarget = false, false
 TidyPlates.InCombat = InCombat
 
+-- Weicher Größenwechsel: Das Theme liefert die Zielgröße, die Plakette gleitet in
+-- ScaleDuration Sekunden dorthin (0 = sofort). Neu angezeigte Plaketten springen direkt.
+local PlatesScaling = setmetatable({}, weaktable)
+local ScaleDuration = 0
+
+local function SetPlateScale(plate, frame, target)
+	local shown = frame.scaleShown
+	if ScaleDuration <= 0 or not shown then
+		PlatesScaling[plate] = nil
+		frame.scaleShown = target
+		frame.scaleTarget = target
+		frame:SetScale(target)
+		return
+	end
+	if math.abs((frame.scaleTarget or shown) - target) < 0.001 then
+		return -- schon dort oder unterwegs dorthin
+	end
+	frame.scaleFrom = shown
+	frame.scaleTarget = target
+	frame.scaleStart = GetTime()
+	PlatesScaling[plate] = true
+end
+
+local function UpdatePlateScale(plate, now)
+	local frame = plate.extended
+	local t = (now - frame.scaleStart) / ScaleDuration
+	local value
+	if t >= 1 then
+		value = frame.scaleTarget
+		PlatesScaling[plate] = nil
+	else
+		t = t * t * (3 - 2 * t) -- weich anfahren und abbremsen
+		value = frame.scaleFrom + (frame.scaleTarget - frame.scaleFrom) * t
+	end
+	frame.scaleShown = value
+	frame:SetScale(value)
+end
+
+-- Dauer des Größenwechsels in Sekunden (0 oder nil = aus)
+function TidyPlates:SetScaleAnimation(seconds)
+	ScaleDuration = tonumber(seconds) or 0
+	if ScaleDuration <= 0 then
+		for plate in pairs(PlatesScaling) do
+			PlatesScaling[plate] = nil
+			plate.extended.scaleShown = plate.extended.scaleTarget
+			plate.extended:SetScale(plate.extended.scaleTarget)
+		end
+	end
+end
+
 ----------------------------
 -- Internal Functions
 ----------------------------
@@ -384,7 +434,7 @@ do
 			if activetheme.SetScale then
 				scale = activetheme.SetScale(unit)
 				if scale then
-					extended:SetScale(math.max(0.0001, scale))
+					SetPlateScale(nameplate, extended, math.max(0.0001, scale))
 				end
 			end
 
@@ -1052,6 +1102,9 @@ do
 		extended.requestedAlpha = 0
 		extended.visibleAlpha = 0
 		extended:SetAlpha(0)
+		-- Größe des vorherigen Gegners nicht animieren, sondern direkt setzen
+		PlatesScaling[plate] = nil
+		extended.scaleShown = nil
 
 		-- Graphics
 		unit.isCasting = false
@@ -2330,6 +2383,10 @@ do
 		-- Fade-In Loop
 		for plate in pairs(PlatesFading) do
 			UpdateNameplateFade(plate)
+		end
+		-- Größenwechsel (weicher Übergang Ziel <-> Nicht-Ziel)
+		for plate in pairs(PlatesScaling) do
+			UpdatePlateScale(plate, now)
 		end
 
 		-- Process the Update Request Queues

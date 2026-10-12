@@ -800,7 +800,9 @@ function TidyPlatesThreat:OnInitialize()
 				castBorder = false, -- Blizzard-Zauberleistenrahmen (sonst dünne Leiste mit 1-px-Rahmen)
 				kickHighlight = true, -- Rahmen der Zauberleiste hell, wenn du jetzt unterbrechen kannst
 				kickReadyColor = {r = 1, g = 1, b = 1},
-				nonTargetScale = 0.75 -- Größe der Plaketten, die nicht das Ziel sind (1 = aus)
+				nonTargetScale = 0.75, -- Größe der Plaketten, die nicht das Ziel sind (1 = aus)
+				scaleSmooth = true, -- Größenwechsel beim An-/Abwählen weich statt sprunghaft
+				scaleSmoothTime = 0.2 -- Dauer des Übergangs in Sekunden
 			},
 			-- Quest-Symbol bei Mobs, die ein offenes Tötungs-Questziel sind (Abgleich mit dem Questlog)
 			questIcon = {
@@ -1437,9 +1439,18 @@ function TidyPlatesThreat:ApplyStacking()
 		extraTop = DebuffExtraTop
 	})
 end
+-- Weicher Größenwechsel Ziel <-> Nicht-Ziel (nur Classic-Optik)
+function TidyPlatesThreat:ApplyScaleAnimation()
+	if not (TidyPlates.SetScaleAnimation and self.db) then
+		return
+	end
+	local cl = self.db.profile.classicLook
+	TidyPlates:SetScaleAnimation(cl.ON and cl.scaleSmooth and cl.scaleSmoothTime or 0)
+end
 -- Optionen/Profilwechsel lösen ForceUpdate aus
 hooksecurefunc(TidyPlates, "ForceUpdate", function()
 	TidyPlatesThreat:ApplyStacking()
+	TidyPlatesThreat:ApplyScaleAnimation()
 end)
 ------------
 -- EVENTS --
@@ -1650,6 +1661,7 @@ local function EventHandler(self, event, ...)
 		-- Läuft nach PLAYER_LOGIN, also nach ElvUI, und stellt die Zauberleiste wieder her
 		TidyPlatesThreat:ApplyCastbarCVar()
 		TidyPlatesThreat:ApplyStacking()
+		TidyPlatesThreat:ApplyScaleAnimation()
 		self:RegisterEvent("ACTIVE_TALENT_GROUP_CHANGED")
 	elseif event == "PLAYER_LEAVING_WORLD" then
 		self:UnregisterEvent("ACTIVE_TALENT_GROUP_CHANGED")

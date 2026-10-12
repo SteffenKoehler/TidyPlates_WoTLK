@@ -4327,6 +4327,33 @@ local function GetOptions()
 											set = SetValue,
 											arg = {"classicLook", "nonTargetScale"}
 										},
+										ScaleSmooth = {
+											name = L["Smooth size change"],
+											desc = L["When targeting or clearing the target, the nameplate grows or shrinks smoothly instead of jumping."],
+											type = "toggle",
+											order = 6.1,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "scaleSmooth"}
+										},
+										ScaleSmoothTime = {
+											name = L["Transition time"],
+											desc = L["Duration of the size change in seconds."],
+											type = "range",
+											order = 6.2,
+											min = 0.05,
+											max = 1,
+											step = 0.05,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.scaleSmooth)
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "scaleSmoothTime"}
+										},
 										LevelSize = {
 											name = L["Level font size"],
 											desc = L["Relative to the Blizzard font in the level box."],

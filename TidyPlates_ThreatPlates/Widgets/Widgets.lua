@@ -72,6 +72,18 @@ function ThreatPlatesWidgets.PixelSize(frame)
 	if not scale or scale <= 0 then
 		return 1
 	end
+	-- Während eines weichen Größenwechsels mit der Endgröße rechnen (sonst bleibt der
+	-- Rahmen nach dem Übergang mit der Zwischengröße stehen)
+	local ext = frame
+	for _ = 1, 3 do
+		if not ext or ext.scaleTarget then
+			break
+		end
+		ext = ext:GetParent()
+	end
+	if ext and ext.scaleTarget and ext.scaleShown and ext.scaleShown > 0 then
+		scale = scale / ext.scaleShown * ext.scaleTarget
+	end
 	return (768 / screenHeight) / scale
 end
 
