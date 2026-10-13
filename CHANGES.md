@@ -105,6 +105,12 @@ Target and mouseover are authoritative. Additionally, only when unique:
   and level box are desaturated and tinted yellow-green (optional soft glow),
   non-target plates are scaled to 75 %, slightly smaller level font, name
   truncated to bar width.
+- Smooth size change (options "Smooth size change" and "Transition time",
+  default on, 0.2 s): when you target or clear a target, the plate grows or
+  shrinks smoothly to its new size instead of jumping. The TidyPlates core
+  animates scale changes (`TidyPlates:SetScaleAnimation(seconds)`, smoothstep
+  easing); newly shown plates take their size immediately. Pixel-sized
+  borders are computed for the final size.
 - Castbar like WoW Forever: attached under the bar, as wide as bar + level
   box, gold/yellow while your interrupt is ready, grey on cooldown, lock for
   uninterruptible casts; spell name and remaining time below.
