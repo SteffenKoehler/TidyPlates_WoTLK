@@ -8,9 +8,9 @@ local CreateFrame = CreateFrame
 local barFrame = CreateFrame("Frame")
 local barPrototype_SetScript = barFrame.SetScript
 
--- Anker, Hintergrund und Ausrichtung ändern sich nur bei Layout-Änderungen
--- (Orientierung/Füllart/Drehung) - nicht bei jedem neuen Wert. layoutDirty merkt
--- sich das; SetValue setzt dann nur noch Breite und Texturkoordinaten des Balkens.
+-- Anchors, background and alignment only change on layout changes
+-- (orientation/fill style/rotation) - not on every new value. layoutDirty tracks
+-- that; SetValue then only sets the bar's width and texture coordinates.
 local function barPrototype_Update(self, sizeChanged, width, height)
 	local progress = (self.VALUE - self.MINVALUE) / (self.MAXVALUE - self.MINVALUE)
 	if not sizeChanged and not self.layoutDirty and progress == self.lastProgress then

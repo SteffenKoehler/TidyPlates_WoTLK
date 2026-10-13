@@ -29,7 +29,7 @@ do
 		-- If no more frames to watch, unregister the OnUpdate script
 		if framecount == 0 then
 			Watcherframe:SetScript("OnUpdate", nil)
-			WatcherframeActive = false -- sonst startet der Watcher nach der ersten Pause nie wieder
+			WatcherframeActive = false -- otherwise the watcher never restarts after the first pause
 		end
 	end
 
@@ -56,8 +56,8 @@ do
 	local select = select
 	local timeToUpdate = 0
 
-	-- Abgelaufene Aura: nur die Plakette des Icons neu bewerten statt aller Plaketten
-	-- (Icon -> Aura-Widget -> extended -> Plakette)
+	-- Expired aura: only re-evaluate the icon's nameplate instead of all nameplates
+	-- (icon -> aura widget -> extended -> nameplate)
 	local function RequestDelegateUpdateFor(frame)
 		local widget = frame:GetParent()
 		local extended = widget and widget:GetParent()

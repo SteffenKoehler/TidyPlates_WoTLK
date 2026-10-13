@@ -102,9 +102,9 @@ local function LoadTheme(incomingtheme)
 		currentThemeName = incomingtheme
 		return theme
 	else
-		-- Theme (noch) nicht vorhanden, z.B. weil das Theme-Addon wegen eines Fehlers
-		-- nicht geladen hat: nur für diese Sitzung "None" nutzen, die gespeicherte Wahl
-		-- aber behalten (früher wurde sie dauerhaft mit "None" überschrieben)
+		-- Theme not (yet) available, e.g. because the theme addon failed to load due to
+		-- an error: use "None" for this session only, but keep the saved choice
+		-- (previously it was permanently overwritten with "None")
 		currentThemeName = "None"
 		TidyPlates:ActivateTheme(TidyPlatesThemeList["None"])
 		return nil
@@ -493,8 +493,8 @@ function panelevents:PLAYER_LOGIN()
 	UpdateThemeNames()
 	ActivateInterfacePanel()
 	ShowWelcome()
-	-- Nicht-Ziel-Zauberleisten einmalig für jeden Charakter einschalten (neuer Standard).
-	-- Danach bleibt die eigene Wahl im Optionsmenü erhalten.
+	-- Enable non-target castbars once per character (new default).
+	-- After that, the user's own choice in the options menu is kept.
 	if not TidyPlatesOptions.CastWatcherDefaultOn then
 		TidyPlatesOptions.EnableCastWatcher = true
 		TidyPlatesOptions.CastWatcherDefaultOn = true

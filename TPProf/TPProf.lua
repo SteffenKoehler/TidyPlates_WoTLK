@@ -1,18 +1,18 @@
--- TPProf: misst die CPU-Zeit pro Addon über WoWs eingebautes Profiling und schreibt
--- ein Kampf- und Fehlerprotokoll in die SavedVariables (TPProfDB), damit es außerhalb
--- des Spiels ausgewertet werden kann. WoW schreibt die Datei bei /reload und beim Ausloggen.
+-- TPProf: measures CPU time per addon via WoW's built-in profiling and writes
+-- a fight and error log to the SavedVariables (TPProfDB) so it can be analyzed
+-- outside the game. WoW writes the file on /reload and on logout.
 --
--- Das Profiling (CVar scriptProfile) kostet selbst etwas Leistung und wirkt erst nach /reload,
--- deshalb nur zum Messen einschalten und danach wieder aus. FPS, Plaketten und Fehler
--- werden immer protokolliert (kostet praktisch nichts).
+-- Profiling (CVar scriptProfile) itself costs some performance and only takes effect after /reload,
+-- so only enable it for measuring and turn it off afterwards. FPS, nameplates and errors
+-- are always logged (practically free).
 --
--- /tpprof on      Profiling einschalten (danach /reload)
--- /tpprof off     Profiling ausschalten (danach /reload)
--- /tpprof start   Messung neu starten
--- /tpprof         Bericht seit dem letzten Start
--- /tpprof kampf   Bericht im Chat nach jedem Kampf an/aus (gespeichert wird immer)
--- /tpprof log     Zeigt, was gespeichert ist
--- /tpprof clear   Gespeicherte Kämpfe und Fehler löschen
+-- /tpprof on      Enable profiling (then /reload)
+-- /tpprof off     Disable profiling (then /reload)
+-- /tpprof start   Restart measurement
+-- /tpprof         Report since the last start
+-- /tpprof fight   Toggle chat report after every fight (always saved; "kampf" works too)
+-- /tpprof log     Shows what is saved
+-- /tpprof clear   Delete saved fights and errors
 
 -- Texts: English keys; German for deDE clients, other clients show the key
 local L = setmetatable(GetLocale() == "deDE" and {
@@ -45,7 +45,7 @@ local L = setmetatable(GetLocale() == "deDE" and {
 local PREFIX = "|cff33ff99TPProf:|r "
 local TOP = 10
 local SAVE_TOP = 15
-local MIN_FIGHT = 5 -- kürzere Kämpfe nicht berichten/speichern
+local MIN_FIGHT = 5 -- don't report/save shorter fights
 local MAX_FIGHTS = 40
 local MAX_ERRORS = 50
 local SAMPLE_INTERVAL = 0.5
@@ -66,9 +66,9 @@ local function StartMeasure()
 	startTime = GetTime()
 end
 
--- Einheit eichen: Je nach Client liefert GetAddOnCPUUsage nicht Millisekunden. TPProf
--- rechnet 5 ms lang (gemessen mit der Stoppuhr debugprofilestop) und vergleicht das mit
--- der Zeit, die WoW ihm dafür anrechnet. Ergebnis: Millisekunden pro gelieferter Einheit.
+-- Calibrate the unit: depending on the client, GetAddOnCPUUsage does not return milliseconds. TPProf
+-- computes for 5 ms (measured with the debugprofilestop stopwatch) and compares that with
+-- the time WoW charges it for it. Result: milliseconds per returned unit.
 local msPerUnit
 local function Calibrate()
 	if msPerUnit or not debugprofilestop then
@@ -86,7 +86,7 @@ local function Calibrate()
 	local used = GetAddOnCPUUsage("TPProf") - before
 	if used > 0 then
 		msPerUnit = elapsed / used
-		-- Nahe 1 = schon Millisekunden; sonst gefundenen Faktor nutzen
+		-- Close to 1 = already milliseconds; otherwise use the factor found
 		if msPerUnit > 0.5 and msPerUnit < 2 then
 			msPerUnit = 1
 		end
@@ -94,7 +94,7 @@ local function Calibrate()
 	return msPerUnit or 1
 end
 
--- CPU pro Addon seit StartMeasure, absteigend sortiert. nil, wenn Profiling aus ist.
+-- CPU per addon since StartMeasure, sorted descending. nil if profiling is off.
 local function CollectCPU()
 	if not (IsProfiling() and startTime) then
 		return
@@ -103,7 +103,7 @@ local function CollectCPU()
 	local scale = Calibrate()
 	local list, total = {}, 0
 	for i = 1, GetNumAddOns() do
-		-- TPProf selbst nicht mitzählen (enthält die Eichung beim Bericht)
+		-- Don't count TPProf itself (includes the calibration during the report)
 		if IsAddOnLoaded(i) and GetAddOnInfo(i) ~= "TPProf" then
 			local cpu = GetAddOnCPUUsage(i) * scale
 			if cpu > 0 then
@@ -142,7 +142,7 @@ local function Report(label)
 	if scale ~= 1 then
 		Print(format(L["(unit calibrated: 1 value = %.0f ms)"], scale))
 	end
-	-- Mit echtem Profiling brauchen die Addons zusammen mehrere ms pro Sekunde
+	-- With real profiling, the addons together use several ms per second
 	if duration > 30 and total / duration < 0.1 then
 		Print(L["|cffff6600Warning:|r Almost no CPU time measured - profiling is probably not active. "]
 			.. L["After /tpprof on a /reload is needed (the client turns it off again on every game start)."])
@@ -150,7 +150,7 @@ local function Report(label)
 end
 
 -------------------------------------------------------------------------------
--- Gemeinsame Angaben für Protokolleinträge
+-- Common fields for log entries
 -------------------------------------------------------------------------------
 local function Where()
 	local zone = GetRealZoneText() or ""
@@ -191,7 +191,7 @@ local function Push(list, entry, max)
 end
 
 -------------------------------------------------------------------------------
--- Kampfprotokoll: FPS (min/Durchschnitt), sichtbare Plaketten, Lua-Speicher, Ziele
+-- Fight log: FPS (min/average), visible nameplates, Lua memory, targets
 -------------------------------------------------------------------------------
 local fight
 local sampler = CreateFrame("Frame")
@@ -308,7 +308,7 @@ local function FightEnd()
 end
 
 -------------------------------------------------------------------------------
--- Fehlerprotokoll mit Zeit und Ort (Swatter speichert keine Zeit und ist voll)
+-- Error log with time and location (Swatter stores no time and is full)
 -------------------------------------------------------------------------------
 local inHandler = false
 local function RecordError(msg)
@@ -345,8 +345,8 @@ local function RecordError(msg)
 	inHandler = false
 end
 
--- Erst nach dem Laden aller Addons einhängen (Swatter setzt seinen Handler beim Laden)
--- und den vorherigen Handler immer weiter aufrufen
+-- Hook in only after all addons have loaded (Swatter sets its handler on load)
+-- and always keep calling the previous handler
 local function HookErrors()
 	local previous = geterrorhandler()
 	seterrorhandler(function(msg, ...)
@@ -358,17 +358,17 @@ local function HookErrors()
 end
 
 -------------------------------------------------------------------------------
--- Mausblick-Diagnose: Endet der Mausblick, obwohl die rechte Maustaste noch gedrückt
--- ist, wurde er unterbrochen (Kamera springt, Zeiger erscheint). Gespeichert wird, was
--- in dem Moment unter dem Zeiger lag - insbesondere, ob es eine Namensplakette war.
+-- Mouselook diagnostics: if mouselook ends while the right mouse button is still held,
+-- it was interrupted (camera jumps, cursor appears). What was under the cursor at that
+-- moment is saved - in particular, whether it was a nameplate.
 -------------------------------------------------------------------------------
 local MAX_MOUSELOOK = 50
 local MAX_MOUSELOOK_ALL = 150
 local wasLooking = false
 local lookStart
 
--- Rahmen unter dem Zeiger beschreiben; Plakette erkennen (TidyPlates: plate.extended
--- bzw. extended.parentPlate in der Elternkette)
+-- Describe the frame under the cursor; detect nameplates (TidyPlates: plate.extended
+-- or extended.parentPlate in the parent chain)
 local function DescribeFocus()
 	local f = GetMouseFocus()
 	if not f then
@@ -414,8 +414,8 @@ local function RecordMouselookBreak()
 end
 
 local mouselookWatcher = CreateFrame("Frame")
--- Zusätzlich jedes Ende des Mausblicks (auch normales Loslassen) mit Uhrzeit und
--- Tastenzustand, um einen gemeldeten Kamerasprung zeitlich zuordnen zu können
+-- Additionally log every mouselook end (including normal release) with time and
+-- button state, to be able to match a reported camera jump in time
 local function RecordMouselookEnd(rmbDown)
 	local now = GetTime()
 	Push(TPProfDB.mouselookAll, {
@@ -443,7 +443,7 @@ mouselookWatcher:SetScript("OnUpdate", function()
 end)
 
 -------------------------------------------------------------------------------
--- Events und Befehle
+-- Events and commands
 -------------------------------------------------------------------------------
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")

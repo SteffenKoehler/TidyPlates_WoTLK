@@ -156,7 +156,7 @@ do
 		end
 	end
 
-	-- Classic-Optik: Plaketten, die nicht das Ziel sind, kleiner (wie im Classic-Client)
+	-- Classic look: nameplates that are not the target are smaller (like in the Classic client)
 	local function SetScaleClassic(unit)
 		local scale = SetScale(unit)
 		local cl = TidyPlatesThreat.db.profile.classicLook
@@ -179,7 +179,7 @@ do
 			if value >= 1e6 then
 				return format("%.1fm", value / 1e6)
 			elseif value >= 1e4 or (value >= 1e3 and TidyPlatesThreat.db.profile.text.parens) then
-				-- Plater-Format kürzt schon ab 1000 ("4.3k")
+				-- Plater format already abbreviates from 1000 ("4.3k")
 				return format("%.1fk", value / 1e3)
 			else
 				return value
@@ -253,9 +253,9 @@ do
 		end
 	end
 
-	-- Der Text hängt nur von Lebenspunkten und Optionen ab. Er wird pro Plakette gemerkt
-	-- und nur bei geänderten Lebenspunkten neu gebaut (vorher bei jedem Delegate-Update
-	-- 3-5 neue Strings). Optionen/Profil ändern -> ForceUpdate -> Cache leeren.
+	-- The text depends only on health and options. It is cached per nameplate
+	-- and only rebuilt when health changes (previously 3-5 new strings on every
+	-- delegate update). Options/profile change -> ForceUpdate -> clear cache.
 	local TextMemo = setmetatable({}, {__mode = "k"})
 	local function SetCustomTextCached(unit)
 		if not TidyPlatesThreat.db.profile.settings.customtext.show then
@@ -297,12 +297,12 @@ do
 		local db = TidyPlatesThreat.db.profile
 		local style, custom = TidyPlatesThreat.SetStyle(unit)
 
-		-- Pet-Farbe: Überschreibt alle anderen Farbmodi für Begleiter, sodass sie sofort erkennbar sind.
-		-- 3.3.5a: unit.name kann Server-Suffix enthalten, deshalb mit strsplit bereinigen.
-		-- Nur freundliche Einheiten, damit gleichnamige Gegner/NPCs nicht eingefärbt werden.
+		-- Pet color: overrides all other color modes for pets so they are instantly recognizable.
+		-- 3.3.5a: unit.name may contain a server suffix, so strip it with strsplit.
+		-- Friendly units only, so enemies/NPCs with the same name are not colored.
 		if TidyPlatesUtility.PetNames and unit.name and unit.reaction == "FRIENDLY" then
 			local shortName = unit.name
-			-- Entferne optionales Server-Suffix (z.B. "Bear-Mograine" -> "Bear")
+			-- Remove optional server suffix (e.g. "Bear-Mograine" -> "Bear")
 			local dashPos = strfind(shortName, "-")
 			if dashPos then
 				shortName = strsub(shortName, 1, dashPos - 1)
@@ -380,10 +380,10 @@ do
 				end
 			end
 		elseif (((style == "tank") or (style == "dps")) and db.threat.useHPColor and InCombatLockdown()) then
-			-- Bedrohungsfarbe hat Vorrang vor Raidmarkierungen. Reihenfolge:
-			-- 3 = ich habe sicher Aggro, 2 = habe Aggro, verliere sie gleich,
-			-- 1 = ziehe gleich Aggro, sonst: anderer Tank hält ihn -> Tank-Farbe,
-			-- sonst keine Aggro. (Crowd Control färbt bereits der TidyPlates-Kern.)
+			-- Threat color takes precedence over raid markers. Order:
+			-- 3 = I have solid aggro, 2 = have aggro, about to lose it,
+			-- 1 = about to pull aggro, otherwise: another tank holds it -> tank color,
+			-- otherwise no aggro. (Crowd control is already colored by the TidyPlates core.)
 			local colors = db.settings[style].threatcolor
 			local threatValue = unit.threatValue or 0
 			local T
@@ -483,8 +483,8 @@ do
 	local c = {r = 1, g = 1, b = 0, a = 1}
 	local function SetCastbarColor(unit)
 		local db = TidyPlatesThreat.db.profile
-		-- Plater: Farbe nach Unterbrechbarkeit und eigener Unterbrechung (laufend aktualisiert
-		-- von der Zauberleiste, siehe Widgets.lua)
+		-- Plater: color by interruptibility and own interrupt (continuously updated
+		-- by the castbar, see Widgets.lua)
 		if (db.platerBorder.ON or db.classicLook.ON) and db.platerCast.ON and ThreatPlatesWidgets and ThreatPlatesWidgets.PlaterCastColor then
 			return ThreatPlatesWidgets.PlaterCastColor(unit, unit.castRemaining)
 		end

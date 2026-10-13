@@ -137,9 +137,9 @@ local function TotemSlot(name)
 	end
 end
 
--- Ergebnis pro Name zwischenspeichern (false = kein Totem), da diese Funktion
--- für jede Plakette mehrfach pro Update aufgerufen wird und sonst jedes Mal die
--- komplette Tabelle durchläuft.
+-- Cache the result per name (false = not a totem), since this function is
+-- called several times per update for every nameplate and would otherwise
+-- walk the whole table each time.
 local FallbackCache = {}
 local function TotemNameFallback(totem)
 	if not totem then

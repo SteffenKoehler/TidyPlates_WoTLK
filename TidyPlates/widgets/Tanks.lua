@@ -1,10 +1,10 @@
 ------------------------------
 -- Target Tracker
 ------------------------------
--- Merkt sich für bekannte Gegner (per GUID), wen sie gerade im Ziel haben.
--- Quellen: eigenes Ziel, Fokus, Pet und die Ziele aller Gruppen-/Raidmitglieder.
+-- Remembers for known enemies (by GUID) whom they currently have targeted.
+-- Sources: own target, focus, pet and the targets of all party/raid members.
 
-local TrackedUnitTargets = {} -- [guid] = Name des Ziels des Gegners
+local TrackedUnitTargets = {} -- [guid] = name of the enemy's target
 local NewTrackedUnitTargets = {}
 local TargetWatcher
 local TargetsDirty = false
@@ -37,17 +37,17 @@ local function RebuildTrackedTargets()
 
 	local numRaid = GetNumRaidMembers()
 	if numRaid > 0 then
-		for i = 1, numRaid do -- alle Raidmitglieder (vorher fehlte das letzte)
+		for i = 1, numRaid do -- all raid members (previously the last one was missing)
 			TrackUnit(raidTargets[i])
 		end
 	else
-		for i = 1, GetNumPartyMembers() do -- 5er-Gruppen wurden vorher gar nicht ausgewertet
+		for i = 1, GetNumPartyMembers() do -- 5-man groups were previously not evaluated at all
 			TrackUnit(partyTargets[i])
 		end
 	end
 
-	-- Nur Plaketten aktualisieren, deren Gegner das Ziel gewechselt hat
-	-- (vorher: Komplett-Update aller Plaketten bei jeder Änderung)
+	-- Only update nameplates whose enemy has changed target
+	-- (previously: full update of all nameplates on every change)
 	for guid, targetName in pairs(NewTrackedUnitTargets) do
 		if TrackedUnitTargets[guid] ~= targetName then
 			RequestPlateUpdate(guid)
@@ -62,8 +62,8 @@ local function RebuildTrackedTargets()
 	TrackedUnitTargets, NewTrackedUnitTargets = NewTrackedUnitTargets, TrackedUnitTargets
 end
 
--- UNIT_TARGET/UNIT_THREAT_SITUATION_UPDATE feuern im Raid praktisch jeden Frame:
--- höchstens 4x pro Sekunde neu aufbauen. Eigenes Ziel/Fokus sofort (nächster Frame).
+-- UNIT_TARGET/UNIT_THREAT_SITUATION_UPDATE fire practically every frame in raids:
+-- rebuild at most 4x per second. Own target/focus immediately (next frame).
 local TARGET_REBUILD_INTERVAL = 0.25
 local nextTargetRebuild = 0
 local function TargetWatcherOnUpdate(self)
@@ -105,7 +105,7 @@ local function IsTankedByAnotherTank(unit)
 			targetOf = TrackedUnitTargets[unit.guid]
 		end
 
-		-- "Anderer" Tank: man selbst zählt nicht (eigene Aggro zeigt die Bedrohungsfarbe)
+		-- "Other" tank: yourself doesn't count (own aggro is shown by the threat color)
 		if targetOf and TankNames[targetOf] and targetOf ~= PlayerName then
 			return true
 		end
@@ -113,22 +113,22 @@ local function IsTankedByAnotherTank(unit)
 	return false
 end
 
--- In 3.3.5a liefert UnitGroupRolesAssigned drei Booleans (isTank, isHealer, isDamage)
--- und keinen Text wie ab Cataclysm. Der alte Vergleich mit "TANK" war daher immer falsch.
+-- In 3.3.5a UnitGroupRolesAssigned returns three booleans (isTank, isHealer, isDamage)
+-- and not a string as in Cataclysm+. The old comparison with "TANK" was therefore always false.
 local function IsTankUnit(unitid)
 	local isTank = UnitGroupRolesAssigned(unitid)
 	return isTank == true or isTank == 1
 end
 
--- Tank-Haltungen/-Gestalten: In selbst gebauten Raids gibt es weder Dungeonfinder-Rollen
--- noch zwingend Main-Tank-Zuweisungen. Diese Auren erkennt der Client bei allen
--- Gruppenmitgliedern (Namen werden über GetSpellInfo lokalisiert).
+-- Tank stances/forms: self-assembled raids have neither Dungeon Finder roles
+-- nor necessarily main tank assignments. The client sees these auras on all
+-- group members (names are localized via GetSpellInfo).
 local TankAuraIDs = {
-	25780, -- Zorn der Gerechtigkeit (Paladin)
-	71,    -- Verteidigungshaltung (Krieger)
-	5487,  -- Bärengestalt (Druide)
-	9634,  -- Terrorbärengestalt (Druide)
-	48263  -- Frostpräsenz (Todesritter)
+	25780, -- Righteous Fury (Paladin)
+	71,    -- Defensive Stance (Warrior)
+	5487,  -- Bear Form (Druid)
+	9634,  -- Dire Bear Form (Druid)
+	48263  -- Frost Presence (Death Knight)
 }
 local TankAuraNames
 local function HasTankAura(unitid)
@@ -149,8 +149,8 @@ local function HasTankAura(unitid)
 	return false
 end
 
--- Ergebnis der Aura-Prüfung pro Einheit merken; neu geprüft wird nur eine Einheit,
--- deren Auren sich geändert haben (vorher: alle 25 Mitglieder bei jeder Änderung)
+-- Cache the aura check result per unit; only units whose auras have changed
+-- are rechecked (previously: all 25 members on every change)
 local AuraTankCache, AuraDirtyUnits = {}, {}
 local function UnitHasTankAura(unitid)
 	local v = AuraTankCache[unitid]
@@ -178,7 +178,7 @@ local function TankWatcherEvents()
 			end
 		end
 	else
-		-- 5er-Gruppe: Rollen aus dem Dungeonfinder
+		-- 5-man group: roles from the Dungeon Finder
 		for index = 1, GetNumPartyMembers() do
 			local partyid = "party" .. index
 			local name = UnitName(partyid)
@@ -186,13 +186,13 @@ local function TankWatcherEvents()
 				TankNames[name] = true
 			end
 		end
-		-- Eigenes Pet gilt außerhalb von Raids als Tank (Jäger/Hexer)
+		-- Own pet counts as a tank outside of raids (Hunter/Warlock)
 		if HasPetUI("player") and UnitName("pet") then
 			TankNames[UnitName("pet")] = true
 		end
 	end
 
-	-- Plaketten nur aktualisieren, wenn sich die Tank-Liste tatsächlich geändert hat
+	-- Only update nameplates if the tank list has actually changed
 	local changed = false
 	for name in pairs(TankNames) do
 		if not OldTankNames[name] then
@@ -213,8 +213,8 @@ local function TankWatcherEvents()
 	end
 end
 
--- Auren ändern sich im Raid ständig: Tank-Liste höchstens 2x pro Sekunde neu aufbauen,
--- und nur, wenn sich bei einem Gruppenmitglied etwas geändert hat
+-- Auras change constantly in raids: rebuild the tank list at most 2x per second,
+-- and only if something has changed on a group member
 local TANK_AURA_INTERVAL = 0.5
 local auraDirty, nextAuraCheck = false, 0
 local function TankWatcherOnUpdate(self)
@@ -233,7 +233,7 @@ local function TankWatcherOnEvent(self, event, unitid)
 		end
 		return
 	end
-	-- Gruppe/Rollen geändert: Einheiten-IDs können jetzt andere Spieler sein
+	-- Group/roles changed: unit IDs may now refer to different players
 	wipe(AuraTankCache)
 	TankWatcherEvents()
 end

@@ -182,9 +182,9 @@ local MediaFetch = TidyPlatesUtility.MediaFetch
 local MediaList = TidyPlatesUtility.MediaList
 local MediaRegister = TidyPlatesUtility.MediaRegister
 MediaRegister("statusbar", "ThreatPlatesBar", [[Interface\Addons\TidyPlates_ThreatPlates\Media\Artwork\TP_BarTexture.tga]])
--- Flache Füllung der originalen Namensplaketten (ohne den Hell-Dunkel-Verlauf von "Blizzard")
+-- Flat fill of the original nameplates (without the light-dark gradient of "Blizzard")
 MediaRegister("statusbar", "Blizzard Nameplate", [[Interface\TargetingFrame\UI-TargetingFrame-BarFill]])
--- Komplett flache Füllung (einfarbig, keine dunklen Kanten oben/unten)
+-- Completely flat fill (solid color, no dark edges at top/bottom)
 MediaRegister("statusbar", "Flat", [[Interface\Buttons\WHITE8X8]])
 MediaRegister("font", "Accidental Presidency", [[Interface\Addons\TidyPlates_ThreatPlates\Media\Fonts\Accidental Presidency.ttf]])
 
@@ -194,7 +194,7 @@ local function GetSpellName(number)
 end
 
 local function Update()
-	-- Stile aus den geänderten Werten neu bauen, damit Größen/Positionen sofort wirken
+	-- Rebuild styles from the changed values so sizes/positions take effect immediately
 	TidyPlatesThreat:RebuildStyles()
 	TidyPlates:ReloadTheme()
 	TidyPlates:ForceUpdate()
@@ -633,7 +633,7 @@ local function GetOptions()
 												SetThemeValue({arg = {"settings", "castborder", "width"}}, (val * 2) + 20)
 												SetThemeValue({arg = {"settings", "castnostop", "width"}}, (val * 2) + 20)
 												SetThemeValue({arg = {"settings", "castbar", "width"}}, val)
-												-- Profile "Plater"/"Classic": abhängige Positionen nachziehen
+												-- profiles "Plater"/"Classic": update dependent positions
 												TidyPlatesThreat:RelayoutLook()
 												SetThemeValue(info, val)
 											end,
@@ -656,7 +656,7 @@ local function GetOptions()
 												SetThemeValue({arg = {"settings", "healthborder", "height"}}, val + 54)
 												SetThemeValue({arg = {"settings", "castborder", "height"}}, val + 54)
 												SetThemeValue({arg = {"settings", "castnostop", "height"}}, val + 54)
-												-- Profile "Plater"/"Classic": abhängige Positionen nachziehen
+												-- profiles "Plater"/"Classic": update dependent positions
 												TidyPlatesThreat:RelayoutLook()
 												SetThemeValue(info, val)
 											end,
@@ -1109,7 +1109,7 @@ local function GetOptions()
 												return (GetCVar("ShowVKeyCastbar") == "1")
 											end,
 											set = function(info, val)
-												-- Wunsch im Profil merken, damit er beim Login wiederhergestellt wird
+												-- store the choice in the profile so it is restored on login
 												TidyPlatesThreat.db.profile.settings.castbar.enabled = val and true or false
 												SetCVar("ShowVKeyCastbar", val and 1 or 0)
 												Update()
@@ -3723,7 +3723,7 @@ local function GetOptions()
 											end,
 											set = function(info, val)
 												db.debuffWidget.iconStyle = val
-												-- Symbole neu erzeugen: der Plater-Stil wird beim Erzeugen angewendet
+												-- recreate icons: the Plater style is applied on creation
 												TidyPlatesThreat:ApplyProfileLive()
 											end
 										}
@@ -4074,7 +4074,7 @@ local function GetOptions()
 					order = 60,
 					args = {}
 				},
-				-- Plater-Optik und Stapeln (eigene Erweiterungen, Texte bewusst ohne Übersetzungstabelle)
+				-- Plater look and stacking (custom extensions, texts deliberately without locale table)
 				Extensions = {
 					name = L["Extensions"],
 					type = "group",

@@ -671,5 +671,5 @@ local PetWatcherFrame = CreateFrame("Frame")
 PetWatcherFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 PetWatcherFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
 PetWatcherFrame:RegisterEvent("RAID_ROSTER_UPDATE")
-PetWatcherFrame:RegisterEvent("UNIT_PET") -- Behebt Verzögerung nach /reload, wird ausgelöst sobald das eigene Pet geladen ist
+PetWatcherFrame:RegisterEvent("UNIT_PET") -- Fixes delay after /reload, fires as soon as the own pet is loaded
 PetWatcherFrame:SetScript("OnEvent", TidyPlatesUtility.UpdatePetList)
