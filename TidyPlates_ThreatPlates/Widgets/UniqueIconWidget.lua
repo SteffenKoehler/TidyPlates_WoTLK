@@ -7,7 +7,7 @@ local function UpdateUniqueIconWidget(self, unit)
 	local T, custom = TidyPlatesThreat.UnitType(unit)
 
 	if db.uniqueWidget.ON then
-		-- Name-Index statt zweier linearer Suchen pro Update
+		-- name index instead of two linear searches per update
 		local k_c = TidyPlatesThreat.UniqueIndex(unit.name) or (custom and TidyPlatesThreat.UniqueIndex("GROUP"))
 		if k_c then
 			if db.uniqueSettings[k_c].icon and db.uniqueSettings[k_c].showIcon then

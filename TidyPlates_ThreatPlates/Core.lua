@@ -26,15 +26,15 @@ local dpsRole = L["|cffff0000dpsing / healing|r"]
 TidyPlatesThemeList = TidyPlatesThemeList or {}
 TidyPlatesThemeList["Threat Plates"] = {}
 
--- Tank-Ansicht aktiv? Entweder per Profil-Option "Immer Tank-Ansicht" oder über die Rolle
+-- Tank view active? Either via the profile option "always tank view" or via the role
 function TidyPlatesThreat.IsTanking()
 	local db = TidyPlatesThreat.db
 	return db.profile.threat.alwaysTank or db.char.threat.tanking
 end
 
 -- Callback Functions
--- Stile (Layout) werden nur beim Laden gebaut: nach einem Profilwechsel im Optionsmenü
--- anbieten, die Oberfläche neu zu laden. suppressReloadPrompt bei internen Wechseln.
+-- Styles (layout) are only built on load: after a profile switch in the options menu
+-- offer to reload the UI. suppressReloadPrompt for internal switches.
 StaticPopupDialogs["TPTP_PROFILE_RELOAD"] = {
 	text = L["Threat Plates: profile changed.\nReload the UI now for the complete layout?"],
 	button1 = L["Reload"],
@@ -46,8 +46,8 @@ StaticPopupDialogs["TPTP_PROFILE_RELOAD"] = {
 	whileDead = 1,
 	hideOnEscape = 1
 }
--- Stile neu aus dem aktuellen Profil bauen (die Style-Dateien registrieren sich in
--- StyleBuilders). Die Plaketten übernehmen sie beim nächsten ForceUpdate.
+-- Rebuild styles from the current profile (the style files register themselves in
+-- StyleBuilders). Nameplates pick them up on the next ForceUpdate.
 function TidyPlatesThreat:RebuildStyles()
 	if not (self.db and self.StyleBuilders) then
 		return
@@ -57,8 +57,8 @@ function TidyPlatesThreat:RebuildStyles()
 	end
 end
 
--- Profil ohne /reload übernehmen: Stile neu bauen, Widgets aller Plaketten verwerfen
--- (werden beim nächsten Update mit den neuen Einstellungen neu erzeugt), alles neu zeichnen
+-- Apply profile without /reload: rebuild styles, discard widgets of all nameplates
+-- (recreated with the new settings on the next update), redraw everything
 function TidyPlatesThreat:ApplyProfileLive()
 	self:RebuildStyles()
 	if ThreatPlatesWidgets and ThreatPlatesWidgets.ResetAll then
@@ -711,7 +711,7 @@ function TidyPlatesThreat:OnInitialize()
 				max = false,
 				deficit = false,
 				truncate = true,
-				parens = false -- Plater-Format "4.3k (100%)" statt "4300 - 100%"
+				parens = false -- Plater format "4.3k (100%)" instead of "4300 - 100%"
 			},
 			totemWidget = {
 				ON = true,
@@ -729,8 +729,8 @@ function TidyPlatesThreat:OnInitialize()
 				scale = 1,
 				anchor = "CENTER",
 				filter = {},
-				spiral = true, -- Ablauf auf den Symbolen anzeigen
-				timerStyle = "CLOCK" -- "CLOCK" (Uhr) oder "BAR" (grauer Balken)
+				spiral = true, -- show cooldown sweep on the icons
+				timerStyle = "CLOCK" -- "CLOCK" (clock) or "BAR" (gray bar)
 			},
 			uniqueWidget = {
 				ON = true,
@@ -764,13 +764,13 @@ function TidyPlatesThreat:OnInitialize()
 				y = 26,
 				anchor = "CENTER"
 			},
-			-- Scharfer Rahmen um Lebens-/Zauberleiste (Plater-Optik), Größe in Bildschirmpixeln
+			-- Crisp border around health bar/castbar (Plater look), size in screen pixels
 			platerBorder = {
 				ON = false,
 				size = 1
 			},
-			-- Zauberleiste nach Unterbrechbarkeit färben (zum Plater-Rahmen): unterbrechbar und
-			-- eigene Unterbrechung bereit / auf Abklingzeit / nicht unterbrechbar (+ Schloss)
+			-- Color castbar by interruptibility (for the Plater border): interruptible and
+			-- own interrupt ready / on cooldown / not interruptible (+ lock)
 			platerCast = {
 				ON = false,
 				kickCooldown = true,
@@ -779,44 +779,46 @@ function TidyPlatesThreat:OnInitialize()
 				colorCooldown = {r = 0.55, g = 0.42, b = 0.3},
 				colorShield = {r = 0.55, g = 0.55, b = 0.6}
 			},
-			-- Ziel-Markierung zum Plater-Rahmen: Grafik aus NotPlater ("NONE" = keine) und Leuchten
+			-- Target highlight for the Plater border: texture from NotPlater ("NONE" = none) and glow
 			platerTarget = {
 				indicator = "Silver",
 				glow = true
 			},
-			-- Classic-Optik: originale Blizzard-Grafiken (Goldrahmen mit Stufen-Feld, Zauberleisten-
-			-- Rahmen, Elite-Drache), Lage an der Original-Plakette vermessen. Ziel = Leuchten,
-			-- Mouseover = Blizzard-Aufhellung
+			-- Classic look: original Blizzard textures (gold border with level box, castbar
+			-- border, elite dragon), positions measured on the original nameplate. Target = glow,
+			-- mouseover = Blizzard highlight
 			classicLook = {
 				ON = false,
-				frameStyle = "SIMPLE", -- "SIMPLE" = dünne Linie + Stufen-Kästchen (Classic Era), "GOLD" = Blizzard-Goldrahmen
-				lineSize = 2, -- Linienstärke beim schlichten Rahmen (Bildschirmpixel)
-				lineTargetColor = {r = 0.8, g = 0.9, b = 0.25}, -- Linie beim Ziel (schlichter Rahmen)
-				targetBorder = true, -- Rahmen (mit Stufen-Feld) beim Ziel einfärben
+				frameStyle = "SIMPLE", -- "SIMPLE" = thin line + level box (Classic Era), "GOLD" = Blizzard gold border
+				lineSize = 2, -- line thickness of the plain border (screen pixels)
+				lineTargetColor = {r = 0.8, g = 0.9, b = 0.25}, -- line on the target (plain border)
+				targetBorder = true, -- color the border (with level box) on the target
 				targetColor = {r = 0.45, g = 1, b = 0.15},
 				targetGlow = false,
 				glowColor = {r = 1, g = 0.9, b = 0.55, a = 0.9},
-				levelSize = 0.85, -- Stufe relativ zur Blizzard-Schriftgröße
-				castBorder = false, -- Blizzard-Zauberleistenrahmen (sonst dünne Leiste mit 1-px-Rahmen)
-				kickHighlight = true, -- Rahmen der Zauberleiste hell, wenn du jetzt unterbrechen kannst
+				levelSize = 0.85, -- level relative to the Blizzard font size
+				castBorder = false, -- Blizzard castbar border (otherwise thin bar with 1 px border)
+				kickHighlight = true, -- castbar border bright when you can interrupt right now
 				kickReadyColor = {r = 1, g = 1, b = 1},
-				nonTargetScale = 0.75 -- Größe der Plaketten, die nicht das Ziel sind (1 = aus)
+				nonTargetScale = 0.75, -- scale of nameplates that are not the target (1 = off)
+				scaleSmooth = true, -- smooth instead of abrupt scale change on target/untarget
+				scaleSmoothTime = 0.2 -- transition duration in seconds
 			},
-			-- Quest-Symbol bei Mobs, die ein offenes Tötungs-Questziel sind (Abgleich mit dem Questlog)
+			-- Quest icon on mobs that are an open kill quest objective (matched against the quest log)
 			questIcon = {
 				ON = false,
 				size = 14
 			},
-			-- Stapeln gegnerischer Plaketten (ersetzt die WeakAura "Enhanced Stacking Nameplate");
-			-- Abstände werden aus Balkengröße und Name berechnet
+			-- Stacking of enemy nameplates (replaces the WeakAura "Enhanced Stacking Nameplate");
+			-- spacing is calculated from bar size and name
 			stacking = {
 				ON = false,
 				speed = 0.7,
 				tallBossFix = true,
-				pinTarget = true, -- Ziel bleibt über dem Modell, andere weichen aus
-				columns = true, -- große Türme in zwei Spalten nebeneinander
-				columnsAt = 6, -- ab so vielen Plaketten in einem Turm
-				onlyEngaged = true -- im Kampf nur Gegner stapeln, die mit mir/der Gruppe kämpfen
+				pinTarget = true, -- target stays above the model, others move aside
+				columns = true, -- large stacks in two side-by-side columns
+				columnsAt = 6, -- from this many nameplates in one stack
+				onlyEngaged = true -- in combat only stack enemies fighting me/my group
 			},
 			tankedWidget = {
 				ON = false,
@@ -894,7 +896,7 @@ function TidyPlatesThreat:OnInitialize()
 					x = 0,
 					y = -15,
 					show = true,
-					enabled = true -- Zauberleiste (CVar showVKeyCastbar) bei jedem Login erzwingen
+					enabled = true -- force castbar (CVar showVKeyCastbar) on every login
 				},
 				name = {
 					typeface = "Accidental Presidency",
@@ -1026,22 +1028,22 @@ function TidyPlatesThreat:OnInitialize()
 					threatcolor = {
 						LOW = {r = 0, g = 1, b = 0, a = 1},
 						MEDIUM = {r = 1, g = 1, b = 0, a = 1},
-						LOSING = {r = 1, g = 0.5, b = 0, a = 1}, -- habe Aggro, verliere sie gleich
+						LOSING = {r = 1, g = 0.5, b = 0, a = 1}, -- have aggro, about to lose it
 						HIGH = {r = 1, g = 0, b = 0, a = 1}
 					}
 				},
 				tank = {
 					threatcolor = {
 						LOW = {r = 1, g = 0, b = 0, a = 1},
-						MEDIUM = {r = 1, g = 1, b = 0, a = 1}, -- ziehe gleich Aggro
-						LOSING = {r = 1, g = 0.5, b = 0, a = 1}, -- habe Aggro, verliere sie gleich
+						MEDIUM = {r = 1, g = 1, b = 0, a = 1}, -- about to pull aggro
+						LOSING = {r = 1, g = 0.5, b = 0, a = 1}, -- have aggro, about to lose it
 						HIGH = {r = 0, g = 1, b = 0, a = 1}
 					}
 				}
 			},
 			threat = {
 				ON = true,
-				alwaysTank = true, -- Tank-Ansicht auf allen Charakteren, unabhängig von der Rolle
+				alwaysTank = true, -- tank view on all characters, regardless of role
 				nonCombat = true,
 				hideNonCombat = false,
 				useType = true,
@@ -1137,12 +1139,12 @@ end
 
 local UnitInGroup = TidyPlatesUtility.UnitInGroup
 local TotemNameFallback = TidyPlatesUtility.TotemNameFallback
--- Style-Cache: UnitType/SetStyle werden pro Plakette und Update bis zu ~10x
--- aufgerufen (Alpha, Scale, Farbe, Widgets ...). Das Ergebnis wird pro Unit
--- gemerkt, solange sich weder die relevanten Unit-Daten noch Kampfstatus, Rolle
--- oder die Generation (Optionen/Profil/Gruppe geändert) ändern. Vom Leben zählt nur
--- "verletzt ja/nein"; vorher machten aktuelle Zeit und Lebenspunkte im Schlüssel
--- den Cache bei jedem Aufruf ungültig.
+-- Style cache: UnitType/SetStyle are called up to ~10x per nameplate and update
+-- (alpha, scale, color, widgets ...). The result is cached per unit
+-- as long as neither the relevant unit data nor combat state, role
+-- or the generation (options/profile/group changed) change. Of health only
+-- "damaged yes/no" counts; previously current time and health in the key
+-- invalidated the cache on every call.
 local GetTime, InCombatLockdown = GetTime, InCombatLockdown
 local StyleMemo = setmetatable({}, {__mode = "k"})
 local StyleGeneration = 0
@@ -1151,7 +1153,7 @@ function TidyPlatesThreat.InvalidateStyleCache()
 	StyleGeneration = StyleGeneration + 1
 end
 
--- Gruppenzugehörigkeit (UnitInGroup) fließt in den Stil ein
+-- Group membership (UnitInGroup) affects the style
 do
 	local RosterWatcher = CreateFrame("Frame")
 	RosterWatcher:RegisterEvent("RAID_ROSTER_UPDATE")
@@ -1179,8 +1181,8 @@ local function GetStyleMemo(unit)
 	return m
 end
 
--- Name -> Index in uniqueSettings.list (statt mehrfacher linearer Suche pro Update).
--- Neu aufgebaut, wenn die Liste ersetzt wurde oder die Generation sich ändert.
+-- Name -> index in uniqueSettings.list (instead of repeated linear searches per update).
+-- Rebuilt when the list was replaced or the generation changes.
 local UniqueMap, UniqueMapList, UniqueMapGen = {}, nil, -1
 function TidyPlatesThreat.UniqueIndex(name)
 	local list = TidyPlatesThreat.db.profile.uniqueSettings.list
@@ -1359,16 +1361,16 @@ function TidyPlatesThreat.SetStyle(unit)
 	return m.style, m.styleCustom
 end
 
--- Jede Änderung, die einen ForceUpdate auslöst (Optionen, Rolle, Haltung,
--- Talente), macht den Style-Cache ungültig.
+-- Every change that triggers a ForceUpdate (options, role, stance,
+-- talents) invalidates the style cache.
 hooksecurefunc(TidyPlates, "ForceUpdate", TidyPlatesThreat.InvalidateStyleCache)
 
 local function ShowConfigPanel()
 	TidyPlatesThreat:OpenOptions()
 end
 
--- Zauberleiste: Die CVar showVKeyCastbar wird von anderen Addons (z.B. ElvUI-
--- Namensplaketten) auf 0 gesetzt. Threat Plates stellt den eigenen Wunschwert her.
+-- Castbar: the CVar showVKeyCastbar is set to 0 by other addons (e.g. ElvUI
+-- nameplates). Threat Plates restores its own desired value.
 function TidyPlatesThreat:ApplyCastbarCVar()
 	local wanted = self.db.profile.settings.castbar.enabled and "1" or "0"
 	if GetCVar("showVKeyCastbar") ~= wanted then
@@ -1376,8 +1378,8 @@ function TidyPlatesThreat:ApplyCastbarCVar()
 	end
 end
 
--- Zusätzlicher Platz über einer Plakette, solange sie Debuffs zeigt (nur Plater-Auren,
--- die direkt über dem Balken sitzen): Symbolreihen plus kleiner Rand für Stapelzahlen.
+-- Extra space above a nameplate while it shows debuffs (only Plater auras,
+-- which sit directly above the bar): icon rows plus a small margin for stack counts.
 local ceil = math.ceil
 local function DebuffExtraTop(extended)
 	local w = extended.widgets and extended.widgets.WidgetDebuff
@@ -1390,12 +1392,12 @@ local function DebuffExtraTop(extended)
 	end
 	local second = icons[ceil(#icons / 2) + 1]
 	local rows = (second and second:IsShown()) and 2 or 1
-	-- Symbole 18 hoch, zweite Reihe 12 darüber, Reihe beginnt 3 über dem Balken
+	-- icons 18 tall, second row 12 above, row starts 3 above the bar
 	return 3 + (rows * 18 + (rows - 1) * 12) * w:GetScale() + 4
 end
 
--- Stapeln an TidyPlates übergeben. Mindestabstand = Balkenbreite + 10 bzw. Höhe von
--- Balken und Name (über oder unter dem Balken) + 5, damit sich Namen nicht überdecken.
+-- Pass stacking to TidyPlates. Minimum spacing = bar width + 10 or height of
+-- bar and name (above or below the bar) + 5, so names do not overlap.
 function TidyPlatesThreat:ApplyStacking()
 	if not (TidyPlates.SetStacking and self.db) then
 		return
@@ -1409,7 +1411,7 @@ function TidyPlatesThreat:ApplyStacking()
 	local width, height = s.healthbar.width or 120, s.healthbar.height or 10
 	local top, bottom = height / 2, -height / 2
 	local xspace = width + 10
-	-- Classic: der Blizzard-Rahmen (mit Stufen-Feld) bzw. Linie + Stufen-Kästchen sind größer als der Balken
+	-- Classic: the Blizzard border (with level box) or line + level box is larger than the bar
 	local art = p.classicLook.ON and p.classicLook.frameStyle == "GOLD" and TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
 	if p.classicLook.ON and p.classicLook.frameStyle ~= "GOLD" and ThreatPlatesWidgets and ThreatPlatesWidgets.ClassicSimpleExtent then
 		xspace = width + ThreatPlatesWidgets.ClassicSimpleExtent(height, p.classicLook.lineSize) + 8
@@ -1437,9 +1439,18 @@ function TidyPlatesThreat:ApplyStacking()
 		extraTop = DebuffExtraTop
 	})
 end
--- Optionen/Profilwechsel lösen ForceUpdate aus
+-- Smooth scale change target <-> non-target (Classic look only)
+function TidyPlatesThreat:ApplyScaleAnimation()
+	if not (TidyPlates.SetScaleAnimation and self.db) then
+		return
+	end
+	local cl = self.db.profile.classicLook
+	TidyPlates:SetScaleAnimation(cl.ON and cl.scaleSmooth and cl.scaleSmoothTime or 0)
+end
+-- Options/profile switch trigger ForceUpdate
 hooksecurefunc(TidyPlates, "ForceUpdate", function()
 	TidyPlatesThreat:ApplyStacking()
+	TidyPlatesThreat:ApplyScaleAnimation()
 end)
 ------------
 -- EVENTS --
@@ -1611,7 +1622,7 @@ local function EventHandler(self, event, ...)
 		if TidyPlatesThreat.EnsurePlaterProfile then
 			TidyPlatesThreat:EnsurePlaterProfile()
 			if TidyPlatesThreat:UpgradePlaterProfile() then
-				-- Stile sind beim Login schon gebaut: mit den neuen Werten neu bauen
+				-- styles are already built at login: rebuild with the new values
 				TidyPlatesThreat:ApplyProfileLive()
 			end
 		end
@@ -1632,7 +1643,7 @@ local function EventHandler(self, event, ...)
 			f:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 		end
 
-		-- ElvUI-Namensplaketten setzen die Zauberleisten-CVar bei Profilwechseln zurück
+		-- ElvUI nameplates reset the castbar CVar on profile switches
 		local ElvNP = ElvUI and ElvUI[1] and ElvUI[1].GetModule and ElvUI[1]:GetModule("NamePlates", true)
 		if ElvNP and ElvNP.UpdateCVars then
 			hooksecurefunc(ElvNP, "UpdateCVars", function()
@@ -1647,9 +1658,10 @@ local function EventHandler(self, event, ...)
 			DB.threat.ON = DB.OldSetting
 		end
 		DB.cache = {}
-		-- Läuft nach PLAYER_LOGIN, also nach ElvUI, und stellt die Zauberleiste wieder her
+		-- Runs after PLAYER_LOGIN, i.e. after ElvUI, and restores the castbar
 		TidyPlatesThreat:ApplyCastbarCVar()
 		TidyPlatesThreat:ApplyStacking()
+		TidyPlatesThreat:ApplyScaleAnimation()
 		self:RegisterEvent("ACTIVE_TALENT_GROUP_CHANGED")
 	elseif event == "PLAYER_LEAVING_WORLD" then
 		self:UnregisterEvent("ACTIVE_TALENT_GROUP_CHANGED")

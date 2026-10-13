@@ -147,7 +147,7 @@ end
 -----------------------------------------------------
 -- Aura Durations
 -----------------------------------------------------
--- Sicherstellen dass TidyPlatesData existiert bevor zugegriffen wird
+-- Make sure TidyPlatesData exists before it is accessed
 if not TidyPlatesData then
 	TidyPlatesData = {}
 end
@@ -173,9 +173,9 @@ end
 local newTable = TidyPlatesUtility.NewTable
 local delTable = TidyPlatesUtility.DelTable
 
--- Kein schwacher Table: Die Unterlisten hängen nur hier und würden sonst vom
--- Garbage Collector weggeräumt (Debuffs auf Nicht-Zielen verschwanden).
--- Aufgeräumt wird über CleanAuraLists und UNIT_DIED.
+-- Not a weak table: the sublists are only referenced here and would otherwise be
+-- collected by the garbage collector (debuffs on non-targets disappeared).
+-- Cleanup happens via CleanAuraLists and UNIT_DIED.
 local Aura_List = {} -- Two Dimensional
 local Aura_Spellid = {}
 local Aura_Expiration = {}
@@ -263,7 +263,7 @@ end
 local function CleanAuraLists()
 	local currentTime = GetTime()
 	for guid, instance_list in pairs(Aura_List) do
-		local auracount = 0 -- verbleibende (nicht abgelaufene) Auren
+		local auracount = 0 -- remaining (unexpired) auras
 		for aura_id, aura_instance_id in pairs(instance_list) do
 			local expiration = Aura_Expiration[aura_instance_id]
 			if not expiration or expiration < currentTime then
@@ -280,8 +280,8 @@ local function CleanAuraLists()
 				auracount = auracount + 1
 			end
 		end
-		-- Vorher genau verkehrt herum: Listen mit laufenden Auren wurden gelöscht,
-		-- Listen mit nur abgelaufenen blieben ewig liegen
+		-- Previously exactly backwards: lists with active auras were deleted,
+		-- lists with only expired ones stayed around forever
 		if auracount == 0 then
 			Aura_List[guid] = nil
 			delTable(instance_list)
@@ -365,7 +365,7 @@ local function RebuildTargetOfGroupMembers()
 	TargetOfGroupMembersDirty = false
 end
 
--- Liefert true, wenn die Auren direkt über die API (UnitDebuff) aktualisiert wurden
+-- Returns true if the auras were updated directly via the API (UnitDebuff)
 local function UpdateAuraByLookup(guid)
 	if guid == UnitGUID("target") then
 		UpdateAurasByUnitID("target")
@@ -378,7 +378,7 @@ local function UpdateAuraByLookup(guid)
 		RebuildTargetOfGroupMembers()
 	end
 	local unit = TargetOfGroupMembers[guid]
-	-- unit ist bereits die Unit-ID des Ziels (z.B. "raid5target")
+	-- unit is already the unit ID of the target (e.g. "raid5target")
 	if unit and UnitGUID(unit) == guid then
 		UpdateAurasByUnitID(unit)
 		return true
@@ -413,7 +413,7 @@ end
 -- General Events
 -----------------------------------------------------
 
--- UNIT_TARGET feuert im Raid sehr oft; die Zuordnung wird erst bei Bedarf neu aufgebaut
+-- UNIT_TARGET fires very often in raids; the mapping is only rebuilt when needed
 local function EventUnitTarget()
 	TargetOfGroupMembersDirty = true
 end
@@ -430,7 +430,7 @@ local function EventUnitAura(unitid)
 	elseif unitid == "focus" then
 		UpdateAurasByUnitID("focus")
 	elseif unitid == "mouseover" then
-		-- Live-Aktualisierung, solange man über einer Plakette schwebt
+		-- Live update while hovering over a nameplate
 		UpdateAurasByUnitID("mouseover")
 	end
 end
@@ -461,8 +461,8 @@ local GeneralEvents = {
 	["ACTIVE_TALENT_GROUP_CHANGED"] = UpdatePlayerDispelTypes
 }
 
--- Gebündelte Verarbeitung: Mehrere Debuff-Ereignisse auf denselben Gegner im selben
--- Frame (Raid: 10-30 pro Sekunde) führen nur zu einem Neu-Scan und einem Neuzeichnen.
+-- Batched processing: multiple debuff events on the same enemy in the same
+-- frame (raid: 10-30 per second) cause only one rescan and one redraw.
 local RAIDTARGET_MASK = 0x0FF00000
 local PendingGUID, PendingIcon, PendingName = {}, {}, {}
 local CLEAN_INTERVAL = 30
@@ -478,15 +478,15 @@ local function ProcessPending(self)
 			or (name and FindWidgetByName(name))
 			or (raidicon and FindWidgetByIcon(raidicon))
 		if widget then
-			-- Genauere Daten über die API, falls jemand den Gegner im Ziel hat
-			-- (aktualisiert das Widget dabei selbst)
+			-- More accurate data via the API if someone has the enemy targeted
+			-- (updates the widget itself in the process)
 			local updatedViaAPI = UpdateAuraByLookup(guid)
 			if not (updatedViaAPI and WidgetGUID[guid]) then
 				UpdateWidget(widget)
 			end
 		end
 	end
-	-- Lange Kämpfe ohne PLAYER_REGEN_ENABLED: abgelaufene Einträge zwischendurch freigeben
+	-- Long fights without PLAYER_REGEN_ENABLED: free expired entries periodically
 	local now = GetTime()
 	if now >= nextClean then
 		nextClean = now + CLEAN_INTERVAL
@@ -520,14 +520,14 @@ local function CombatEventHandler(frame, event, ...)
 		return
 	end
 
-	-- Früher Filter statt Drossel: Die allermeisten Kampflog-Einträge (Schaden,
-	-- Heilung, ...) sind keine Aura-Ereignisse und werden hier sofort verworfen.
-	-- Aura-Ereignisse gehen dadurch nie verloren.
+	-- Early filter instead of throttle: the vast majority of combat log entries (damage,
+	-- healing, ...) are not aura events and are discarded here right away.
+	-- This way aura events are never lost.
 	local _, subevent = ...
 	local CombatLogUpdateFunction = CombatLogEvents[subevent]
 	if not CombatLogUpdateFunction then
 		if subevent == "UNIT_DIED" then
-			-- Auren toter Gegner sofort freigeben statt bis Kampfende zu horten
+			-- Free auras of dead enemies right away instead of hoarding them until combat ends
 			local destGUID = select(6, ...)
 			RemoveAuraList(destGUID)
 		end
@@ -541,9 +541,9 @@ local function CombatEventHandler(frame, event, ...)
 	if (bit.band(destFlags, COMBATLOG_OBJECT_REACTION_FRIENDLY) == 0) then -- FILTER: ENEMY UNIT
 		-- Evaluate only for debuffs
 		if auraType == "DEBUFF" then -- FILTER: DEBUFF
-			-- Daten aus dem Kampflog sofort merken (billig). Ein Neu-Scan über die API
-			-- und das Neuzeichnen passieren gebündelt einmal pro Gegner und Frame, und
-			-- nur, wenn es für den Gegner überhaupt eine Plakette gibt.
+			-- Store combat log data right away (cheap). A rescan via the API
+			-- and the redraw happen batched once per enemy and frame, and
+			-- only if the enemy has a nameplate at all.
 			CombatLogUpdateFunction(timestamp, sourceGUID, destGUID, destName, spellid, stackCount)
 
 			local name, raidicon
@@ -581,27 +581,27 @@ local function UpdateWidgetTime(frame, expiration)
 	end
 end
 
--- Ablauf-Schleier (Spiralen/Cooldown-Modelle werden an Plaketten in 3.3.5a nicht gezeichnet)
+-- Expiration shade (spirals/cooldown models are not drawn on nameplates in 3.3.5a)
 local SHADE_INTERVAL = 0.033
--- Uhr: Die abgelaufene Zeit wird als dunkler Kreisausschnitt ab 12 Uhr im Uhrzeigersinn
--- gezeichnet. Cooldown-Modelle gehen an Plaketten nicht, deshalb aus Teilen: volle Viertel
--- als Rechtecke, das angeschnittene Viertel aus einem Dreieck (Grafik ClockTriangle =
--- obere linke Hälfte deckend, je Viertel gespiegelt) plus ggf. einem Rechteck. Dazu ein
--- goldener Zeiger (ClockHand, über Texturkoordinaten gedreht).
--- Jedes Viertel wird lokal betrachtet: v zeigt in Startrichtung des Viertels (Q1 oben,
--- Q2 rechts, Q3 unten, Q4 links), u in Drehrichtung; a/b = Ausdehnung entlang u/v.
+-- Clock: the elapsed time is drawn as a dark circular sector clockwise from 12 o'clock.
+-- Cooldown models don't work on nameplates, so it is built from parts: full quarters
+-- as rectangles, the partial quarter from a triangle (texture ClockTriangle =
+-- upper left half opaque, mirrored per quarter) plus a rectangle if needed. Plus a
+-- golden hand (ClockHand, rotated via texture coordinates).
+-- Each quarter is handled locally: v points in the quarter's start direction (Q1 up,
+-- Q2 right, Q3 down, Q4 left), u in the rotation direction; a/b = extent along u/v.
 local CLOCK_TRIANGLE = "Interface\\AddOns\\TidyPlates\\media\\ClockTriangle"
 local CLOCK_HAND = "Interface\\AddOns\\TidyPlates\\media\\ClockHand"
 local CLOCK_ALPHA = 0.6
--- Anteil der Zeigerlinie an der halben Zeiger-Grafik (Linie von der Mitte bis 3 px vor
--- den oberen Rand einer 64er-Grafik)
+-- Share of the hand line in half of the hand texture (line from the center to 3 px before
+-- the top edge of a 64 px texture)
 local HAND_LENGTH = (32 - 3) / 32
 local HALF_PI, TWO_PI = math.pi / 2, math.pi * 2
 local msin, mcos, mtan, matan2, mfloor, mabs = math.sin, math.cos, math.tan, math.atan2, math.floor, math.abs
--- Dreieck je Viertel spiegeln (links, rechts, oben, unten)
+-- Mirror the triangle per quarter (left, right, top, bottom)
 local TRI_COORDS = {{0, 1, 0, 1}, {1, 0, 0, 1}, {1, 0, 1, 0}, {0, 1, 1, 0}}
 
--- Lokales Rechteck [u0,u1] x [v0,v1] des Viertels q auf das Symbol legen
+-- Place local rectangle [u0,u1] x [v0,v1] of quarter q onto the icon
 local function PlaceClockRect(tex, frame, q, cx, cy, u0, u1, v0, v1)
 	local xa, ya, xb, yb
 	if q == 1 then
@@ -689,11 +689,11 @@ local function UpdateClock(frame, frac)
 		local c = TRI_COORDS[q]
 		tri:SetTexCoord(c[1], c[2], c[3], c[4])
 		if phi <= matan2(a, b) then
-			-- Strahl trifft die äußere Kante in Startrichtung
+			-- Ray hits the outer edge in the start direction
 			PlaceClockRect(tri, frame, q, cx, cy, 0, b * mtan(phi), 0, b)
 			clock.extra:Hide()
 		else
-			-- Strahl trifft die Seitenkante: Rechteck oberhalb + Dreieck darunter
+			-- Ray hits the side edge: rectangle above + triangle below
 			local v1 = a / mtan(phi)
 			PlaceClockRect(clock.extra, frame, q, cx, cy, 0, a, v1, b)
 			PlaceClockRect(tri, frame, q, cx, cy, 0, a, 0, v1)
@@ -702,10 +702,10 @@ local function UpdateClock(frame, frac)
 		clock.triangle:Hide()
 		clock.extra:Hide()
 	end
-	-- Zeiger: quadratische Textur um die Mitte, Bild per Texturkoordinaten im
-	-- Uhrzeigersinn gedreht. Die Größe wird je Winkel so gewählt, dass die Linie genau am
-	-- Rand des (nicht quadratischen) Symbols endet: Abstand Mitte -> Rand in Zeigerrichtung,
-	-- geteilt durch den Anteil der Linie an der halben Grafik.
+	-- Hand: square texture around the center, image rotated clockwise via texture
+	-- coordinates. The size is chosen per angle so that the line ends exactly at the
+	-- edge of the (non-square) icon: distance center -> edge in the hand's direction,
+	-- divided by the line's share of half the texture.
 	local hand = clock.hand
 	local co, si = mcos(angle), msin(angle)
 	local reach = min(si ~= 0 and cx / mabs(si) or cx * 100, co ~= 0 and cy / mabs(co) or cy * 100)
@@ -714,12 +714,12 @@ local function UpdateClock(frame, frac)
 	hand:SetPoint("CENTER", frame, "BOTTOMLEFT", cx, cy)
 	hand:SetWidth(size)
 	hand:SetHeight(size)
-	-- Texturpunkt = Mitte + inverse Drehung des Bildschirmpunkts (y nach unten)
+	-- Texture point = center + inverse rotation of the screen point (y pointing down)
 	hand:SetTexCoord(
-		0.5 - 0.5 * co - 0.5 * si, 0.5 + 0.5 * si - 0.5 * co, -- oben links
-		0.5 - 0.5 * co + 0.5 * si, 0.5 + 0.5 * si + 0.5 * co, -- unten links
-		0.5 + 0.5 * co - 0.5 * si, 0.5 - 0.5 * si - 0.5 * co, -- oben rechts
-		0.5 + 0.5 * co + 0.5 * si, 0.5 - 0.5 * si + 0.5 * co) -- unten rechts
+		0.5 - 0.5 * co - 0.5 * si, 0.5 + 0.5 * si - 0.5 * co, -- top left
+		0.5 - 0.5 * co + 0.5 * si, 0.5 + 0.5 * si + 0.5 * co, -- bottom left
+		0.5 + 0.5 * co - 0.5 * si, 0.5 - 0.5 * si - 0.5 * co, -- top right
+		0.5 + 0.5 * co + 0.5 * si, 0.5 - 0.5 * si + 0.5 * co) -- bottom right
 	hand:Show()
 end
 
@@ -746,8 +746,8 @@ local function ShadeOnUpdate(frame, elapsed)
 	else
 		local height = frame:GetHeight() * frac
 		frame.Shade:SetHeight(height)
-		-- Graue Kopie des Symbols auf den abgelaufenen (oberen) Teil zuschneiden; die
-		-- Ausschnitt-Koordinaten des Symbols (Themes schneiden Ränder ab) übernehmen
+		-- Crop the grey copy of the icon to the elapsed (upper) part; reuse the icon's
+		-- crop coordinates (themes trim the edges)
 		local grey = frame.Grey
 		local left, top, _, bottom, right = frame.Icon:GetTexCoord()
 		grey:SetTexCoord(left, right, top, top + (bottom - top) * frac)
@@ -763,14 +763,14 @@ local function UpdateIcon(frame, texture, expiration, stacks, duration)
 		-- Icon
 		frame.Icon:SetTexture(texture)
 
-		-- Ablauf-Anzeige, wenn das Theme sie wünscht (widget.showSpiral) und die Dauer
-		-- bekannt ist: der abgelaufene Teil wächst von oben nach unten (ausgegraut, leicht
-		-- abgedunkelt), goldene Kante an seiner Unterseite
+		-- Expiration display if the theme wants it (widget.showSpiral) and the duration
+		-- is known: the elapsed part grows from top to bottom (greyed out, slightly
+		-- darkened), golden edge at its bottom
 		local widget = frame:GetParent()
 		if widget.showSpiral and duration and duration > 0 then
 			frame.shadeStart, frame.shadeDuration = expiration - duration, duration
 			frame.shadeTick = SHADE_INTERVAL
-			-- Darstellung: "BAR" (grauer Balken, Standard) oder "CLOCK" (Uhr)
+			-- Style: "BAR" (grey bar, default) or "CLOCK" (clock)
 			local style = widget.timerStyle == "CLOCK" and "CLOCK" or "BAR"
 			if frame.timerStyle ~= style then
 				frame.timerStyle = style
@@ -814,7 +814,7 @@ local function debuffSort(a, b)
 end
 
 local DebuffCache = {}
--- Wiederverwendete Aura-Tabellen (vorher bei jedem Neuzeichnen neu angelegt)
+-- Reused aura tables (previously created anew on every redraw)
 local AuraPool = {}
 
 local function UpdateIconGrid(frame, guid)
@@ -901,8 +901,8 @@ function UpdateWidget(frame)
 	end
 
 	UpdateIconGrid(frame, guid)
-	-- Delegate Update (für debuff-abhängige Skalierung/Transparenz) nur für die
-	-- betroffene Plakette statt für alle
+	-- Delegate update (for debuff-dependent scale/alpha) only for the
+	-- affected nameplate instead of all of them
 	local extended = frame:GetParent()
 	if extended and extended.parentPlate and TidyPlates.RequestDelegateUpdateForPlate then
 		TidyPlates:RequestDelegateUpdateForPlate(extended.parentPlate)
@@ -1004,8 +1004,8 @@ local function CreateAuraIconFrame(parent)
 	frame.Glow = frame:CreateTexture(nil, "ARTWORK")
 	frame.Glow:SetAllPoints(frame.Border)
 	frame.Glow:SetTexture(AuraGlowArt)
-	-- Ablauf-Anzeige (nur aktiv, wenn das Theme sie einschaltet): abgelaufener Teil
-	-- ausgegraut (entsättigte Kopie des Symbols) und abgedunkelt, goldene Kante
+	-- Expiration display (only active if the theme enables it): elapsed part
+	-- greyed out (desaturated copy of the icon) and darkened, golden edge
 	local grey = frame:CreateTexture(nil, "BORDER")
 	grey:SetDesaturated(true)
 	grey:SetPoint("TOPLEFT", frame, "TOPLEFT")
@@ -1025,7 +1025,7 @@ local function CreateAuraIconFrame(parent)
 	edge:SetPoint("TOPRIGHT", shade, "BOTTOMRIGHT")
 	edge:Hide()
 	frame.ShadeEdge = edge
-	-- Texte auf eigener Ebene über dem Schleier
+	-- Texts on their own layer above the shade
 	local textFrame = CreateFrame("Frame", nil, frame)
 	textFrame:SetAllPoints(frame)
 	textFrame:SetFrameLevel(frame:GetFrameLevel() + 2)

@@ -22,15 +22,15 @@ local StartCastAnimationOnNameplate = TidyPlates.StartCastAnimationOnNameplate
 local StopCastAnimationOnNameplate = TidyPlates.StopCastAnimationOnNameplate
 
 -------------------------------------------------------------------------
--- Laufende Zauber auf Nicht-Ziel-Plaketten. Für Nicht-Ziele gibt es in 3.3.5a
--- keine Blizzard-Zauberleiste, daher wird der Fortschritt hier selbst berechnet.
+-- Active casts on non-target nameplates. In 3.3.5a there is no Blizzard castbar
+-- for non-targets, so the progress is calculated here.
 -------------------------------------------------------------------------
 local ActiveCasts = {} -- [plate] = {guid, name, startTime, endTime}
 local CastTicker = CreateFrame("Frame")
 CastTicker:Hide()
 
--- Laufende Zauber pro Gegner-GUID, unabhängig von der Plakette. So kann ein Zauber
--- fortgesetzt werden, wenn die Plakette erst später erkannt wird oder wieder auftaucht.
+-- Active casts per enemy GUID, independent of the nameplate. This lets a cast be
+-- resumed if the nameplate is only identified later or reappears.
 local CastsByGUID = {}
 
 local function RememberCast(guid, spell, spellid, icon, notInterruptible, startTime, endTime, channel)
@@ -52,7 +52,7 @@ end
 local function EndCast(plate)
 	ActiveCasts[plate] = nil
 	local unit = plate.extended.unit
-	-- Ist die Plakette inzwischen das Ziel, steuert Blizzards Zauberleiste sie
+	-- If the nameplate has become the target meanwhile, Blizzard's castbar controls it
 	if plate:IsShown() and not unit.isTarget then
 		StopCastAnimationOnNameplate(plate)
 	end
@@ -63,18 +63,18 @@ CastTicker:SetScript("OnUpdate", function(self)
 	for plate, cast in pairs(ActiveCasts) do
 		local unit = plate.extended.unit
 		if not plate:IsShown() or unit.name ~= cast.name then
-			-- Plakette weg oder inzwischen ein anderer Gegner
+			-- Nameplate gone or now a different enemy
 			ActiveCasts[plate] = nil
 		elseif cast.guid and unit.guid and unit.guid ~= cast.guid then
-			-- Zuordnung wurde korrigiert (Ziel/Mouseover): Leiste gehört einem anderen Gegner
+			-- Mapping was corrected (target/mouseover): bar belongs to a different enemy
 			EndCast(plate)
 		elseif unit.isTarget then
-			-- Ziel: Blizzards Zauberleiste übernimmt
+			-- Target: Blizzard's castbar takes over
 			ActiveCasts[plate] = nil
 		elseif now >= cast.endTime then
 			EndCast(plate)
 		elseif cast.channel then
-			plate.extended.bars.castbar:SetValue(cast.endTime - now) -- Kanalisieren läuft rückwärts
+			plate.extended.bars.castbar:SetValue(cast.endTime - now) -- channeling runs backwards
 		else
 			plate.extended.bars.castbar:SetValue(now - cast.startTime)
 		end
@@ -84,8 +84,8 @@ CastTicker:SetScript("OnUpdate", function(self)
 	end
 end)
 
--- Startet eine selbst gesteuerte Zauberleiste auf einer Nicht-Ziel-Plakette.
--- startTime/endTime in Sekunden (GetTime-Basis).
+-- Starts a self-driven castbar on a non-target nameplate.
+-- startTime/endTime in seconds (GetTime based).
 local function StartTimedCast(plate, guid, spell, spellid, icon, notInterruptible, startTime, endTime, channel)
 	local unit = plate.extended.unit
 	if unit.isTarget or not endTime or endTime <= GetTime() then
@@ -102,8 +102,8 @@ local function StartTimedCast(plate, guid, spell, spellid, icon, notInterruptibl
 end
 TidyPlates.StartTimedCastOnNameplate = StartTimedCast
 
--- Vom Kern aufgerufen, sobald eine Plakette eine GUID bekommt: läuft für diesen
--- Gegner gerade ein Zauber, wird die Leiste mit der Restzeit angezeigt.
+-- Called by the core as soon as a nameplate gets a GUID: if this enemy is
+-- currently casting, the bar is shown with the remaining time.
 function TidyPlates.ResumeCastForGUID(plate, guid)
 	local c = CastsByGUID[guid]
 	if not c then
@@ -120,7 +120,7 @@ function TidyPlates.ResumeCastForGUID(plate, guid)
 	StartTimedCast(plate, guid, c.spell, c.spellid, c.icon, c.notInterruptible, c.startTime, c.endTime, c.channel)
 end
 
--- Beendet die Zauberleiste des Gegners mit dieser GUID (Erfolg/Abbruch/Tod)
+-- Ends the castbar of the enemy with this GUID (success/interrupt/death)
 local function StopCastByGUID(guid)
 	if not guid then
 		return
@@ -176,8 +176,8 @@ local function OnSpellCast(...)
 	local FoundPlate = nil
 
 	-- Gather Spell Info
-	-- 3.3.5a: GetSpellInfo liefert name, rank, icon, cost, isFunnel, powerType,
-	-- castTime (ms), minRange, maxRange. castTime ist der Basiswert ohne Tempo.
+	-- 3.3.5a: GetSpellInfo returns name, rank, icon, cost, isFunnel, powerType,
+	-- castTime (ms), minRange, maxRange. castTime is the base value without haste.
 	local spell, _, icon, _, _, _, castTime = GetSpellInfo(spellid)
 	if not spell or not castTime or castTime <= 0 then
 		return
@@ -208,8 +208,8 @@ local function OnSpellCast(...)
 			StartTimedCast(FoundPlate, sourceGUID, spell, spellid, icon, false, now, now + castTime / 1000, false)
 		end
 	else
-		-- Plakette (noch) unbekannt: Zauber merken, damit er bei späterer
-		-- Zuordnung der Plakette mit Restzeit erscheint
+		-- Nameplate (not yet) known: remember the cast so it shows up with the
+		-- remaining time once the nameplate is identified
 		RememberCast(sourceGUID, spell, spellid, icon, false, now, now + castTime / 1000, false)
 	end
 end
@@ -218,13 +218,13 @@ function CombatEventHandlers.SPELL_CAST_START(...)
 	OnSpellCast(...)
 end
 
--- Zauber beendet oder fehlgeschlagen: Quelle ist der Zaubernde
+-- Cast finished or failed: source is the caster
 function CombatEventHandlers.SPELL_CAST_SUCCESS(sourceGUID)
 	StopCastByGUID(sourceGUID)
 end
 CombatEventHandlers.SPELL_CAST_FAILED = CombatEventHandlers.SPELL_CAST_SUCCESS
 
--- Unterbrochen oder gestorben: Ziel ist der Zaubernde
+-- Interrupted or died: dest is the caster
 function CombatEventHandlers.SPELL_INTERRUPT(sourceGUID, sourceName, sourceFlags, spellid, spellname, destGUID)
 	StopCastByGUID(destGUID)
 end
@@ -235,8 +235,8 @@ CombatEventHandlers.UNIT_DIED = CombatEventHandlers.SPELL_INTERRUPT
 --------------------------------------
 
 local function OnCombatEvent(self, event, ...)
-	-- Früher Filter statt Drossel: unbekannte Ereignisse sofort verwerfen,
-	-- relevante gehen nicht verloren
+	-- Early filter instead of throttle: discard unknown events right away,
+	-- relevant ones are never lost
 	local _, combatevent = ...
 	local handler = CombatEventHandlers[combatevent]
 	if not handler then
@@ -249,7 +249,7 @@ local function OnCombatEvent(self, event, ...)
 			handler(sourceGUID, sourceName, sourceFlags, spellid, spellname)
 		end
 	elseif next(ActiveCasts) or next(CastsByGUID) then
-		-- Stop-Ereignisse nur auswerten, wenn überhaupt ein Zauber verfolgt wird
+		-- Only evaluate stop events if any cast is being tracked at all
 		handler(sourceGUID, sourceName, sourceFlags, spellid, spellname, destGUID)
 	end
 end

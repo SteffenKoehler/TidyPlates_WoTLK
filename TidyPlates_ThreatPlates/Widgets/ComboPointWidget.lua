@@ -4,13 +4,13 @@
 local path = "Interface\\AddOns\\TidyPlates_ThreatPlates\\Widgets\\ComboPointWidget\\"
 local COMBO_ART = {"1", "2", "3", "4", "5"}
 
--- Farben der Original-Grafiken je Punktzahl (oben hell, unten dunkel)
+-- Colors of the original textures per point count (light at the top, dark at the bottom)
 local COMBO_COLORS = {
-	{0, 0, 1},       -- 1 blau
-	{0, 0.59, 1},    -- 2 hellblau
-	{0, 1, 0},       -- 3 grün
+	{0, 0, 1},       -- 1 blue
+	{0, 0.59, 1},    -- 2 light blue
+	{0, 1, 0},       -- 3 green
 	{1, 0.41, 0},    -- 4 orange
-	{1, 0, 0}        -- 5 rot
+	{1, 0, 0}        -- 5 red
 }
 local DARK = 0.2
 
@@ -36,7 +36,7 @@ local function UpdateWidgetFrame(frame)
 		points = GetComboPoints("player", "target")
 	end
 	if points and points > 0 and TidyPlatesThreat.db.profile.comboWidget.ON then
-		if frame.segments then -- Classic: einzelne Segmente mit Abstand
+		if frame.segments then -- Classic: separate segments with spacing
 			ShowSegments(frame, points)
 		else
 			frame.Icon:SetTexture(path .. COMBO_ART[points])

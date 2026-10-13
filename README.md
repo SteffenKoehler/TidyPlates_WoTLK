@@ -16,8 +16,10 @@
 > **Classic look**, and built-in nameplate stacking. See **[CHANGES.md](CHANGES.md)**
 > for details.
 >
-> - **Install:** copy `TidyPlates`, `TidyPlates_ThreatPlates` (and optionally
->   `TPProf`) into `Interface/AddOns/` and **restart the client completely** -
+> - **Install:** download the zips from the
+>   [Releases](https://github.com/SteffenKoehler/TidyPlates_WoTLK/releases) page
+>   (or copy `TidyPlates`, `TidyPlates_ThreatPlates` and optionally `TPProf`
+>   from the repo) into `Interface/AddOns/` and **restart the client completely** -
 >   WoW 3.3.5a only picks up new files after a restart, `/reload` is not enough.
 > - **Profiles:** the `Default` profile contains all optimizations and the color
 >   scheme. The profiles `Plater` and `Classic` are created automatically and add
@@ -46,7 +48,9 @@ border, HP as `11.8k (100%)`, name below the bar, small level top right.
 | ![Plater castbar](docs/images/plater-look.png) | Target castbar with the 1 px border, HP as `72.8k (24%)`. |
 
 **Classic look** (profile `Classic`, `/tptpclassic`): flat bar in a rounded frame,
-separate level box, yellow-green line on the target.
+separate level box, yellow-green line on the target. Non-target plates are
+smaller (75 %); when you change targets, the plates grow and shrink smoothly
+(*Extensions* → *Classic look* → "Smooth size change", "Transition time").
 
 | | |
 |---|---|

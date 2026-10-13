@@ -520,7 +520,7 @@ local function CreateInterfacePanel(panelName, panelTitle, heading, parentTitle)
 		if event == "PLAYER_LOGIN" then
 		elseif event == "PLAYER_ENTERING_WORLD" then
 			GetSavedVariables(TidyPlatesHubTankVariables, TidyPlatesHubTankSavedVariables)
-			-- Pet-Farbe aus ThreatPlates-Profil übernehmen, damit der Picker sie anzeigt
+			-- Take the pet color from the ThreatPlates profile so the picker shows it
 			if TidyPlatesThreat and TidyPlatesThreat.db and TidyPlatesThreat.db.profile and TidyPlatesThreat.db.profile.PetHealthBarColor then
 				TidyPlatesHubTankVariables.PetHealthBarColor = TidyPlatesThreat.db.profile.PetHealthBarColor
 			end

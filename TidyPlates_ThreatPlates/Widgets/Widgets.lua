@@ -6,8 +6,8 @@ local _
 -----------------------
 -- Plater Border Widget
 -----------------------
--- Scharfer, dünner Rahmen um Lebens-/Zauberleiste (Plater-Optik) statt der
--- mitskalierten Rahmengrafiken. Vier einfarbige Linien außen um den Balken.
+-- Sharp, thin border around health bar/castbar (Plater look) instead of the
+-- scaled border textures. Four solid-color lines outside the bar.
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 
 local function SetBorderColor(self, r, g, b, a)
@@ -60,8 +60,8 @@ function ThreatPlatesWidgets.CreatePlaterBorder(bar)
 	return frame
 end
 
--- Größe eines Bildschirmpixels in Einheiten des Balkens, damit der Rahmen
--- unabhängig von UI-Skalierung und Plakettengröße scharf 1 Pixel breit bleibt.
+-- Size of one screen pixel in bar units, so the border stays a crisp 1 pixel
+-- regardless of UI scale and nameplate size.
 local screenHeight
 function ThreatPlatesWidgets.PixelSize(frame)
 	if not screenHeight then
@@ -72,25 +72,37 @@ function ThreatPlatesWidgets.PixelSize(frame)
 	if not scale or scale <= 0 then
 		return 1
 	end
+	-- During a smooth resize, use the final size (otherwise the border keeps
+	-- the intermediate size after the transition)
+	local ext = frame
+	for _ = 1, 3 do
+		if not ext or ext.scaleTarget then
+			break
+		end
+		ext = ext:GetParent()
+	end
+	if ext and ext.scaleTarget and ext.scaleShown and ext.scaleShown > 0 then
+		scale = scale / ext.scaleShown * ext.scaleTarget
+	end
 	return (768 / screenHeight) / scale
 end
 
 local PLATER_FONT = "Fonts\\ARIALN.TTF"
 
--- Restzeit rechts in der Zauberleiste (Plater: "2.0"). Kanalisierte Zauber laufen
--- rückwärts; das wird an der Laufrichtung des Balkens erkannt.
--- Unterbrechungen pro Klasse (Zauber-IDs, Namen werden über GetSpellInfo lokalisiert).
--- Bekannt ist ein Zauber, wenn GetSpellCooldown(Name) etwas liefert (= im Zauberbuch).
+-- Remaining time on the right of the castbar (Plater: "2.0"). Channeled spells run
+-- backwards; detected by the direction the bar moves.
+-- Interrupts per class (spell IDs, names are localized via GetSpellInfo).
+-- A spell is known if GetSpellCooldown(name) returns something (= in the spellbook).
 local _, PlayerClass = UnitClass("player")
 local InterruptIDs = {
-	ROGUE = {1766},              -- Tritt
-	WARRIOR = {6552, 72},        -- Zuschlagen, Schildhieb
-	DEATHKNIGHT = {47528},       -- Gedankenfrost
-	MAGE = {2139},               -- Gegenzauber
-	SHAMAN = {57994},            -- Windstoß
-	PRIEST = {15487},            -- Stille (Schatten)
-	DRUID = {16979, 5211},       -- Wilde Attacke (Bär), Hieb
-	HUNTER = {34490}             -- Unterdrückender Schuss
+	ROGUE = {1766},              -- Kick
+	WARRIOR = {6552, 72},        -- Pummel, Shield Bash
+	DEATHKNIGHT = {47528},       -- Mind Freeze
+	MAGE = {2139},               -- Counterspell
+	SHAMAN = {57994},            -- Wind Shear
+	PRIEST = {15487},            -- Silence (Shadow)
+	DRUID = {16979, 5211},       -- Feral Charge (Bear), Bash
+	HUNTER = {34490}             -- Silencing Shot
 }
 local InterruptNames
 local function GetInterruptNames()
@@ -106,10 +118,10 @@ local function GetInterruptNames()
 	return InterruptNames
 end
 
--- true = eine eigene Unterbrechung ist (spätestens bis Zauberende) bereit,
--- false = alle auf Abklingzeit/gerade nicht nutzbar, nil = Klasse hat keine.
--- Die Abklingzeiten werden einmal pro Frame gelesen und für alle zaubernden
--- Plaketten verwendet (vorher pro Plakette).
+-- true = one of your own interrupts is ready (by the end of the cast at the latest),
+-- false = all on cooldown/currently unusable, nil = class has none.
+-- Cooldowns are read once per frame and shared by all casting
+-- nameplates (previously per nameplate).
 local irStamp, irKnown, irMinCd
 local function InterruptReady(castRemaining)
 	local now = GetTime()
@@ -123,7 +135,7 @@ local function InterruptReady(castRemaining)
 				irKnown = true
 				local usable, noMana = IsUsableSpell(name)
 				if usable or noMana then
-					-- Globale Abklingzeit (<= 1.5 s) zählt nicht
+					-- Global cooldown (<= 1.5 s) does not count
 					local cd = (start > 0 and duration > 1.5) and (start + duration - now) or 0
 					if not irMinCd or cd < irMinCd then
 						irMinCd = cd
@@ -140,7 +152,7 @@ local function InterruptReady(castRemaining)
 	end
 end
 
--- Farbe der Zauberleiste: nicht unterbrechbar / Unterbrechung bereit / Abklingzeit
+-- Castbar color: not interruptible / interrupt ready / on cooldown
 function ThreatPlatesWidgets.PlaterCastColor(unit, castRemaining)
 	local pc = TidyPlatesThreat.db.profile.platerCast
 	local c
@@ -157,10 +169,10 @@ end
 local function UpdateCastState(self, remaining)
 	local plate = self.plate
 	local unit = plate.unit
-	if self.SetShielded then -- Classic: Schild-Rahmen bei nicht unterbrechbaren Zaubern
+	if self.SetShielded then -- Classic: shield border for non-interruptible spells
 		self:SetShielded(unit.spellIsShielded)
 	end
-	if self.SetKickReady then -- Classic: heller Rahmen, wenn du jetzt unterbrechen kannst
+	if self.SetKickReady then -- Classic: bright border when you can interrupt now
 		local cl = TidyPlatesThreat.db.profile.classicLook
 		self:SetKickReady(cl.kickHighlight and not unit.spellIsShielded and InterruptReady(remaining) == true)
 	end
@@ -182,7 +194,7 @@ local function CastTimerOnUpdate(self)
 	local bar = self.bar
 	local value = bar:GetValue()
 	local minv, maxv = bar:GetMinMaxValues()
-	if maxv ~= self.lastMax then -- neuer Zauber: Farbe/Kick sofort neu bewerten
+	if maxv ~= self.lastMax then -- new cast: re-evaluate color/kick immediately
 		self.lastMax, self.lastValue, self.channel, self.nextState = maxv, nil, nil, nil
 	end
 	local last = self.lastValue
@@ -194,13 +206,13 @@ local function CastTimerOnUpdate(self)
 	if remaining < 0 then
 		remaining = 0
 	end
-	-- Text nur neu setzen, wenn sich die angezeigte Zehntelsekunde ändert
+	-- Only update the text when the displayed tenth of a second changes
 	local tenth = floor(remaining * 10 + 0.5)
 	if tenth ~= self.lastTenth then
 		self.lastTenth = tenth
 		self.text:SetFormattedText("%.1f", tenth / 10)
 	end
-	-- Farbe/Schloss 10x pro Sekunde nachführen (Abklingzeit der eigenen Unterbrechung)
+	-- Update color/lock 10x per second (cooldown of your own interrupt)
 	local now = GetTime()
 	if not self.nextState or now >= self.nextState then
 		self.nextState = now + 0.1
@@ -208,9 +220,9 @@ local function CastTimerOnUpdate(self)
 	end
 end
 
--- Zauberleiste sichtbar: Namen ausblenden. Er liegt an derselben Stelle, und beim Ziel
--- (Ebene 127) würde er sonst über der Zauberleiste gezeichnet. SetAlpha reicht nicht,
--- weil SetTextColor (bei jeder Farbaktualisierung) die Transparenz zurücksetzt.
+-- Castbar visible: hide the name. It sits in the same spot, and on the target
+-- (level 127) it would otherwise be drawn above the castbar. SetAlpha is not enough,
+-- because SetTextColor (on every color update) resets the alpha.
 local function OnCastShow(self)
 	self.lastMax, self.lastValue, self.channel, self.nextState, self.lastTenth = nil, nil, nil, nil, nil
 	if self.Place then
@@ -237,7 +249,7 @@ function ThreatPlatesWidgets.AddCastTimer(border, size, plate)
 	text:SetJustifyH("RIGHT")
 	border.text = text
 	border.plate = plate
-	-- Schloss am Zaubersymbol für nicht unterbrechbare Zauber
+	-- Lock on the spell icon for non-interruptible spells
 	local shield = border:CreateTexture(nil, "OVERLAY")
 	shield:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-LOCK")
 	shield:SetWidth(12)
@@ -250,11 +262,11 @@ function ThreatPlatesWidgets.AddCastTimer(border, size, plate)
 	border:SetScript("OnHide", OnCastHide)
 end
 
--- Ziel-Markierung im NotPlater-Stil: Eck-/Seitengrafiken um den Balken plus Leuchten
--- oben und unten. Grafiken und Maße aus NotPlater (MIT-Lizenz, siehe Media\NotPlater\LICENSE.txt).
+-- Target highlight in NotPlater style: corner/side textures around the bar plus glow
+-- above and below. Textures and dimensions from NotPlater (MIT license, see Media\NotPlater\LICENSE.txt).
 local NP_PATH = "Interface\\AddOns\\TidyPlates_ThreatPlates\\Media\\NotPlater\\"
--- coords mit 4 Einträgen = Ecken (oben links, unten links, unten rechts, oben rechts),
--- mit 2 Einträgen = Seiten (links, rechts)
+-- coords with 4 entries = corners (top left, bottom left, bottom right, top right),
+-- with 2 entries = sides (left, right)
 ThreatPlatesWidgets.TargetIndicators = {
 	["Silver"] = {path = "PETBATTLEHUD", width = 6, height = 6, autoScale = true, x = 1, y = 1,
 		coords = {{336/512, 356/512, 454/512, 474/512}, {336/512, 356/512, 474/512, 495/512},
@@ -297,21 +309,21 @@ function ThreatPlatesWidgets.CreatePlaterTarget(bar)
 	frame.glowDown = frame:CreateTexture(nil, "BACKGROUND")
 	frame.glowDown:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, 0)
 	frame.glowDown:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 0, 0)
-	-- Leuchten als Farbverlauf statt NotPlaters Grafik (die wird im 3.3.5-Client als
-	-- dunkler Block gezeichnet): blau am Balken, nach außen transparent auslaufend
+	-- Glow as a gradient instead of NotPlater's texture (the 3.3.5 client draws it as
+	-- a dark block): blue at the bar, fading to transparent outwards
 	for _, glow in ipairs({frame.glowUp, frame.glowDown}) do
 		glow:SetTexture(WHITE)
 		glow:SetHeight(10)
 		glow:SetBlendMode("ADD")
 	end
-	-- VERTICAL: erste Farbe = unten, zweite = oben
+	-- VERTICAL: first color = bottom, second = top
 	frame.glowUp:SetGradientAlpha("VERTICAL", 0, 0.52, 1, 0.6, 0, 0.52, 1, 0)
 	frame.glowDown:SetGradientAlpha("VERTICAL", 0, 0.52, 1, 0, 0, 0.52, 1, 0.6)
 	frame:Hide()
 	return frame
 end
 
--- Wie NotPlater: Größe aus der Balkenhöhe, Ecken bzw. Seiten außen an den Balken
+-- Like NotPlater: size from bar height, corners/sides outside the bar
 local CornerPoints = {"TOPLEFT", "BOTTOMLEFT", "BOTTOMRIGHT", "TOPRIGHT"}
 local CornerSigns = {{-1, 1}, {-1, -1}, {1, -1}, {1, 1}}
 function ThreatPlatesWidgets.ConfigurePlaterTarget(frame, name, glow)
@@ -365,10 +377,10 @@ end
 -----------------------
 -- Classic Look Widget
 -----------------------
--- Originale Blizzard-Grafiken: Goldrahmen mit Stufen-Feld, Elite-Drache, Mouseover-Aufhellung,
--- Leuchten (fürs Ziel) und Zauberleisten-Rahmen. Ausschnitt und Lage hat der TidyPlates-Kern
--- an der Original-Plakette gemessen (TidyPlates.BlizzardArt); hier werden sie auf die
--- eigenen Balken umgerechnet (Anteile von Balkenbreite/-höhe ab der linken unteren Ecke).
+-- Original Blizzard textures: gold border with level box, elite dragon, mouseover highlight,
+-- glow (for the target) and castbar border. Tex coords and position were measured by the TidyPlates
+-- core on the original nameplate (TidyPlates.BlizzardArt); here they are converted to our
+-- own bars (fractions of bar width/height from the bottom left corner).
 function ThreatPlatesWidgets.ClassicArt()
 	local art = TidyPlates.BlizzardArt
 	return art and art.health and art
@@ -388,7 +400,7 @@ local function ClassicTexture(parent, layer, art, blend)
 	return t
 end
 
--- Nicht messbare Teile (rect = nil) bleiben verborgen bzw. an der Stil-Position
+-- Unmeasurable parts (rect = nil) stay hidden or at the style position
 local function PlaceRect(t, bar, rect, width, height)
 	t.hasRect = rect and true
 	if not rect then
@@ -407,15 +419,15 @@ local function ShowIf(t, condition)
 	end
 end
 
--- Zauberleisten-Rahmen; nicht unterbrechbar = Blizzards Schild-Rahmen
+-- Castbar border; not interruptible = Blizzard's shield border
 local function SetClassicShielded(self, shielded)
 	shielded = shielded and self.shieldBorder.valid
 	ShowIf(self.border, self.placed and not shielded)
 	ShowIf(self.shieldBorder, self.placed and shielded)
 end
 
--- Dünne Leiste (castBorder aus): 1-px-Rahmen, dunkler Hintergrund, Restzeit unter der Leiste
--- rechts (gegenüber dem Zaubernamen). Wird bei jedem Zauberbeginn gesetzt.
+-- Thin bar (castBorder off): 1 px border, dark background, remaining time below the bar
+-- on the right (opposite the spell name). Applied at the start of every cast.
 local function PlaceThinCast(self)
 	local bar = self.bar
 	self.placed = nil
@@ -457,7 +469,7 @@ local function PlaceClassicCast(self)
 		PlaceRect(self.border, bar, geo.castborder, w, h)
 		PlaceRect(self.shieldBorder, bar, geo.castnostop, w, h)
 	end
-	-- Zaubersymbol an Blizzards Platz (der Kern setzt es bei Stilwechseln zurück)
+	-- Spell icon at Blizzard's position (the core resets it on style changes)
 	if geo.spellicon then
 		PlaceRect(plate.visual.spellicon, bar, geo.spellicon, w, h)
 	end
@@ -465,7 +477,7 @@ local function PlaceClassicCast(self)
 	self:SetShielded(plate.unit and plate.unit.spellIsShielded)
 end
 
--- Der Kern ruft beim Ausblenden einer Plakette Hide() für jedes Widget auf
+-- The core calls Hide() on every widget when a nameplate is hidden
 local function HideGoldParts(look)
 	look.border:Hide()
 	look.elite:Hide()
@@ -484,16 +496,16 @@ local function HideClassicParts(look)
 	HideSimpleParts(look)
 end
 
--- Schlichter Rahmen (wie die Plaketten des Classic-Era-Clients): abgerundeter Tooltip-Rahmen
--- aus dem 3.3.5-Client mit dunklem Hintergrund um den Balken und ein eigenes Stufen-Kästchen
--- im selben Stil rechts daneben. Rahmenfarbe: Ziel / Mouseover / sonst dunkelgrau.
+-- Simple border (like the Classic Era client's nameplates): rounded tooltip border
+-- from the 3.3.5 client with a dark background around the bar and a separate level box
+-- in the same style to its right. Border color: target / mouseover / otherwise dark gray.
 local TOOLTIP_EDGE = "Interface\\Tooltips\\UI-Tooltip-Border"
--- Abstand zwischen Rahmen und Stufen-Kästchen (außen). Negativ, weil die Tooltip-Kante
--- einen durchsichtigen Rand hat: so liegen die sichtbaren Linien ~3 px auseinander
+-- Gap between border and level box (outer edges). Negative because the tooltip edge
+-- has a transparent margin: this puts the visible lines ~3 px apart
 local SIMPLE_GAP = -1
-local SIMPLE_BOX_RATIO = 1.45 -- Breite des Kästchens relativ zu seiner Höhe
+local SIMPLE_BOX_RATIO = 1.45 -- box width relative to its height
 
--- Setzt einen einzelnen Ankerpunkt nur, wenn er abweicht. true = neu gesetzt.
+-- Sets a single anchor point only if it differs. true = was set.
 local function Anchor(obj, point, rel, relPoint, x, y)
 	if obj:GetNumPoints() == 1 then
 		local p, r, rp, ox, oy = obj:GetPoint(1)
@@ -506,7 +518,7 @@ local function Anchor(obj, point, rel, relPoint, x, y)
 	return true
 end
 
--- Rahmenstärke 1-4 -> Kantengröße der Tooltip-Grafik; der Balken liegt um "inset" eingerückt
+-- Border thickness 1-4 -> edge size of the tooltip texture; the bar is indented by "inset"
 local function SimpleEdge(lineSize)
 	local edge = 6 + 2 * (lineSize or 2)
 	return edge, math.floor(edge / 3 + 0.5)
@@ -524,7 +536,7 @@ local function SimpleBackdrop(frame, edge, inset)
 		insets = {left = inset, right = inset, top = inset, bottom = inset}
 	})
 	frame:SetBackdropColor(0.03, 0.03, 0.03, 0.9)
-	frame.r = nil -- Rahmenfarbe neu setzen
+	frame.r = nil -- force border color update
 end
 
 local function SetSimpleColor(frame, r, g, b)
@@ -535,8 +547,8 @@ local function SetSimpleColor(frame, r, g, b)
 end
 
 local function CreateSimpleParts(look, hb)
-	-- Unter dem Balken (eine Ebene tiefer), damit die Füllung über dem Hintergrund liegt;
-	-- die Kante liegt außerhalb des Balkens und bleibt sichtbar
+	-- Below the bar (one level lower) so the fill sits above the background;
+	-- the edge lies outside the bar and stays visible
 	local level = math.max(0, hb:GetFrameLevel() - 1)
 	local frame = CreateFrame("Frame", nil, hb)
 	frame:SetFrameLevel(level)
@@ -549,12 +561,12 @@ local function CreateSimpleParts(look, hb)
 	look.box = box
 end
 
--- Combo-Punkte als dünner Streifen in Balkenbreite direkt unter dem Rahmen. Die Grafik ist
--- eine segmentierte Leiste (5 Felder) in einem 256er-Quadrat, Zeilen 111-145.
--- Classic: fünf einzelne Segmente mit kleinem Abstand statt der Grafik, in der die
--- Punkte aneinanderkleben. Farben wie in den Original-Grafiken (1 blau ... 5 rot),
--- Verlauf hell oben / dunkel unten. Gefüllt wird von links (siehe ComboPointWidget.lua).
-local COMBO_GAP_PX = 2 -- Abstand zwischen den Punkten in Bildschirmpixeln
+-- Combo points as a thin bar-width strip directly below the border. The texture is
+-- a segmented bar (5 cells) in a 256 square, rows 111-145.
+-- Classic: five separate segments with a small gap instead of the texture, in which the
+-- points stick together. Colors as in the original textures (1 blue ... 5 red),
+-- gradient light at top / dark at bottom. Filled from the left (see ComboPointWidget.lua).
+local COMBO_GAP_PX = 2 -- gap between points in screen pixels
 local COMBO_HEIGHT = 4
 
 function ThreatPlatesWidgets.PlaceClassicCombo(widget, plate, db)
@@ -589,14 +601,14 @@ function ThreatPlatesWidgets.PlaceClassicCombo(widget, plate, db)
 	end
 end
 
--- Platz rechts neben dem Balken (Rahmen + Kästchen) für die Stapel-Abstände
+-- Space to the right of the bar (border + box) for the stacking offsets
 function ThreatPlatesWidgets.ClassicSimpleExtent(height, lineSize)
 	local _, inset = SimpleEdge(lineSize)
 	local outer = height + 2 * inset
 	return inset + SIMPLE_GAP + math.floor(outer * SIMPLE_BOX_RATIO + 0.5)
 end
 
--- Kleine Schrift für Zaubername/Restzeit unter der Leiste (nur setzen, wenn sie abweicht)
+-- Small font for spell name/remaining time below the bar (only set if it differs)
 local CAST_ICON_SIZE = 10
 local CAST_FONT_SIZE = 9
 local function SmallCastFont(fontString)
@@ -606,8 +618,8 @@ local function SmallCastFont(fontString)
 	end
 end
 
--- Zauberleiste im schlichten Stil (wie WoW Forever): gleicher Rahmen wie der Balken.
--- Wird bei jedem Zauberbeginn und jeder Aktualisierung gesetzt.
+-- Castbar in simple style (like WoW Forever): same border as the health bar.
+-- Applied at the start of every cast and on every update.
 local function PlaceSimpleCast(self)
 	local bar = self.bar
 	local cfg = TidyPlatesThreat.db.profile.classicLook
@@ -625,15 +637,15 @@ local function PlaceSimpleCast(self)
 	end
 	SimpleBackdrop(frame, edge, inset)
 	frame:Show()
-	bar:SetBackgroundColor(0, 0, 0, 0) -- dunkler Hintergrund kommt vom Rahmen
+	bar:SetBackgroundColor(0, 0, 0, 0) -- dark background comes from the border
 
-	-- Lage direkt unter dem Lebensbalken; Platz für die Combo-Punkte nur, solange sie
-	-- angezeigt werden. Symbol und Zaubername hängen an der Leiste. (Der Kern setzt die
-	-- Stil-Lage bei Stilwechseln zurück, daher bei jedem Aufruf.)
-	-- Wie bei WoW Forever: Leiste direkt am Rahmen des Lebensbalkens angesetzt, so breit
-	-- wie Balken + Stufen-Kästchen, etwa halb so hoch wie der Balken; Symbol und Name klein
-	-- darunter links, Restzeit darunter rechts. Platz für die Combo-Punkte nur, solange sie
-	-- angezeigt werden.
+	-- Placed directly below the health bar; space for the combo points only while they
+	-- are shown. Icon and spell name are attached to the bar. (The core resets the
+	-- style position on style changes, hence on every call.)
+	-- Like WoW Forever: bar attached directly to the health bar border, as wide
+	-- as bar + level box, about half as tall as the bar; icon and name small
+	-- below on the left, remaining time below on the right. Space for the combo points only while they
+	-- are shown.
 	local plate = self.plate
 	local hb = plate.bars.healthbar
 	local h = hb:GetHeight()
@@ -659,15 +671,15 @@ local function PlaceSimpleCast(self)
 	SmallCastFont(name)
 	Anchor(self.text, "TOPRIGHT", bar, "BOTTOMRIGHT", 0, -(inset + 1))
 	SmallCastFont(self.text)
-	-- Kick-Zustand beibehalten (läuft bei jeder Aktualisierung der Plakette; vorher wurde
-	-- der Rahmen hier jedes Mal dunkel und erst 0,1 s später wieder hell). Ein neuer
-	-- Zauber wird im ersten Frame der Zauberleiste neu bewertet.
+	-- Keep kick state (runs on every nameplate update; previously the border
+	-- turned dark here every time and only bright again 0.1 s later). A new
+	-- cast is re-evaluated in the castbar's first frame.
 	local ready = self.kickReady
 	self.kickReady = nil
 	self:SetKickReady(ready or false)
 end
 
--- Rahmen der Zauberleiste hell, solange der Zauber unterbrechbar und dein Kick bereit ist
+-- Castbar border bright while the cast is interruptible and your kick is ready
 local function SetSimpleKickReady(self, ready)
 	local frame = self.simple
 	if not frame:IsShown() or self.kickReady == ready then
@@ -712,10 +724,10 @@ local function UpdateSimpleLook(plate, unit, look, cfg)
 	frame:Show()
 	box:Show()
 
-	-- Stufe mittig im Kästchen (Schwierigkeitsfarbe vom Kern), Elite mit "+";
-	-- Totenkopf (Boss) an derselben Stelle
-	-- Läuft bei Kontext- und Normal-Update; Schrift und Lage nur setzen, wenn sie
-	-- abweichen (der Kern setzt sie bei Stilwechseln zurück)
+	-- Level centered in the box (difficulty color from the core), elite with "+";
+	-- skull (boss) in the same spot
+	-- Runs on context and normal update; only set font and position if they
+	-- differ (the core resets them on style changes)
 	local level = plate.visual.level
 	if Anchor(level, "CENTER", box, "CENTER", 0.5, 0) then
 		level:SetJustifyH("CENTER")
@@ -744,7 +756,7 @@ end
 function ThreatPlatesWidgets.CreateClassicLook(plate)
 	local art = TidyPlates.BlizzardArt or {}
 	local hb = plate.bars.healthbar
-	-- Auf der Lebensleiste selbst (über der Füllung, unter Name/Stufe/Text der Plakette)
+	-- On the health bar itself (above the fill, below the nameplate's name/level/text)
 	local look = {
 		border = ClassicTexture(hb, "OVERLAY", art.healthborder),
 		elite = ClassicTexture(hb, "OVERLAY", art.eliteicon),
@@ -754,20 +766,20 @@ function ThreatPlatesWidgets.CreateClassicLook(plate)
 		Hide = HideClassicParts
 	}
 	CreateSimpleParts(look, hb)
-	-- Zauberleiste: eigene Ebene über der Leiste, Restzeit/Farbe wie bei Plater
+	-- Castbar: own level above the bar, remaining time/color like Plater
 	local cb = plate.bars.castbar
 	local cast = CreateFrame("Frame", nil, cb)
 	cast:SetAllPoints(cb)
 	cast:SetFrameLevel(cb:GetFrameLevel() + 1)
 	cast.bar = cb
-	cast.keepName = true -- Name steht über dem Balken, nicht an der Zauberleiste
+	cast.keepName = true -- name sits above the bar, not on the castbar
 	cast.border = ClassicTexture(cast, "ARTWORK", art.castborder)
 	cast.shieldBorder = ClassicTexture(cast, "ARTWORK", art.castnostop)
 	cast.SetShielded = SetClassicShielded
 	cast.Place = PlaceClassicCast
 	cast.thin = ThreatPlatesWidgets.CreatePlaterBorder(cb)
 	cast.thin:Hide()
-	-- Schlicht: Tooltip-Rahmen wie beim Lebensbalken, eine Ebene unter der Leiste
+	-- Simple: tooltip border like the health bar, one level below the bar
 	cast.simple = CreateFrame("Frame", nil, cb)
 	cast.simple:SetFrameLevel(math.max(0, cb:GetFrameLevel() - 1))
 	cast.simple:Hide()
@@ -775,7 +787,7 @@ function ThreatPlatesWidgets.CreateClassicLook(plate)
 	cast.SetKickReady = SetSimpleKickReady
 	ThreatPlatesWidgets.AddCastTimer(cast, TidyPlatesThreat.db.profile.settings.spelltext.size or 10, plate)
 	look.cast = cast
-	-- Stapel-Abstände kennen erst jetzt die Rahmengröße
+	-- Stacking offsets only know the border size now
 	if not ThreatPlatesWidgets.classicStackingApplied then
 		ThreatPlatesWidgets.classicStackingApplied = true
 		TidyPlatesThreat:ApplyStacking()
@@ -798,14 +810,14 @@ local function HasBar(barstyle)
 	return tex and not tex:find("Empty$")
 end
 
--- Classic-Optik möglich? Schlicht immer, Gold erst nach Vermessung der Original-Plakette
+-- Classic look possible? Simple always, gold only after measuring the original nameplate
 function ThreatPlatesWidgets.ClassicAvailable(cfg)
 	return cfg.frameStyle ~= "GOLD" or ThreatPlatesWidgets.ClassicArt()
 end
 
 function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 	local style = plate.style
-	if not HasBar(style.healthbar) then -- Nur-Name, Totem-Symbol
+	if not HasBar(style.healthbar) then -- name only, totem icon
 		HideClassicParts(look)
 		return
 	end
@@ -818,7 +830,7 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 	end
 	HideSimpleParts(look)
 	local art = ThreatPlatesWidgets.ClassicArt()
-	if not art then -- Gold gewählt, Original-Plakette noch nicht vermessen
+	if not art then -- gold selected, original nameplate not measured yet
 		HideGoldParts(look)
 		return
 	end
@@ -834,10 +846,10 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 		PlaceRect(look.glow, bar, geo.threatglow, w, h)
 	end
 	ShowIf(look.border, true)
-	-- Ziel: Goldrahmen (samt Stufen-Feld) in der Zielfarbe einfärben und eine eingefärbte
-	-- Kopie additiv darüberlegen. Nur additiv bleibt das Gold sichtbar und alles wirkt gelb;
-	-- das Einfärben nimmt zuerst das Rot heraus. (Entsättigen + SetVertexColor färbt in diesem
-	-- Client nicht, der Rahmen wird nur grau.)
+	-- Target: tint the gold border (including level box) in the target color and lay a tinted
+	-- copy on top additively. Additive alone keeps the gold visible and everything looks yellow;
+	-- tinting removes the red first. (Desaturate + SetVertexColor does not tint in this
+	-- client, the border just turns gray.)
 	if cfg.targetBorder and unit.isTarget then
 		local c = cfg.targetColor
 		look.border:SetVertexColor(c.r, c.g, c.b)
@@ -857,8 +869,8 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 		look.glow:Hide()
 	end
 
-	-- Stufe ins Feld des Rahmens, Totenkopf (Boss) an dieselbe Stelle. Der Kern setzt Lage
-	-- und Schrift bei Stilwechseln zurück, daher bei jeder Aktualisierung.
+	-- Level into the border's level box, skull (boss) in the same spot. The core resets position
+	-- and font on style changes, hence on every update.
 	PlaceRect(plate.visual.skullicon, bar, geo.skullicon, w, h)
 	local rect = geo.level
 	if rect then
@@ -878,7 +890,7 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 		level:SetJustifyH(point)
 		local font, size, flags = unpack(art.levelFont)
 		if font and size then
-			-- Kontur, damit die (oft gelbe) Stufe auch auf dem aufgehellten Feld des Ziels lesbar bleibt
+			-- Outline so the (often yellow) level stays readable on the target's highlighted level box
 			level:SetFont(font, size * math.min(fx, fy) * (cfg.levelSize or 1), "OUTLINE")
 		end
 	end
@@ -891,16 +903,16 @@ end
 -----------------------
 -- Quest Icon Widget
 -----------------------
--- 3.3.5 kennt keine Quest-Zuordnung für Plaketten. Annäherung: Mob-Namen aus offenen
--- Tötungszielen im Questlog ("Verteidiger der Grimmhauer getötet: 3/8"). Sammelziele
--- (Gegenstand droppt vom Mob) nennen den Mob nicht und werden daher nicht erkannt.
+-- 3.3.5 has no quest mapping for nameplates. Approximation: mob names from open
+-- kill objectives in the quest log ("Verteidiger der Grimmhauer getötet: 3/8"). Collect objectives
+-- (item drops from the mob) don't name the mob and are therefore not detected.
 local QuestMobs = {}
 local QUEST_ICON = "Interface\\GossipFrame\\AvailableQuestIcon"
 
--- Muster aus dem lokalisierten Text ("%s getötet: %d/%d" bzw. "%s slain: %d/%d")
--- Platzhalter können nummeriert sein ("%1$s getötet: %2$d/%3$d"): erst durch Marken
--- ersetzen, dann alle Sonderzeichen maskieren, dann die Marken einsetzen. Ein unbrauchbares
--- Muster wird verworfen (dann gilt nur der Fallback).
+-- Pattern from the localized text ("%s getötet: %d/%d" or "%s slain: %d/%d")
+-- Placeholders can be numbered ("%1$s getötet: %2$d/%3$d"): first replace them with markers,
+-- then escape all special characters, then insert the markers. An unusable
+-- pattern is discarded (then only the fallback applies).
 local KilledPattern
 do
 	local template = QUEST_MONSTERS_KILLED or "%s slain: %d/%d"
@@ -915,7 +927,7 @@ end
 local function ObjectiveMob(text)
 	local name = KilledPattern and text:match(KilledPattern)
 	if not name then
-		-- Fallback: alles vor ": n/m", letztes Wort ("getötet") abschneiden
+		-- Fallback: everything before ": n/m", cut off the last word ("getötet")
 		local prefix = text:match("^(.-):%s*%d+%s*/%s*%d+$")
 		name = prefix and prefix:match("^(.+)%s+%S+$")
 	end
@@ -938,7 +950,7 @@ local function ScanQuestLog()
 			end
 		end
 	end
-	-- Nur bei Änderung die Plaketten aktualisieren
+	-- Only update nameplates on change
 	local changed = false
 	for name in pairs(found) do
 		if not QuestMobs[name] then
@@ -956,7 +968,7 @@ local function ScanQuestLog()
 	end
 end
 
--- QUEST_LOG_UPDATE kommt oft in Serien: höchstens zweimal pro Sekunde auswerten
+-- QUEST_LOG_UPDATE often comes in bursts: evaluate at most twice per second
 local questScanner = CreateFrame("Frame")
 local scanAt
 questScanner:Hide()
@@ -993,7 +1005,7 @@ function ThreatPlatesWidgets.CreateQuestIcon(plate)
 	return icon
 end
 
--- Links vor dem (zentrierten) Namen
+-- Left of the (centered) name
 function ThreatPlatesWidgets.UpdateQuestIcon(plate, unit, icon, size)
 	local name = plate.visual.name
 	if unit.type == "NPC" and unit.reaction ~= "FRIENDLY" and QuestMobs[unit.name] and name:IsShown() then
@@ -1007,8 +1019,8 @@ function ThreatPlatesWidgets.UpdateQuestIcon(plate, unit, icon, size)
 	end
 end
 
--- Symbolstil der Auren: eigene Wahl (debuffWidget.iconStyle "STANDARD"/"PLATER") oder,
--- solange nichts gewählt ist, automatisch Plater-Stil zur Plater- bzw. Classic-Optik
+-- Aura icon style: explicit choice (debuffWidget.iconStyle "STANDARD"/"PLATER") or,
+-- while nothing is chosen, automatically Plater style with the Plater or Classic look
 function ThreatPlatesWidgets.UsePlaterAuras(db)
 	local style = db.debuffWidget.iconStyle
 	if style then
@@ -1017,8 +1029,8 @@ function ThreatPlatesWidgets.UsePlaterAuras(db)
 	return db.platerBorder.ON or db.classicLook.ON
 end
 
--- Aura-Symbole im Plater-Stil: rechteckig mit 1-px-Rahmen, große Restzeit mittig,
--- Stapel darüber, enger Abstand. Wird einmal pro Debuff-Widget angewendet.
+-- Aura icons in Plater style: rectangular with 1 px border, large remaining time centered,
+-- stacks above, tight spacing. Applied once per debuff widget.
 function ThreatPlatesWidgets.StylePlaterAuras(widget)
 	if widget.platerStyled then
 		return
@@ -1029,7 +1041,7 @@ function ThreatPlatesWidgets.StylePlaterAuras(widget)
 	for i, icon in ipairs(icons) do
 		icon:SetWidth(24)
 		icon:SetHeight(18)
-		icon.Icon:SetTexCoord(0.07, 0.93, 0.18, 0.82) -- 4:3 ausschneiden
+		icon.Icon:SetTexCoord(0.07, 0.93, 0.18, 0.82) -- crop to 4:3
 		icon.Border:Hide()
 		icon.Glow:Hide()
 		local border = ThreatPlatesWidgets.CreatePlaterBorder(icon)
@@ -1047,7 +1059,7 @@ function ThreatPlatesWidgets.StylePlaterAuras(widget)
 		icon.Stacks:SetJustifyH("CENTER")
 		icon.Stacks:SetWidth(24)
 
-		-- Neu anordnen: zwei Reihen, 2 px Abstand, zweite Reihe mit Platz für Stapelzahlen
+		-- Rearrange: two rows, 2 px gap, second row with room for stack counts
 		icon:ClearAllPoints()
 		if i == 1 then
 			icon:SetPoint("LEFT", widget)
@@ -1157,8 +1169,8 @@ local function DebuffFilter(debuff)
 	db = TidyPlatesThreat.db.profile
 	return DebuffFilterModes[db.debuffWidget.mode](debuff, db.debuffWidget.filter)
 end
--- Position/Größe der Widgets. Läuft bei jedem Anzeigen einer Plakette und bei
--- jeder Optionsänderung (ForceUpdate -> OnInitialize), daher nicht pro Update nötig.
+-- Widget position/size. Runs every time a nameplate is shown and on
+-- every option change (ForceUpdate -> OnInitialize), so not needed per update.
 local function ApplyLayout(plate)
 	local w = plate.widgets
 	if w.WidgetDebuff then
@@ -1168,8 +1180,8 @@ local function ApplyLayout(plate)
 		w.WidgetDebuff:SetPoint(db.debuffWidget.anchor, plate, db.debuffWidget.x, db.debuffWidget.y)
 	end
 	if w.ComboPoints then
-		-- Classic (schlicht): Leiste hängt am Balken; ein zusätzlicher CENTER-Anker
-		-- würde sie verzerren
+		-- Classic (simple): castbar is attached to the health bar; an extra CENTER anchor
+		-- would distort it
 		if db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD" then
 			ThreatPlatesWidgets.PlaceClassicCombo(w.ComboPoints, plate, db)
 		else
@@ -1201,8 +1213,8 @@ local function ApplyLayout(plate)
 	end
 end
 
--- Kampflog-Auswertung der Debuffs nur laufen lassen, wenn das Debuff-Widget an ist
-local auraWatcherActive = true -- wird beim Laden oben eingeschaltet
+-- Only run combat log processing for debuffs while the debuff widget is enabled
+local auraWatcherActive = true -- enabled on load above
 local function SyncAuraWatcher()
 	local wanted = db.debuffWidget.ON and true or false
 	if wanted ~= auraWatcherActive then
@@ -1218,7 +1230,7 @@ end
 ----------------
 -- INITIALIZE --
 ----------------
--- Alle Plaketten, die Widgets bekommen haben (für ResetAll beim Profilwechsel)
+-- All nameplates that received widgets (for ResetAll on profile change)
 local KnownPlates = setmetatable({}, {__mode = "k"})
 
 local function OnInitialize(plate)
@@ -1349,14 +1361,14 @@ local function OnInitialize(plate)
 		w.ThreatLineWidget = nil
 	end
 
-	-- Plater-Rahmen um Lebens- und Zauberleiste
+	-- Plater border around health bar and castbar
 	if db.platerBorder.ON then
 		if not w.PlaterHealthBorder then
 			w.PlaterHealthBorder = ThreatPlatesWidgets.CreatePlaterBorder(plate.bars.healthbar)
 			w.PlaterCastBorder = ThreatPlatesWidgets.CreatePlaterBorder(plate.bars.castbar)
 			w.PlaterTarget = ThreatPlatesWidgets.CreatePlaterTarget(plate.bars.healthbar)
 			ThreatPlatesWidgets.AddCastTimer(w.PlaterCastBorder, db.settings.spelltext.size or 10, plate)
-			-- Dunkler Hintergrund, damit der Name darunter beim Zaubern nicht durchscheint
+			-- Dark background so the name underneath doesn't show through while casting
 			plate.bars.castbar:SetBackgroundColor(0.08, 0.08, 0.08, 0.9)
 		end
 	elseif w.PlaterHealthBorder then
@@ -1364,10 +1376,10 @@ local function OnInitialize(plate)
 		w.PlaterCastBorder:Hide()
 		w.PlaterTarget:Hide()
 		w.PlaterHealthBorder, w.PlaterCastBorder, w.PlaterTarget = nil, nil, nil
-		plate.bars.castbar:SetBackgroundColor(0, 0, 0, 0) -- dunklen Hintergrund wieder entfernen
+		plate.bars.castbar:SetBackgroundColor(0, 0, 0, 0) -- remove the dark background again
 	end
 
-	-- Classic-Optik (Blizzard-Grafiken); ohne Vermessung der Original-Plakette noch nicht möglich
+	-- Classic look (Blizzard textures); not possible until the original nameplate is measured
 	if db.classicLook.ON and ThreatPlatesWidgets.ClassicAvailable(db.classicLook) then
 		if not w.ClassicLook then
 			w.ClassicLook = ThreatPlatesWidgets.CreateClassicLook(plate)
@@ -1377,7 +1389,7 @@ local function OnInitialize(plate)
 		w.ClassicLook = nil
 	end
 
-	-- Quest-Symbol
+	-- Quest icon
 	ThreatPlatesWidgets.EnableQuestScanner(db.questIcon.ON)
 	if db.questIcon.ON then
 		if not w.QuestIcon then
@@ -1388,7 +1400,7 @@ local function OnInitialize(plate)
 		w.QuestIcon = nil
 	end
 
-	-- Auren im Plater-Stil (Option Symbolstil, sonst automatisch zur Plater-/Classic-Optik)
+	-- Auras in Plater style (icon style option, otherwise automatic with the Plater/Classic look)
 	if w.WidgetDebuff and ThreatPlatesWidgets.UsePlaterAuras(db) then
 		ThreatPlatesWidgets.StylePlaterAuras(w.WidgetDebuff)
 	end
@@ -1411,8 +1423,8 @@ local function OnInitialize(plate)
 
 	ApplyLayout(plate)
 end
--- Plater-Rahmen: nur bei Stilen mit sichtbarem Balken (nicht Nur-Name/Totem-Symbol),
--- Farbe nach Ziel (weiß) / Mouseover (grau) / sonst schwarz
+-- Plater border: only for styles with a visible bar (not name-only/totem icon),
+-- color by target (white) / mouseover (gray) / otherwise black
 local function HasVisibleBar(barstyle)
 	local tex = barstyle and barstyle.texture
 	return tex and not tex:find("Empty$")
@@ -1436,7 +1448,7 @@ local function UpdatePlaterBorder(plate, unit)
 			hb:SetBorderColor(0, 0, 0, 1)
 		end
 		hb:Show()
-		-- Ziel-Markierung (NotPlater-Grafiken + Leuchten)
+		-- Target highlight (NotPlater textures + glow)
 		local pt = w.PlaterTarget
 		local pd = db.platerTarget
 		if unit.isTarget and (pd.indicator ~= "NONE" or pd.glow) then
@@ -1448,7 +1460,7 @@ local function UpdatePlaterBorder(plate, unit)
 		if HasVisibleBar(style.castbar) then
 			cb:SetBorderSize(size)
 			cb:Show()
-			-- Stil-Aktualisierungen blenden den Namen wieder ein; während des Zauberns verstecken
+			-- Style updates show the name again; hide it while casting
 			if plate.bars.castbar:IsShown() then
 				plate.visual.name:Hide()
 			end
@@ -1462,7 +1474,7 @@ local function UpdatePlaterBorder(plate, unit)
 	end
 end
 
--- Classic-Optik: Ziel-Leuchten/Mouseover hängen am Kontext, Stufe/Rahmen am Stil
+-- Classic look: target glow/mouseover depend on context, level/border on style
 local function UpdateClassic(plate, unit)
 	if not db.classicLook.ON then
 		return
@@ -1483,7 +1495,7 @@ end
 local function OnContextUpdate(plate, unit)
 	db = TidyPlatesThreat.db.profile
 	local w = plate.widgets
-	-- Plater-Rahmen (Ziel/Mouseover ändern sich hier)
+	-- Plater border (target/mouseover change here)
 	if db.platerBorder.ON then
 		if not w.PlaterHealthBorder then
 			OnInitialize(plate)
@@ -1521,7 +1533,7 @@ end
 local function OnUpdate(plate, unit)
 	db = TidyPlatesThreat.db.profile
 	local w = plate.widgets
-	-- Plater-Rahmen (Stil/Größe können sich geändert haben)
+	-- Plater border (style/size may have changed)
 	if db.platerBorder.ON then
 		if not w.PlaterHealthBorder then
 			OnInitialize(plate)
@@ -1529,7 +1541,7 @@ local function OnUpdate(plate, unit)
 		UpdatePlaterBorder(plate, unit)
 	end
 	UpdateClassic(plate, unit)
-	-- Quest-Symbol (Name kann sich geändert haben)
+	-- Quest icon (name may have changed)
 	if db.questIcon.ON then
 		if not w.QuestIcon then
 			OnInitialize(plate)
@@ -1589,10 +1601,10 @@ local function OnUpdate(plate, unit)
 	end
 end
 
--- Profilwechsel ohne /reload: alle Widgets verwerfen; sie werden beim nächsten Update
--- (OnUpdate/OnContextUpdate rufen bei fehlendem Widget OnInitialize) neu erzeugt. Das
--- Debuff-Widget meldet sich beim Hide selbst ab; die Plater-Aura-Optik ist pro Widget
--- nicht umkehrbar, deshalb neu statt umbauen.
+-- Profile change without /reload: discard all widgets; they are recreated on the next update
+-- (OnUpdate/OnContextUpdate call OnInitialize if a widget is missing). The
+-- debuff widget unregisters itself on Hide; the Plater aura look is not reversible
+-- per widget, hence recreate instead of rebuild.
 function ThreatPlatesWidgets.ResetAll()
 	for plate in pairs(KnownPlates) do
 		local w = plate.widgets

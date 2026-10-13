@@ -514,6 +514,10 @@ L["Target: glow"] = true
 L["Additional soft glow behind the target's nameplate."] = true
 L["Non-target size"] = true
 L["Nameplates that are not your target are scaled down to this fraction (1 = same size)."] = true
+L["Smooth size change"] = true
+L["When targeting or clearing the target, the nameplate grows or shrinks smoothly instead of jumping."] = true
+L["Transition time"] = true
+L["Duration of the size change in seconds."] = true
 L["Level font size"] = true
 L["Relative to the Blizzard font in the level box."] = true
 L["Blizzard castbar"] = true

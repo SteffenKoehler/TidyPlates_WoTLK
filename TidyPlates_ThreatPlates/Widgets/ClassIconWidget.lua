@@ -23,7 +23,7 @@ local function UpdateClassIconWidget(frame, unit)
 				frame.Icon:SetTexture(path .. db.classWidget.theme .. "\\" .. engClass)
 				frame:Show()
 			else
-				frame:Hide() -- sonst blieb das Symbol des vorherigen Spielers stehen
+				frame:Hide() -- otherwise the previous player's icon stayed visible
 			end
 		else
 			frame:Hide()

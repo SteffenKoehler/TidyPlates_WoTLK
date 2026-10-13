@@ -1,9 +1,9 @@
 ----------------------
--- CrowdControl Widget für WoW 3.3.5a
--- Angepasst für TidyPlates mit Farbintegration
+-- CrowdControl widget for WoW 3.3.5a
+-- Adapted for TidyPlates with color integration
 ----------------------
 
--- Globale CC Farbe
+-- Global CC color
 CROWD_CONTROL_COLOR = {r=0.2, g=0.5, b=1.0}
 
 local PolledHideIn
@@ -68,9 +68,9 @@ local ByRaidIcon = {}
 -- Name to GUID
 local ByName = {}
 
--- Komplette CC Spell IDs für 3.3.5a (übernommen aus DebuffWidget)
+-- Complete CC spell IDs for 3.3.5a (taken from DebuffWidget)
 local CrowdControlSpells = {
-	-- Allgemein
+	-- General
 	[118] = true,		-- Polymorph
 	[3355] = true,		-- Freezing Trap Effect
 	[2637] = true,		-- Hibernate
@@ -131,7 +131,7 @@ local function CrowdControlAura_Update(targetguid, targetname, sourceguid, sourc
 		CrowdControlExpirationTimes[targetguid] = GetTime() + 10
 	end
 
-	-- Aktualisiere alle Nameplates sofort
+	-- Update all nameplates immediately
 	if TidyPlates then
 		TidyPlates:ForceUpdate()
 	end
@@ -141,7 +141,7 @@ local function CrowdControlAura_Remove(targetguid, ...)
 	CrowdControlledUnits[targetguid] = nil
 	CrowdControlExpirationTimes[targetguid] = 0
 
-	-- Aktualisiere alle Nameplates sofort
+	-- Update all nameplates immediately
 	if TidyPlates then
 		TidyPlates:ForceUpdate()
 	end
@@ -197,7 +197,7 @@ local function CrowdControlEventHandler(frame, event, timestamp, combatevent, so
 	end
 end
 
--- Öffentliche Funktion zur Prüfung ob Einheit unter CC steht
+-- Public function to check whether a unit is crowd controlled
 function TidyPlatesWidgets.IsUnitCrowdControlled(unit)
 	if not unit then return false end
 
@@ -343,5 +343,5 @@ TidyPlatesWidgets.CreateCrowdControlWidget = CreateCrowdControlWidget
 TidyPlatesWidgets.EnableCrowdControlWatcher = Enable
 TidyPlatesWidgets.DisableCrowdControlWatcher = Disable
 
--- Automatisch aktivieren beim Laden
+-- Enable automatically on load
 Enable()

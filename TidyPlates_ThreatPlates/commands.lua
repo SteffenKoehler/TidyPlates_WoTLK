@@ -70,41 +70,41 @@ end
 SLASH_TPTPVERBOSE1 = "/tptpverbose"
 SlashCmdList["TPTPVERBOSE"] = TPTPVERBOSE
 
---[[Plater-Optik als eigenes Profil]] --
--- /tptpplater          Profil "Plater" aktivieren (beim ersten Mal als Kopie des aktuellen Profils anlegen)
--- /tptpplater reset    Plater-Optik im Profil "Plater" erneut anwenden
--- /tptpplater default  zurück zum Profil "Default"
--- /tptpclassic [reset|default|info]  dasselbe für die Classic-Optik (Profil "Classic", weiter unten)
--- Wirkt sofort: Stile und Widgets werden beim Profilwechsel neu gebaut (ApplyProfileLive).
+--[[Plater look as a separate profile]] --
+-- /tptpplater          activate profile "Plater" (created as a copy of the current profile the first time)
+-- /tptpplater reset    re-apply the Plater look in profile "Plater"
+-- /tptpplater default  back to profile "Default"
+-- /tptpclassic [reset|default|info]  same for the Classic look (profile "Classic", further below)
+-- Takes effect immediately: styles and widgets are rebuilt on profile switch (ApplyProfileLive).
 local PLATER_PROFILE = "Plater"
--- Version der Plater-Optik. Kommen neue Einstellungen dazu: Version erhöhen und unten
--- in PlaterMigrations nur die neuen Werte nachtragen. Bestehende Plater-Profile werden
--- dann beim Einloggen bzw. beim Wechsel ins Profil ergänzt, ohne eigene Anpassungen
--- zu überschreiben (kein /tptpplater reset nötig).
+-- Version of the Plater look. When new settings are added: bump the version and add only
+-- the new values in PlaterMigrations below. Existing Plater profiles are then
+-- updated on login or when switching to the profile, without overwriting
+-- custom adjustments (no /tptpplater reset needed).
 local PLATER_LOOK_VERSION = 3
 
--- Positionen, die von der Balkengröße abhängen. Läuft beim Anwenden der Optik und erneut,
--- wenn im Profil "Plater" Breite/Höhe geändert wird; Schriftgrößen u. ä. bleiben unberührt.
+-- Positions that depend on the bar size. Runs when the look is applied and again
+-- when width/height is changed in profile "Plater"; font sizes etc. stay untouched.
 local function PlaterLayout(p)
 	local s = p.settings
 	local width, height = s.healthbar.width or 170, s.healthbar.height or 18
 	local top, bottom, left, right = height / 2, -height / 2, -width / 2, width / 2
 
-	-- Zauberleiste unter dem Balken; sie überdeckt beim Zaubern den Namen
+	-- castbar below the bar; it covers the name while casting
 	local castHeight = s.castbar.height or 16
 	local castY = bottom - 2 - castHeight / 2
 	s.castbar.y = castY
 	s.castborder.y = castY
 	s.castnostop.y = castY
 
-	-- Name unter dem Balken, volle Breite, damit lange Namen nicht so früh abgeschnitten werden
+	-- Name below the bar, full width, so long names are not truncated as early
 	s.name.width = width
 	s.name.y = castY
 
-	-- Lebenspunkte-Text mittig im Balken
+	-- Health text centered in the bar
 	s.customtext.width = width - 10
 
-	-- Zaubername links in der Zauberleiste (rechts steht die Restzeit), Symbol links daneben
+	-- Spell name on the left of the castbar (remaining time on the right), icon to its left
 	local spellWidth = width - 40
 	s.spelltext.width = spellWidth
 	s.spelltext.x = left + 3 + spellWidth / 2
@@ -113,65 +113,65 @@ local function PlaterLayout(p)
 	s.spellicon.x = left - castHeight / 2 - 2
 	s.spellicon.y = castY
 
-	-- Stufe klein über der rechten oberen Ecke
+	-- Level small above the top right corner
 	s.level.x = right - 15
 	s.level.y = top + 6
 
-	-- Raid-Symbol links neben dem Balken
+	-- Raid marker to the left of the bar
 	s.raidicon.x = left - (s.raidicon.scale or 20) / 2 - 3
 	s.raidicon.y = 0
 
-	-- Auren direkt über dem Balken (Versatz wird mit der Skalierung des Widgets multipliziert)
+	-- Auras directly above the bar (offset is multiplied by the widget's scale)
 	local auraScale = p.debuffWidget.scale or 1.15
 	p.debuffWidget.y = (top + 3) / auraScale + 9
 end
 
--- keepSize: Balkengröße des Profils behalten (Optik zurücksetzen), sonst Ausgangsgröße
+-- keepSize: keep the profile's bar size (look reset), otherwise default size
 local function ApplyPlaterLook(p, keepSize)
 	local s = p.settings
 	p.platerLookVersion = PLATER_LOOK_VERSION
 	p.platerBorder.ON = true
 	p.platerBorder.size = 1
 
-	-- Mitskalierte Rahmengrafiken aus, der scharfe Rahmen ersetzt sie
+	-- Scaled border textures off, the crisp border replaces them
 	s.healthborder.show = false
 	s.elitehealthborder.show = false
 	s.castborder.show = false
 	s.castnostop.show = false
 	s.threatborder.show = false
-	-- Ziel/Mouseover: weiß/grau über den Rahmen statt Leuchtgrafik (Pfeile bleiben)
+	-- Target/mouseover: white/gray via the border instead of glow texture (arrows stay)
 	s.target.texture = "Empty"
 	s.highlight.texture = "Empty"
 
-	-- Lebenspunkte-Text "4.3k (100%)"
+	-- Health text "4.3k (100%)"
 	p.text.parens = true
 
-	-- Konstante Größe wie bei Plater: Aggro nur über die Farbe, nicht über die Größe
-	-- (sonst schrumpfen normale Mobs im Kampf um 20 % und je nach Aggro-Stufe)
+	-- Constant size like Plater: aggro only via color, not via size
+	-- (otherwise normal mobs shrink by 20 % in combat and depending on threat level)
 	p.threat.useScale = false
-	-- Keine Aggro-Zacken um die Plakette: die Information steckt schon in der Balkenfarbe,
-	-- und mit Tank-Ansicht auf DD/Heiler zeigen sie sonst bei jedem getankten Mob eine Warnung
+	-- No threat spikes around the nameplate: the bar color already carries the information,
+	-- and with tank view on DPS/healers they would otherwise warn on every tanked mob
 	p.threat.art.ON = false
-	-- Zauberleiste nach Unterbrechbarkeit färben
+	-- Color castbar by interruptibility
 	p.platerCast.ON = true
 
-	-- Plaketten stapeln (ersetzt die WeakAura "Enhanced Stacking Nameplate")
+	-- Stack nameplates (replaces the WeakAura "Enhanced Stacking Nameplate")
 	p.stacking.ON = true
 
-	-- Schlichte Schrift mit Kontur
+	-- Plain font with outline
 	for _, key in ipairs({"name", "customtext", "spelltext", "level"}) do
 		s[key].typeface = "Arial Narrow"
 		s[key].flags = "OUTLINE"
 		s[key].shadow = false
 	end
 
-	-- Etwas größer als vorher (150x15), Zauberleiste übernimmt die Breite
+	-- Slightly larger than before (150x15), castbar takes over the width
 	if not keepSize then
 		s.healthbar.width = 170
 		s.healthbar.height = 18
 	end
 
-	-- Zauberleiste so hoch wie der Name
+	-- Castbar as tall as the name
 	s.castbar.height = 16
 
 	s.name.size = 13
@@ -191,54 +191,54 @@ local function ApplyPlaterLook(p, keepSize)
 	s.level.align = "RIGHT"
 	s.level.vertical = "CENTER"
 
-	-- Raid-Symbol links neben dem Balken (darüber sitzen jetzt die Auren)
+	-- Raid marker to the left of the bar (auras now sit above it)
 	s.raidicon.scale = 20
 
-	-- Auren mittig (3 Symbole à 24 px + 2 px Abstand)
+	-- Auras centered (3 icons of 24 px + 2 px spacing)
 	p.debuffWidget.scale = 1.15
 	p.debuffWidget.anchor = "CENTER"
-	p.debuffWidget.x = 64 - (3 * 24 + 2 * 2) / 2 -- Widget ist 128 breit, Symbole beginnen links
+	p.debuffWidget.x = 64 - (3 * 24 + 2 * 2) / 2 -- widget is 128 wide, icons start on the left
 
 	PlaterLayout(p)
 end
 
--- Classic-Optik: originale Blizzard-Grafiken (Goldrahmen mit Stufen-Feld) über dem
--- Classic-Widget, Name über dem Balken, Lebenspunkte-Text wie im Default-Profil.
--- Gleiche Versionsregel wie bei Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
+-- Classic look: original Blizzard textures (gold border with level box) via the
+-- Classic widget, name above the bar, health text as in the Default profile.
+-- Same versioning rule as for Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
 local CLASSIC_LOOK_VERSION = 11
 
--- Zauberleiste "unterbrechbar, Kick bereit" in Gold wie bei WoW Forever (Mittelton der
--- dort hell/dunkel verlaufenden Leiste; vorher Cyan)
+-- Castbar "interruptible, kick ready" in gold like WoW Forever (mid tone of
+-- its light-to-dark gradient bar; previously cyan)
 local CLASSIC_CAST_READY = {r = 1, g = 0.8, b = 0.2}
 
--- Positionen, die von Balkengröße und Rahmenstil abhängen. Läuft beim Anwenden der Optik
--- und erneut, wenn im Profil "Classic" Breite/Höhe, Rahmen oder Rahmenstärke geändert werden.
+-- Positions that depend on bar size and border style. Runs when the look is applied
+-- and again when width/height, border or border thickness is changed in profile "Classic".
 local function ClassicLayout(p)
 	local s = p.settings
 	local width, height = s.healthbar.width or 150, s.healthbar.height or 12
 	local top, bottom, left = height / 2, -height / 2, -width / 2
 	local gold = p.classicLook.frameStyle == "GOLD"
-	-- Unterkante des Rahmens: schlichte Linie bzw. Blizzard-Goldrahmen (falls schon vermessen)
+	-- Bottom edge of the border: plain line or Blizzard gold border (if already measured)
 	local borderBottom = bottom - 4
 	local art = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
 	if gold and art and art.healthborder then
 		borderBottom = math.min(bottom, (art.healthborder.bottom - 0.5) * height)
 	end
 
-	-- Name gekürzt auf Balkenbreite, beim schlichten Rahmen näher am Balken
+	-- Name truncated to bar width, closer to the bar with the plain border
 	s.name.width = width
 	s.name.y = top + (gold and 11 or 10)
 	local auraScale = p.debuffWidget.scale or 1.15
 	p.debuffWidget.y = (s.name.y + s.name.size / 2 + 2) / auraScale + 9
 
-	-- Lebenspunkte-Text mittig im Balken, Raid-Symbol links neben dem Rahmen
+	-- Health text centered in the bar, raid marker to the left of the border
 	s.customtext.width = width - 10
 	s.raidicon.x = left - 22
 
 	local castHeight, castY
 	if gold then
-		-- Gold: dünne Leiste direkt unter dem Rahmen, Zaubername klein darunter, kein Symbol
+		-- Gold: thin bar directly below the border, small spell name below it, no icon
 		castHeight = 5
 		castY = borderBottom - 1 - castHeight / 2
 		s.spelltext.width = width - 30
@@ -247,11 +247,11 @@ local function ClassicLayout(p)
 		s.spelltext.y = castY - castHeight / 2 - 7
 		s.spellicon.show = false
 	else
-		-- Schlicht: Zauberleiste im selben Rahmen wie der Balken, 9 px hoch, Zaubername links
-		-- in der Leiste (Restzeit rechts), Zaubersymbol links daneben so hoch wie der Rahmen
+		-- Plain: castbar in the same border as the bar, 9 px tall, spell name on the left
+		-- inside the bar (remaining time on the right), spell icon to its left as tall as the border
 		local inset = math.floor((6 + 2 * (p.classicLook.lineSize or 2)) / 3 + 0.5)
 		castHeight = 9
-		-- direkt unter dem Balkenrahmen; mit Combo-Punkten rückt das Widget die Leiste tiefer
+		-- directly below the bar border; with combo points the widget moves the castbar lower
 		castY = bottom - inset - 2 - inset - castHeight / 2
 		local textWidth = width - 34
 		s.spelltext.width = textWidth
@@ -270,8 +270,8 @@ local function ClassicLayout(p)
 	s.castnostop.y = castY
 end
 
--- Version 2 (Vorbild Classic-Client): Name auf Balkenbreite gekürzt, Zauberleiste direkt
--- unter dem Rahmen, Zaubername klein, Quest-Symbol an. Auch als Migration verwendet.
+-- Version 2 (modeled on the Classic client): name truncated to bar width, castbar directly
+-- below the border, small spell name, quest icon on. Also used as a migration.
 local function ApplyClassicV2(p)
 	local s = p.settings
 	s.spelltext.size = 9
@@ -283,7 +283,7 @@ local function ApplyClassicV2(p)
 	p.questIcon.ON = true
 end
 
--- keepSize: Balkengröße des Profils behalten (Optik zurücksetzen), sonst Ausgangsgröße
+-- keepSize: keep the profile's bar size (look reset), otherwise default size
 local function ApplyClassicLook(p, keepSize)
 	local s = p.settings
 	p.classicLook.frameStyle = "SIMPLE"
@@ -291,8 +291,8 @@ local function ApplyClassicLook(p, keepSize)
 	p.classicLook.ON = true
 	p.platerBorder.ON = false
 
-	-- Threat-Plates-eigene Rahmen, Elite-Symbol und Ziel-Pfeile aus; Rahmen, Drache und
-	-- Leuchten kommen vom Classic-Widget
+	-- Threat Plates' own borders, elite icon and target arrows off; border, dragon and
+	-- glow come from the Classic widget
 	s.healthborder.show = false
 	s.elitehealthborder.show = false
 	s.castborder.show = false
@@ -303,17 +303,17 @@ local function ApplyClassicLook(p, keepSize)
 	s.highlight.texture = "Empty"
 	p.targetWidget.ON = false
 
-	-- Wie bei Plater: konstante Größe, keine Aggro-Zacken, Kick-Farben, Stapeln
+	-- Like Plater: constant size, no threat spikes, kick colors, stacking
 	p.threat.useScale = false
 	p.threat.art.ON = false
 	p.platerCast.ON = true
-	p.platerCast.shieldIcon = false -- nicht unterbrechbar zeigt der Blizzard-Schildrahmen
+	p.platerCast.shieldIcon = false -- non-interruptible is shown by the Blizzard shield border
 	local c = CLASSIC_CAST_READY
 	p.platerCast.colorReady = {r = c.r, g = c.g, b = c.b}
 	p.stacking.ON = true
 
-	-- Flache Balkenfüllung, Breite etwas größer als das Original. Höhe im Seitenverhältnis
-	-- der Original-Leiste, damit der Rahmen nicht verzerrt (falls schon vermessen).
+	-- Flat bar fill, width slightly larger than the original. Height keeps the aspect ratio
+	-- of the original bar so the border is not distorted (if already measured).
 	s.healthbar.texture = "Flat"
 	s.castbar.texture = "Flat"
 	if not keepSize then
@@ -327,7 +327,7 @@ local function ApplyClassicLook(p, keepSize)
 		s.healthbar.height = height
 	end
 
-	-- Schriften wie Blizzard (Friz Quadrata mit Schatten), Lebenspunkte-Text mit Kontur
+	-- Fonts like Blizzard (Friz Quadrata with shadow), health text with outline
 	for _, key in ipairs({"name", "spelltext", "level"}) do
 		s[key].typeface = "Friz Quadrata TT"
 		s[key].flags = "NONE"
@@ -337,20 +337,20 @@ local function ApplyClassicLook(p, keepSize)
 	s.customtext.flags = "OUTLINE"
 	s.customtext.shadow = false
 
-	-- Name weiß über dem Rahmen
+	-- Name in white above the border
 	s.name.show = true
 	s.name.size = 12
 	s.name.align = "CENTER"
 	s.name.vertical = "CENTER"
 	s.name.x = 0
 
-	-- Lebenspunkte-Text mittig im Balken (Format bleibt wie im Default-Profil)
+	-- Health text centered in the bar (format stays as in the Default profile)
 	s.customtext.size = 10
 	s.customtext.x = 0
 	s.customtext.y = 0
 	s.customtext.align = "CENTER"
 
-	-- Stufe: Lage bestimmt das Classic-Widget (Feld im Rahmen)
+	-- Level: position is set by the Classic widget (level box in the border)
 	s.level.show = true
 	s.level.size = 10
 	s.level.width = 30
@@ -358,7 +358,7 @@ local function ApplyClassicLook(p, keepSize)
 	s.raidicon.scale = 20
 	s.raidicon.y = 0
 
-	-- Auren im Plater-Stil mittig über dem Namen
+	-- Plater-style auras centered above the name
 	p.debuffWidget.scale = 1.15
 	p.debuffWidget.anchor = "CENTER"
 	p.debuffWidget.x = 64 - (3 * 24 + 2 * 2) / 2
@@ -375,41 +375,41 @@ local function ProfileExists(db, name)
 	return false
 end
 
--- Nachträge pro Version (Profile ohne Versionsnummer haben Version 1)
+-- Additions per version (profiles without a version number are version 1)
 local PlaterMigrations = {
 	[2] = function(p)
-		p.threat.art.ON = false -- keine Aggro-Zacken
+		p.threat.art.ON = false -- no threat spikes
 	end,
 	[3] = function(p)
-		p.platerCast.ON = true -- Zauberleiste nach Unterbrechbarkeit färben
+		p.platerCast.ON = true -- color castbar by interruptibility
 	end
 }
 local ClassicMigrations = {
 	[2] = ApplyClassicV2,
 	[3] = function(p)
-		-- flache Balkenfüllung statt "Blizzard" (oben hell, unten schwarz)
+		-- flat bar fill instead of "Blizzard" (light at the top, black at the bottom)
 		p.settings.healthbar.texture = "Blizzard Nameplate"
 		p.settings.castbar.texture = "Blizzard Nameplate"
 	end,
 	[4] = function(p)
-		-- schlichter Rahmen wie im Classic-Era-Client (Gold bleibt als Option)
+		-- plain border like in the Classic Era client (gold remains an option)
 		p.classicLook.frameStyle = "SIMPLE"
 		ApplyClassicV2(p)
 	end,
-	-- schlichter Rahmen jetzt als Tooltip-Rahmen (etwas breiter): Name/Zauberleiste nachziehen
+	-- plain border now a tooltip border (slightly wider): adjust name/castbar to match
 	[5] = ApplyClassicV2,
 	[6] = function(p)
-		-- "Blizzard Nameplate" hat dunkle Streifen oben/unten: komplett flache Füllung
+		-- "Blizzard Nameplate" has dark stripes at top/bottom: completely flat fill
 		p.settings.healthbar.texture = "Flat"
 		p.settings.castbar.texture = "Flat"
 	end,
-	-- auffälligere Zauberleiste (Rahmen, Name in der Leiste, Symbol), Combo-Punkte darunter
+	-- more prominent castbar (border, name inside the bar, icon), combo points below it
 	[7] = ApplyClassicV2,
-	-- Combo-Punkte als Streifen unter dem Balken, Zauberleiste etwas tiefer
+	-- combo points as a strip below the bar, castbar slightly lower
 	[8] = ApplyClassicV2,
-	-- Zauberleiste wieder direkt unter dem Balken (Abstand für Combo-Punkte nur bei Bedarf)
+	-- castbar directly below the bar again (gap for combo points only when needed)
 	[9] = ApplyClassicV2,
-	-- Cyan für "Kick bereit", nur wenn noch das alte Orange eingestellt ist (eigene Wahl bleibt)
+	-- cyan for "kick ready", only if the old orange is still set (custom choice is kept)
 	[10] = function(p)
 		local cr = p.platerCast.colorReady
 		if cr.r == 1 and cr.g == 0.56 and cr.b == 0.06 then
@@ -417,8 +417,8 @@ local ClassicMigrations = {
 			p.platerCast.colorReady = {r = c.r, g = c.g, b = c.b}
 		end
 	end,
-	-- Gold wie bei WoW Forever statt Cyan; ersetzt nur einen blauen Farbton (auch selbst
-	-- gewähltes Cyan), andere eigene Farben bleiben
+	-- gold like WoW Forever instead of cyan; replaces only a blue hue (including
+	-- self-chosen cyan), other custom colors are kept
 	[11] = function(p)
 		local cr = p.platerCast.colorReady
 		if cr and cr.b > cr.r + 0.3 then
@@ -428,13 +428,13 @@ local ClassicMigrations = {
 	end
 }
 
--- Eigene Optik-Profile: Name, Anwenden, Version (Feld im Profil) und Nachträge
+-- Custom look profiles: name, apply, version (field in the profile) and migrations
 local Looks = {
 	{profile = PLATER_PROFILE, apply = ApplyPlaterLook, version = PLATER_LOOK_VERSION, key = "platerLookVersion", migrations = PlaterMigrations},
 	{profile = CLASSIC_PROFILE, apply = ApplyClassicLook, version = CLASSIC_LOOK_VERSION, key = "classicLookVersion", migrations = ClassicMigrations}
 }
 
--- Ist ein Optik-Profil aktiv und älter als die aktuelle Version, nur die neuen Werte ergänzen
+-- If a look profile is active and older than the current version, add only the new values
 function TidyPlatesThreat:UpgradePlaterProfile()
 	local db = self.db
 	if not db then
@@ -459,8 +459,8 @@ function TidyPlatesThreat:UpgradePlaterProfile()
 	end
 end
 
--- Im Profil "Plater" bzw. "Classic" die größenabhängigen Positionen neu berechnen
--- (aus den Optionen bei Änderung von Balkenbreite/-höhe, Rahmen oder Rahmenstärke)
+-- Recalculate the size-dependent positions in profile "Plater" or "Classic"
+-- (from the options when bar width/height, border or border thickness changes)
 local Layouts = {[PLATER_PROFILE] = PlaterLayout, [CLASSIC_PROFILE] = ClassicLayout}
 function TidyPlatesThreat:RelayoutLook()
 	local layout = self.db and Layouts[self.db:GetCurrentProfile()]
@@ -469,9 +469,9 @@ function TidyPlatesThreat:RelayoutLook()
 	end
 end
 
--- Legt die Optik-Profile an, falls sie auf diesem Account noch fehlen (Kopie von
--- "Default" + Optik), ohne den aktuellen Charakter umzustellen. So stehen sie
--- jedem Charakter im Profil-Dropdown zur Auswahl.
+-- Creates the look profiles if they are still missing on this account (copy of
+-- "Default" + look), without switching the current character. This makes them
+-- available to every character in the profile dropdown.
 function TidyPlatesThreat:EnsurePlaterProfile()
 	local db = self.db
 	for _, look in ipairs(Looks) do
@@ -489,9 +489,9 @@ function TidyPlatesThreat:EnsurePlaterProfile()
 	end
 end
 
--- /tptpplater bzw. /tptpclassic: Profil aktivieren (beim ersten Mal als Kopie des aktuellen
--- Profils anlegen), "reset" = Optik erneut anwenden, "default" = zurück zum Profil "Default".
--- Wirkt sofort (Stile/Widgets werden neu gebaut, kein /reload nötig).
+-- /tptpplater or /tptpclassic: activate profile (created as a copy of the current
+-- profile the first time), "reset" = re-apply look, "default" = back to profile "Default".
+-- Takes effect immediately (styles/widgets are rebuilt, no /reload needed).
 local function LookCommand(look, command, msg)
 	local db = TidyPlatesThreat.db
 	msg = strlower(strtrim(msg or ""))
@@ -510,9 +510,9 @@ local function LookCommand(look, command, msg)
 		end
 	end
 	if isNew or msg == "reset" then
-		-- reset behält die eigene Balkengröße
+		-- reset keeps the custom bar size
 		look.apply(db.profile, not isNew)
-		TidyPlatesThreat:ApplyProfileLive() -- Optik wurde nach dem Profilwechsel geändert
+		TidyPlatesThreat:ApplyProfileLive() -- look was changed after the profile switch
 	end
 	print("|cff89F559Threat Plates|r: " .. format(L["Profile \"%s\" active (back with %s default)."], look.profile, command))
 end
@@ -522,7 +522,7 @@ SlashCmdList["TPTPPLATER"] = function(msg)
 	LookCommand(Looks[1], "/tptpplater", msg)
 end
 
--- Vermessung der Original-Plakette ausgeben (zum Feinjustieren der Classic-Optik)
+-- Print measurements of the original nameplate (for fine-tuning the Classic look)
 local function PrintClassicInfo()
 	local art = TidyPlates.BlizzardArt
 	if not art then

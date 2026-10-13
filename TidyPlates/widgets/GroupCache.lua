@@ -20,7 +20,7 @@ local function UpdateRoster(frame, event, ...)
 	local groupType, groupSize
 	if UnitInRaid("player") then
 		groupType = "raid"
-		groupSize = GetNumRaidMembers() -- raid1..raidN (inkl. Spieler); vorher fehlte das letzte Mitglied
+		groupSize = GetNumRaidMembers() -- raid1..raidN (incl. player); previously the last member was missing
 	elseif UnitInParty("player") then
 		groupType = "party"
 		groupSize = GetNumPartyMembers()
