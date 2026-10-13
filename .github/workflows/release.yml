@@ -55,7 +55,7 @@ jobs:
           set -euo pipefail
           mkdir dist
           # git archive only packs tracked files and honors export-ignore
-          git archive --format=zip -o "dist/TidyPlates-RisingGods-v${VERSION}.zip" HEAD \
+          git archive --format=zip -o "dist/TidyPlates-v${VERSION}.zip" HEAD \
             TidyPlates \
             TidyPlates_ThreatPlates \
             TidyPlates_Graphite \
@@ -75,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "**TidyPlates ${VERSION} / Threat Plates ${TTP_VERSION}** for WoW 3.3.5a (Rising-Gods)"
+            echo "**TidyPlates ${VERSION} / Threat Plates ${TTP_VERSION}** for WoW 3.3.5a"
             echo
             echo "## Changes"
             echo
@@ -89,7 +89,7 @@ jobs:
             echo
             echo "## Downloads"
             echo
-            echo "- \`TidyPlates-RisingGods-v${VERSION}.zip\`: the nameplate addons (TidyPlates, Threat Plates and the themes)"
+            echo "- \`TidyPlates-v${VERSION}.zip\`: the nameplate addons (TidyPlates, Threat Plates and the themes)"
             echo "- \`TPProf-v${VERSION}.zip\`: optional CPU profiler (\`/tpprof\`)"
             echo
             echo "## Installation"
