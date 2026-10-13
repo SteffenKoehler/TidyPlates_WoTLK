@@ -16,8 +16,10 @@
 > **Classic look**, and built-in nameplate stacking. See **[CHANGES.md](CHANGES.md)**
 > for details.
 >
-> - **Install:** copy `TidyPlates`, `TidyPlates_ThreatPlates` (and optionally
->   `TPProf`) into `Interface/AddOns/` and **restart the client completely** -
+> - **Install:** download the zips from the
+>   [Releases](https://github.com/SteffenKoehler/TidyPlates_WoTLK/releases) page
+>   (or copy `TidyPlates`, `TidyPlates_ThreatPlates` and optionally `TPProf`
+>   from the repo) into `Interface/AddOns/` and **restart the client completely** -
 >   WoW 3.3.5a only picks up new files after a restart, `/reload` is not enough.
 > - **Profiles:** the `Default` profile contains all optimizations and the color
 >   scheme. The profiles `Plater` and `Classic` are created automatically and add
