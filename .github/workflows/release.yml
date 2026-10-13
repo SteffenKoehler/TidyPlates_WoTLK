@@ -1,0 +1,112 @@
+name: Release
+
+# A release is a version tag (e.g. v6.7.0) on a commit that is on main:
+#   git checkout main && git pull
+#   git tag v6.7.0 && git push origin v6.7.0
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags for the changelog
+
+      - name: Check tag
+        id: meta
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $TAG does not point to a commit on main"
+            exit 1
+          fi
+
+          TP_VERSION=$(sed -n 's/^## Version: *//p' TidyPlates/TidyPlates.toc | tr -d '\r')
+          TTP_VERSION=$(sed -n 's/^## Version: *//p' TidyPlates_ThreatPlates/TidyPlates_ThreatPlates.toc | tr -d '\r')
+          if [ "$VERSION" != "$TP_VERSION" ]; then
+            echo "::error::Tag $TAG does not match TidyPlates.toc version $TP_VERSION"
+            exit 1
+          fi
+
+          PREV_TAG=$(git describe --tags --abbrev=0 --match "v*" "${GITHUB_SHA}^" 2>/dev/null || true)
+
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "ttp_version=$TTP_VERSION"
+            echo "prev_tag=$PREV_TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build zips
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir dist
+          # git archive only packs tracked files and honors export-ignore
+          git archive --format=zip -o "dist/TidyPlates-RisingGods-v${VERSION}.zip" HEAD \
+            TidyPlates \
+            TidyPlates_ThreatPlates \
+            TidyPlates_Graphite \
+            TidyPlates_Grey \
+            TidyPlates_Neon \
+            TidyPlates_Quatre
+          git archive --format=zip -o "dist/TPProf-v${VERSION}.zip" HEAD TPProf
+          ls -l dist
+
+      - name: Release notes
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          TTP_VERSION: ${{ steps.meta.outputs.ttp_version }}
+          PREV_TAG: ${{ steps.meta.outputs.prev_tag }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          {
+            echo "**TidyPlates ${VERSION} / Threat Plates ${TTP_VERSION}** for WoW 3.3.5a (Rising-Gods)"
+            echo
+            echo "## Changes"
+            echo
+            if [ -n "$PREV_TAG" ]; then
+              git log --no-merges --reverse --pretty="- %s (%h)" "${PREV_TAG}..${TAG}"
+              echo
+              echo "Full diff: ${REPO_URL}/compare/${PREV_TAG}...${TAG}"
+            else
+              echo "First release of this fork. All changes on top of the Hypopheria Remaster are listed in [CHANGES.md](${REPO_URL}/blob/${TAG}/CHANGES.md)."
+            fi
+            echo
+            echo "## Downloads"
+            echo
+            echo "- \`TidyPlates-RisingGods-v${VERSION}.zip\`: the nameplate addons (TidyPlates, Threat Plates and the themes)"
+            echo "- \`TPProf-v${VERSION}.zip\`: optional CPU profiler (\`/tpprof\`)"
+            echo
+            echo "## Installation"
+            echo
+            echo "1. Extract the zip(s) into \`Interface/AddOns/\` (replace existing folders)."
+            echo "2. Restart the client completely - WoW 3.3.5a only picks up new files after a restart, \`/reload\` is not enough."
+          } > notes.md
+          cat notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          TTP_VERSION: ${{ steps.meta.outputs.ttp_version }}
+        run: |
+          gh release create "$TAG" dist/*.zip \
+            --title "v${VERSION} (TidyPlates ${VERSION} / Threat Plates ${TTP_VERSION})" \
+            --notes-file notes.md \
+            --verify-tag
