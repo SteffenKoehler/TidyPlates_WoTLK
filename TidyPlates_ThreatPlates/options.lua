@@ -4203,8 +4203,8 @@ local function GetOptions()
 									name = L["Look like the nameplates of the Classic client. Applies to the current profile; the profile \"Classic\" is preconfigured (/tptpclassic)."],
 									fontSize = "medium"
 								},
-								Options = {
-									name = "",
+								General = {
+									name = L["General"],
 									type = "group",
 									inline = true,
 									order = 1,
@@ -4222,7 +4222,7 @@ local function GetOptions()
 											name = L["Border"],
 											desc = L["Simple: thin line, dark background and a separate level box like the Classic Era client. Gold: original Blizzard gold border from WotLK."],
 											type = "select",
-											order = 1.1,
+											order = 2,
 											values = {SIMPLE = L["Simple (Classic Era)"], GOLD = L["Gold (Blizzard WotLK)"]},
 											disabled = function()
 												return not db.classicLook.ON
@@ -4238,7 +4238,7 @@ local function GetOptions()
 										LineSize = {
 											name = L["Border size"],
 											type = "range",
-											order = 1.2,
+											order = 3,
 											min = 1,
 											max = 4,
 											step = 1,
@@ -4253,11 +4253,35 @@ local function GetOptions()
 											end,
 											arg = {"classicLook", "lineSize"}
 										},
+										LevelSize = {
+											name = L["Level font size"],
+											desc = L["Relative to the Blizzard font in the level box."],
+											type = "range",
+											order = 4,
+											min = 0.5,
+											max = 1.2,
+											step = 0.05,
+											isPercent = true,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "levelSize"}
+										},
+									}
+								},
+								Target = {
+									name = L["Target"],
+									type = "group",
+									inline = true,
+									order = 2,
+									args = {
 										TargetBorder = {
 											name = L["Target: color border"],
 											desc = L["Border and level box of the target are highlighted in the chosen color (yellow-green like the Classic client)."],
 											type = "toggle",
-											order = 2,
+											order = 1,
 											disabled = function()
 												return not db.classicLook.ON
 											end,
@@ -4268,7 +4292,7 @@ local function GetOptions()
 										LineTargetColor = {
 											name = L["Color (simple)"],
 											type = "color",
-											order = 2.5,
+											order = 2,
 											disabled = function()
 												return not (db.classicLook.ON and db.classicLook.targetBorder and db.classicLook.frameStyle ~= "GOLD")
 											end,
@@ -4315,7 +4339,7 @@ local function GetOptions()
 											name = L["Glow size"],
 											desc = L["How far the glow reaches out around the border."],
 											type = "range",
-											order = 5.1,
+											order = 6,
 											min = 2,
 											max = 20,
 											step = 1,
@@ -4326,11 +4350,19 @@ local function GetOptions()
 											set = SetValue,
 											arg = {"classicLook", "glowSize"}
 										},
+									}
+								},
+								NonTarget = {
+									name = L["Non-targets"],
+									type = "group",
+									inline = true,
+									order = 3,
+									args = {
 										NonTargetScale = {
 											name = L["Non-target size"],
 											desc = L["Nameplates that are not your target are scaled down to this fraction (1 = same size)."],
 											type = "range",
-											order = 6,
+											order = 1,
 											min = 0.5,
 											max = 1,
 											step = 0.05,
@@ -4346,7 +4378,7 @@ local function GetOptions()
 											name = L["Smooth size change"],
 											desc = L["When targeting or clearing the target, the nameplate grows or shrinks smoothly instead of jumping."],
 											type = "toggle",
-											order = 6.1,
+											order = 2,
 											disabled = function()
 												return not db.classicLook.ON
 											end,
@@ -4358,7 +4390,7 @@ local function GetOptions()
 											name = L["Transition time"],
 											desc = L["Duration of the size change in seconds."],
 											type = "range",
-											order = 6.2,
+											order = 3,
 											min = 0.05,
 											max = 1,
 											step = 0.05,
@@ -4369,27 +4401,19 @@ local function GetOptions()
 											set = SetValue,
 											arg = {"classicLook", "scaleSmoothTime"}
 										},
-										LevelSize = {
-											name = L["Level font size"],
-											desc = L["Relative to the Blizzard font in the level box."],
-											type = "range",
-											order = 7,
-											min = 0.5,
-											max = 1.2,
-											step = 0.05,
-											isPercent = true,
-											disabled = function()
-												return not db.classicLook.ON
-											end,
-											get = GetValue,
-											set = SetValue,
-											arg = {"classicLook", "levelSize"}
-										},
+									}
+								},
+								Cast = {
+									name = L["Castbar"],
+									type = "group",
+									inline = true,
+									order = 4,
+									args = {
 										CastBorder = {
 											name = L["Blizzard castbar"],
 											desc = L["Blizzard's castbar border (with shield on uninterruptible spells) instead of the thin bar. Only fits a taller castbar (/tptpclassic reset sets the thin one)."],
 											type = "toggle",
-											order = 8,
+											order = 1,
 											disabled = function()
 												return not db.classicLook.ON
 											end,
@@ -4397,12 +4421,24 @@ local function GetOptions()
 											set = SetValue,
 											arg = {"classicLook", "castBorder"}
 										},
+										CastSpark = {
+											name = L["Castbar spark"],
+											desc = L["Glowing spark at the end of the castbar fill, like the Blizzard castbar. Applies from the next cast."],
+											type = "toggle",
+											order = 2,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "castSpark"}
+										},
 										KickHighlight = {
 											name = L["Kick ready: highlight border"],
 											desc = L["The castbar border lights up in the chosen color while the spell is interruptible and your interrupt is ready before the cast ends (simple border)."],
 											type = "toggle",
 											width = "double",
-											order = 8.5,
+											order = 3,
 											disabled = function()
 												return not (db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD" and not db.classicLook.castBorder)
 											end,
@@ -4413,7 +4449,7 @@ local function GetOptions()
 										KickReadyColor = {
 											name = L["Color"],
 											type = "color",
-											order = 8.6,
+											order = 4,
 											disabled = function()
 												return not (db.classicLook.ON and db.classicLook.kickHighlight and db.classicLook.frameStyle ~= "GOLD" and not db.classicLook.castBorder)
 											end,
@@ -4421,23 +4457,19 @@ local function GetOptions()
 											set = SetColor,
 											arg = {"classicLook", "kickReadyColor"}
 										},
-										CastSpark = {
-											name = L["Castbar spark"],
-											desc = L["Glowing spark at the end of the castbar fill, like the Blizzard castbar. Applies from the next cast."],
-											type = "toggle",
-											order = 8.7,
-											disabled = function()
-												return not db.classicLook.ON
-											end,
-											get = GetValue,
-											set = SetValue,
-											arg = {"classicLook", "castSpark"}
-										},
+									}
+								},
+								ResetGroup = {
+									name = "",
+									type = "group",
+									inline = true,
+									order = 5,
+									args = {
 										Reset = {
 											name = L["Reset look"],
 											desc = L["Resets the Classic look in the profile \"Classic\" to its initial values (layout, fonts; your bar size is kept) - like /tptpclassic reset. Only possible in the profile \"Classic\"; switch profiles under \"Profiles\"."],
 											type = "execute",
-											order = 20,
+											order = 1,
 											confirm = true,
 											confirmText = L["Reset the Classic look to its initial values?"],
 											disabled = function()
@@ -4448,7 +4480,7 @@ local function GetOptions()
 											end
 										},
 									}
-								}
+								},
 							}
 						},
 						Castbar = {
