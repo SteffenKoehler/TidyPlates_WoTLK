@@ -206,11 +206,14 @@ end
 -- Classic widget, name above the bar, health text as in the Default profile.
 -- Same versioning rule as for Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 14
+local CLASSIC_LOOK_VERSION = 15
 
 -- Castbar "interruptible, kick ready" in gold like WoW Forever (mid tone of
 -- its light-to-dark gradient bar; previously cyan)
 local CLASSIC_CAST_READY = {r = 1, g = 0.8, b = 0.2}
+
+-- Target glow in the Blizzard UI gold
+local CLASSIC_GLOW = {r = 1, g = 0.82, b = 0, a = 0.9}
 
 -- Positions that depend on bar size and border style. Runs when the look is applied
 -- and again when width/height, border or border thickness is changed in profile "Classic".
@@ -290,6 +293,7 @@ local function ApplyClassicLook(p, keepSize)
 	p.classicLookVersion = CLASSIC_LOOK_VERSION
 	p.classicLook.ON = true
 	p.classicLook.targetGlow = true
+	p.classicLook.glowColor = {r = CLASSIC_GLOW.r, g = CLASSIC_GLOW.g, b = CLASSIC_GLOW.b, a = CLASSIC_GLOW.a}
 	p.platerBorder.ON = false
 
 	-- Threat Plates' own borders, elite icon and target arrows off; border, dragon and
@@ -433,6 +437,11 @@ local ClassicMigrations = {
 	-- soft golden glow around the target's border
 	[14] = function(p)
 		p.classicLook.targetGlow = true
+	end,
+	-- glow in the Blizzard UI gold
+	[15] = function(p)
+		local c = CLASSIC_GLOW
+		p.classicLook.glowColor = {r = c.r, g = c.g, b = c.b, a = c.a}
 	end
 }
 
