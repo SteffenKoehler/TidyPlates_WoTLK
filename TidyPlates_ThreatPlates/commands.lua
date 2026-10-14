@@ -206,7 +206,7 @@ end
 -- Classic widget, name above the bar, health text as in the Default profile.
 -- Same versioning rule as for Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 11
+local CLASSIC_LOOK_VERSION = 12
 
 -- Castbar "interruptible, kick ready" in gold like WoW Forever (mid tone of
 -- its light-to-dark gradient bar; previously cyan)
@@ -249,7 +249,7 @@ local function ClassicLayout(p)
 	else
 		-- Plain: castbar in the same border as the bar, 9 px tall, spell name on the left
 		-- inside the bar (remaining time on the right), spell icon to its left as tall as the border
-		local inset = math.floor((6 + 2 * (p.classicLook.lineSize or 2)) / 3 + 0.5)
+		local _, inset = ThreatPlatesWidgets.ClassicSimpleEdge(p.classicLook.lineSize)
 		castHeight = 9
 		-- directly below the bar border; with combo points the widget moves the castbar lower
 		castY = bottom - inset - 2 - inset - castHeight / 2
@@ -425,6 +425,13 @@ local ClassicMigrations = {
 			local c = CLASSIC_CAST_READY
 			p.platerCast.colorReady = {r = c.r, g = c.g, b = c.b}
 		end
+	end,
+	-- border thickness now in pixels (2 = 2 px instead of 1 px): wider inset, relayout
+	[12] = function(p)
+		if (p.classicLook.lineSize or 2) > 3 then
+			p.classicLook.lineSize = 3
+		end
+		ClassicLayout(p)
 	end
 }
 

@@ -538,11 +538,14 @@ local function Anchor(obj, point, rel, relPoint, x, y)
 	return true
 end
 
--- Border thickness 1-4 -> edge size of the tooltip texture; the bar is indented by "inset"
+-- Border thickness 1-3 -> edge size of the tooltip texture; the bar is indented by "inset".
+-- The visible line of the tooltip texture is about edge/10 wide (measured in-game:
+-- edge 10 = 1 px on the target), so thickness N gives about N pixels.
 local function SimpleEdge(lineSize)
-	local edge = 6 + 2 * (lineSize or 2)
+	local edge = 10 * (lineSize or 2)
 	return edge, math.floor(edge / 3 + 0.5)
 end
+ThreatPlatesWidgets.ClassicSimpleEdge = SimpleEdge
 
 local function SimpleBackdrop(frame, edge, inset)
 	if frame.edge == edge then
@@ -749,12 +752,14 @@ local function UpdateSimpleLook(plate, unit, look, cfg)
 	-- Runs on context and normal update; only set font and position if they
 	-- differ (the core resets them on style changes)
 	local level = plate.visual.level
-	if Anchor(level, "CENTER", box, "CENTER", 0.5, 0) then
-		level:SetJustifyH("CENTER")
-	end
 	local art = TidyPlates.BlizzardArt
 	local font = (art and art.levelFont and art.levelFont[1]) or STANDARD_TEXT_FONT
 	local size = math.max(9, h * 1.05) * (cfg.levelSize or 1)
+	-- The font box reserves room for descenders that digits don't have, so centered
+	-- digits sit too high (2 px measured in-game): move down by about 15 % of the font size
+	if Anchor(level, "CENTER", box, "CENTER", 0.5, -math.floor(size * 0.15 + 0.5)) then
+		level:SetJustifyH("CENTER")
+	end
 	local curFont, curSize, curFlags = level:GetFont()
 	if curFont ~= font or not curSize or math.abs(curSize - size) > 0.5 or curFlags ~= "OUTLINE" then
 		level:SetFont(font, size, "OUTLINE")
