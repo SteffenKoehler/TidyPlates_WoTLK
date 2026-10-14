@@ -509,6 +509,7 @@ end
 local function HideSimpleParts(look)
 	look.frame:Hide()
 	look.box:Hide()
+	look.simpleGlow:Hide()
 end
 
 local function HideClassicParts(look)
@@ -567,6 +568,69 @@ local function SetSimpleColor(frame, r, g, b)
 	end
 end
 
+-- Soft glow around border and level box (target). Nine-slice without the center from a
+-- radial gradient: the corners are its quadrants, the edges a thin slice through
+-- the middle, so the glow is brightest at the border line and fades outwards.
+local GLOW_TEXTURE = "Interface\\AddOns\\TidyPlates_ThreatPlates\\Media\\ClassicGlow"
+local GLOW_SIZE = 7 -- how far the glow reaches out
+local GLOW_OVERLAP = 2 -- the tooltip edge has a transparent margin: start at the line
+
+local GLOW_PIECES = {
+	-- corners: point on the piece, point on the inner rect, texcoords left/right/top/bottom
+	{"BOTTOMRIGHT", "TOPLEFT", 0, 0.5, 0, 0.5},
+	{"BOTTOMLEFT", "TOPRIGHT", 0.5, 1, 0, 0.5},
+	{"TOPRIGHT", "BOTTOMLEFT", 0, 0.5, 0.5, 1},
+	{"TOPLEFT", "BOTTOMRIGHT", 0.5, 1, 0.5, 1},
+}
+
+local function CreateSimpleGlow(hb, frame, box)
+	local glow = CreateFrame("Frame", nil, hb)
+	glow:SetFrameLevel(math.max(0, hb:GetFrameLevel() - 2))
+	glow:SetPoint("TOPLEFT", frame, "TOPLEFT", GLOW_OVERLAP, -GLOW_OVERLAP)
+	glow:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -GLOW_OVERLAP, GLOW_OVERLAP)
+	glow:Hide()
+	local function Piece(l, r, t, b)
+		local tex = glow:CreateTexture(nil, "BACKGROUND")
+		tex:SetTexture(GLOW_TEXTURE)
+		tex:SetBlendMode("ADD")
+		tex:SetTexCoord(l, r, t, b)
+		glow[#glow + 1] = tex
+		return tex
+	end
+	for _, p in ipairs(GLOW_PIECES) do
+		local tex = Piece(p[3], p[4], p[5], p[6])
+		tex:SetWidth(GLOW_SIZE)
+		tex:SetHeight(GLOW_SIZE)
+		tex:SetPoint(p[1], glow, p[2])
+	end
+	local top = Piece(0.49, 0.51, 0, 0.5)
+	top:SetPoint("BOTTOMLEFT", glow, "TOPLEFT")
+	top:SetPoint("BOTTOMRIGHT", glow, "TOPRIGHT")
+	top:SetHeight(GLOW_SIZE)
+	local bottom = Piece(0.49, 0.51, 0.5, 1)
+	bottom:SetPoint("TOPLEFT", glow, "BOTTOMLEFT")
+	bottom:SetPoint("TOPRIGHT", glow, "BOTTOMRIGHT")
+	bottom:SetHeight(GLOW_SIZE)
+	local left = Piece(0, 0.5, 0.49, 0.51)
+	left:SetPoint("TOPRIGHT", glow, "TOPLEFT")
+	left:SetPoint("BOTTOMRIGHT", glow, "BOTTOMLEFT")
+	left:SetWidth(GLOW_SIZE)
+	local right = Piece(0.5, 1, 0.49, 0.51)
+	right:SetPoint("TOPLEFT", glow, "TOPRIGHT")
+	right:SetPoint("BOTTOMLEFT", glow, "BOTTOMRIGHT")
+	right:SetWidth(GLOW_SIZE)
+	return glow
+end
+
+local function SetSimpleGlowColor(glow, c)
+	if glow.r ~= c.r or glow.g ~= c.g or glow.b ~= c.b or glow.a ~= c.a then
+		glow.r, glow.g, glow.b, glow.a = c.r, c.g, c.b, c.a
+		for i = 1, #glow do
+			glow[i]:SetVertexColor(c.r, c.g, c.b, c.a or 1)
+		end
+	end
+end
+
 local function CreateSimpleParts(look, hb)
 	-- Below the bar (one level lower) so the fill sits above the background;
 	-- the edge lies outside the bar and stays visible
@@ -580,6 +644,7 @@ local function CreateSimpleParts(look, hb)
 	box:SetPoint("LEFT", frame, "RIGHT", SIMPLE_GAP, 0)
 	box:Hide()
 	look.box = box
+	look.simpleGlow = CreateSimpleGlow(hb, frame, box)
 end
 
 -- Combo points as a thin bar-width strip directly below the border. The texture is
@@ -744,6 +809,13 @@ local function UpdateSimpleLook(plate, unit, look, cfg)
 	SetSimpleColor(box, r, g, b)
 	frame:Show()
 	box:Show()
+	local glow = look.simpleGlow
+	if cfg.targetGlow and unit.isTarget then
+		SetSimpleGlowColor(glow, cfg.glowColor)
+		glow:Show()
+	else
+		glow:Hide()
+	end
 
 	-- Level centered in the box (difficulty color from the core), elite with "+";
 	-- skull (boss) in the same spot

@@ -4289,7 +4289,7 @@ local function GetOptions()
 										},
 										TargetGlow = {
 											name = L["Target: glow"],
-											desc = L["Additional soft glow behind the target's nameplate."],
+											desc = L["Soft glow around the target's border and level box (gold border: behind the nameplate)."],
 											type = "toggle",
 											order = 4,
 											disabled = function()
