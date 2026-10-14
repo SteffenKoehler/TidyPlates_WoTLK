@@ -511,6 +511,8 @@ L["Border and level box of the target are highlighted in the chosen color (yello
 L["Color (simple)"] = "Farbe (schlicht)"
 L["Color (gold)"] = "Farbe (Gold)"
 L["Target: glow"] = "Ziel: Leuchten"
+L["Glow size"] = "Leuchten: Reichweite"
+L["How far the glow reaches out around the border."] = "Wie weit das Leuchten über den Rahmen hinausreicht."
 L["Soft glow around the target's border and level box (gold border: behind the nameplate)."] = "Weicher Schein um Rahmen und Levelbox des Ziels (goldener Rahmen: hinter der Plakette)."
 L["Non-target size"] = "Größe Nicht-Ziele"
 L["Nameplates that are not your target are scaled down to this fraction (1 = same size)."] = "Plaketten, die nicht dein Ziel sind, werden auf diesen Anteil verkleinert (1 = gleich groß)."

@@ -796,6 +796,7 @@ function TidyPlatesThreat:OnInitialize()
 				targetColor = {r = 0.45, g = 1, b = 0.15},
 				targetGlow = false,
 				glowColor = {r = 1, g = 0.82, b = 0, a = 0.9}, -- Blizzard UI gold
+				glowSize = 7, -- how far the glow reaches out around the plain border
 				levelSize = 0.85, -- level relative to the Blizzard font size
 				castBorder = false, -- Blizzard castbar border (otherwise thin bar with 1 px border)
 				kickHighlight = true, -- castbar border bright when you can interrupt right now

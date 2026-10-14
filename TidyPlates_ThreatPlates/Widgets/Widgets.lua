@@ -572,7 +572,7 @@ end
 -- radial gradient: the corners are its quadrants, the edges a thin slice through
 -- the middle, so the glow is brightest at the border line and fades outwards.
 local GLOW_TEXTURE = "Interface\\AddOns\\TidyPlates_ThreatPlates\\Media\\ClassicGlow"
-local GLOW_SIZE = 7 -- how far the glow reaches out
+local GLOW_SIZE = 7 -- how far the glow reaches out (default of classicLook.glowSize)
 local GLOW_OVERLAP = 2 -- the tooltip edge has a transparent margin: start at the line
 
 local GLOW_PIECES = {
@@ -599,27 +599,42 @@ local function CreateSimpleGlow(hb, frame, box)
 	end
 	for _, p in ipairs(GLOW_PIECES) do
 		local tex = Piece(p[3], p[4], p[5], p[6])
-		tex:SetWidth(GLOW_SIZE)
-		tex:SetHeight(GLOW_SIZE)
 		tex:SetPoint(p[1], glow, p[2])
+		tex.sizeW, tex.sizeH = true, true
 	end
 	local top = Piece(0.49, 0.51, 0, 0.5)
 	top:SetPoint("BOTTOMLEFT", glow, "TOPLEFT")
 	top:SetPoint("BOTTOMRIGHT", glow, "TOPRIGHT")
-	top:SetHeight(GLOW_SIZE)
+	top.sizeH = true
 	local bottom = Piece(0.49, 0.51, 0.5, 1)
 	bottom:SetPoint("TOPLEFT", glow, "BOTTOMLEFT")
 	bottom:SetPoint("TOPRIGHT", glow, "BOTTOMRIGHT")
-	bottom:SetHeight(GLOW_SIZE)
+	bottom.sizeH = true
 	local left = Piece(0, 0.5, 0.49, 0.51)
 	left:SetPoint("TOPRIGHT", glow, "TOPLEFT")
 	left:SetPoint("BOTTOMRIGHT", glow, "BOTTOMLEFT")
-	left:SetWidth(GLOW_SIZE)
+	left.sizeW = true
 	local right = Piece(0.5, 1, 0.49, 0.51)
 	right:SetPoint("TOPLEFT", glow, "TOPRIGHT")
 	right:SetPoint("BOTTOMLEFT", glow, "BOTTOMRIGHT")
-	right:SetWidth(GLOW_SIZE)
+	right.sizeW = true
 	return glow
+end
+
+local function SetSimpleGlowSize(glow, size)
+	if glow.size == size then
+		return
+	end
+	glow.size = size
+	for i = 1, #glow do
+		local tex = glow[i]
+		if tex.sizeW then
+			tex:SetWidth(size)
+		end
+		if tex.sizeH then
+			tex:SetHeight(size)
+		end
+	end
 end
 
 local function SetSimpleGlowColor(glow, c)
@@ -812,6 +827,7 @@ local function UpdateSimpleLook(plate, unit, look, cfg)
 	local glow = look.simpleGlow
 	if cfg.targetGlow and unit.isTarget then
 		SetSimpleGlowColor(glow, cfg.glowColor)
+		SetSimpleGlowSize(glow, cfg.glowSize or GLOW_SIZE)
 		glow:Show()
 	else
 		glow:Hide()

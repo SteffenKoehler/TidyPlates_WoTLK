@@ -4311,6 +4311,21 @@ local function GetOptions()
 											set = SetColorAlpha,
 											arg = {"classicLook", "glowColor"}
 										},
+										GlowSize = {
+											name = L["Glow size"],
+											desc = L["How far the glow reaches out around the border."],
+											type = "range",
+											order = 5.1,
+											min = 2,
+											max = 20,
+											step = 1,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.targetGlow and db.classicLook.frameStyle ~= "GOLD")
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "glowSize"}
+										},
 										NonTargetScale = {
 											name = L["Non-target size"],
 											desc = L["Nameplates that are not your target are scaled down to this fraction (1 = same size)."],

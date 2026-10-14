@@ -511,6 +511,8 @@ L["Border and level box of the target are highlighted in the chosen color (yello
 L["Color (simple)"] = true
 L["Color (gold)"] = true
 L["Target: glow"] = true
+L["Glow size"] = true
+L["How far the glow reaches out around the border."] = true
 L["Soft glow around the target's border and level box (gold border: behind the nameplate)."] = true
 L["Non-target size"] = true
 L["Nameplates that are not your target are scaled down to this fraction (1 = same size)."] = true
