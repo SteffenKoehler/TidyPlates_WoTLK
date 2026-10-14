@@ -220,6 +220,23 @@ local function CastTimerOnUpdate(self)
 	end
 end
 
+-- Spark at the end of the fill (like the Blizzard/ElvUI castbar). Anchored to the
+-- fill texture, so it moves with the bar without an own update. Size follows the
+-- bar height, which is only final after Place.
+local function UpdateCastSpark(self)
+	local spark = self.spark
+	if not TidyPlatesThreat.db.profile.classicLook.castSpark then
+		spark:Hide()
+		return
+	end
+	local h = math.max(12, math.floor(self.bar:GetHeight() * 2.2 + 0.5))
+	spark:SetHeight(h)
+	spark:SetWidth(math.max(10, math.floor(h * 0.6 + 0.5)))
+	spark:ClearAllPoints()
+	spark:SetPoint("CENTER", self.bar:GetStatusBarTexture(), "RIGHT", 0, 0)
+	spark:Show()
+end
+
 -- Castbar visible: hide the name. It sits in the same spot, and on the target
 -- (level 127) it would otherwise be drawn above the castbar. SetAlpha is not enough,
 -- because SetTextColor (on every color update) resets the alpha.
@@ -227,6 +244,9 @@ local function OnCastShow(self)
 	self.lastMax, self.lastValue, self.channel, self.nextState, self.lastTenth = nil, nil, nil, nil, nil
 	if self.Place then
 		self:Place()
+	end
+	if self.spark then
+		UpdateCastSpark(self)
 	end
 	if not self.keepName then
 		self.plate.visual.name:Hide()
@@ -785,6 +805,10 @@ function ThreatPlatesWidgets.CreateClassicLook(plate)
 	cast.simple:Hide()
 	cast.PlaceSimple = PlaceSimpleCast
 	cast.SetKickReady = SetSimpleKickReady
+	cast.spark = cast:CreateTexture(nil, "OVERLAY")
+	cast.spark:SetTexture("Interface\\CastingBar\\UI-CastingBar-Spark")
+	cast.spark:SetBlendMode("ADD")
+	cast.spark:Hide()
 	ThreatPlatesWidgets.AddCastTimer(cast, TidyPlatesThreat.db.profile.settings.spelltext.size or 10, plate)
 	look.cast = cast
 	-- Stacking offsets only know the border size now

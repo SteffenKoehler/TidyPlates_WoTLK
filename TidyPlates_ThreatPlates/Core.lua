@@ -800,6 +800,7 @@ function TidyPlatesThreat:OnInitialize()
 				castBorder = false, -- Blizzard castbar border (otherwise thin bar with 1 px border)
 				kickHighlight = true, -- castbar border bright when you can interrupt right now
 				kickReadyColor = {r = 1, g = 1, b = 1},
+				castSpark = true, -- glowing spark at the end of the castbar fill
 				nonTargetScale = 0.75, -- scale of nameplates that are not the target (1 = off)
 				scaleSmooth = true, -- smooth instead of abrupt scale change on target/untarget
 				scaleSmoothTime = 0.2 -- transition duration in seconds

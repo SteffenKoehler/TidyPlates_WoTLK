@@ -4406,6 +4406,18 @@ local function GetOptions()
 											set = SetColor,
 											arg = {"classicLook", "kickReadyColor"}
 										},
+										CastSpark = {
+											name = L["Castbar spark"],
+											desc = L["Glowing spark at the end of the castbar fill, like the Blizzard castbar. Applies from the next cast."],
+											type = "toggle",
+											order = 8.7,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "castSpark"}
+										},
 										Reset = {
 											name = L["Reset look"],
 											desc = L["Resets the Classic look in the profile \"Classic\" to its initial values (layout, fonts; your bar size is kept) - like /tptpclassic reset. Only possible in the profile \"Classic\"; switch profiles under \"Profiles\"."],
