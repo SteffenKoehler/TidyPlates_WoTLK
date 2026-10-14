@@ -48,12 +48,13 @@ border, HP as `11.8k (100%)`, name below the bar, small level top right.
 | ![Plater castbar](docs/images/plater-look.png) | Target castbar with the 1 px border, HP as `72.8k (24%)`. |
 
 **Classic look** (profile `Classic`, `/tptpclassic`): flat bar in a rounded frame,
-separate level box, yellow-green line on the target. Non-target plates are
+separate level box, golden glow around the target. Non-target plates are
 smaller (75 %); when you change targets, the plates grow and shrink smoothly
 (*Extensions* → *Classic look* → "Smooth size change", "Transition time").
 
 | | |
 |---|---|
+| ![Classic target glow and castbar spark](docs/images/classic-glow.png) | Target with a soft glow in the Blizzard UI gold around frame, level box and castbar (*Extensions* → *Classic look* → *Target*: "Target: glow", "Glow size", "Glow around the castbar"), castbar spark at the end of the fill like the Blizzard/ElvUI castbar, combo points under the bar. |
 | ![Classic castbar](docs/images/classic-castbar.png) | Castbar like WoW Forever: attached under the bar, as wide as bar + level box, yellow while your interrupt is ready (grey on cooldown, lock for uninterruptible casts); spell name and remaining time below. Purple bar = your aggro. |
 | ![Classic look with combo points](docs/images/classic-combo-points.png) | Combo points as a segmented strip under the target's bar, colored by count (1 blue … 5 red). |
 | ![Quest icon](docs/images/classic-quest-icon.png) | Quest icon in front of the name for mobs that are an open kill objective in the quest log (*Extensions* → *Quest icon*). |

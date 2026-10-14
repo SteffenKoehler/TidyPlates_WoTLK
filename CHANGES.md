@@ -114,6 +114,20 @@ Target and mouseover are authoritative. Additionally, only when unique:
 - Castbar like WoW Forever: attached under the bar, as wide as bar + level
   box, gold/yellow while your interrupt is ready, grey on cooldown, lock for
   uninterruptible casts; spell name and remaining time below.
+- Castbar spark (option "Castbar spark", default on): the Blizzard castbar
+  spark (`Interface\CastingBar\UI-CastingBar-Spark`, additive) glows at the
+  end of the fill like on the ElvUI/Blizzard player castbar. It is anchored to
+  the fill edge, so it moves without an own update.
+- Target glow (options "Target: glow", "Color", "Glow size", "Glow around the
+  castbar"; on in the profile "Classic"): a soft glow in the Blizzard UI gold
+  (1 / 0.82 / 0, 90 %) around the target's frame and level box, brightest at
+  the line and fading out over 5 units. Optionally it also surrounds the
+  castbar while the target casts. Drawn as a nine-slice from a radial gradient
+  (`Media/ClassicGlow.tga`, new file - needs a full client restart once).
+  With the gold frame style the option keeps the Blizzard glow behind the plate.
+- The level number is centered in its box: the font box reserves room for
+  descenders that digits don't have, so it moves down by 15 % of the font size.
+- Defaults of the profile "Classic": border size 1, glow size 5.
 - Name above the bar, health text as in "Default", Plater-style auras above
   the name, interrupt castbar colors and stacking as in the Plater look.
 - Quest icon (any profile, option `questIcon`): shown in front of the name of
@@ -174,7 +188,8 @@ logout), so results can be read outside the game.
 
 Options: `/tptp` → tab **Extensions** (German client: Erweiterungen) with the
 sub-pages Plater look, Classic look, Castbar (interrupt colors), Stacking and
-Quest icon. Profiles are switched via the regular profile dropdown; each look
+Quest icon. The Classic look page is grouped into General, Target,
+Non-targets and Castbar. Profiles are switched via the regular profile dropdown; each look
 page has a "Reset look" button (enabled only in the matching profile).
 
 The regular size options keep working in the look profiles: changing the
