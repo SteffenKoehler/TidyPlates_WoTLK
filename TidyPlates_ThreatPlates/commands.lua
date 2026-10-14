@@ -292,7 +292,9 @@ local function ApplyClassicLook(p, keepSize)
 	p.classicLook.frameStyle = "SIMPLE"
 	p.classicLookVersion = CLASSIC_LOOK_VERSION
 	p.classicLook.ON = true
+	p.classicLook.lineSize = 1
 	p.classicLook.targetGlow = true
+	p.classicLook.glowSize = 5
 	p.classicLook.glowColor = {r = CLASSIC_GLOW.r, g = CLASSIC_GLOW.g, b = CLASSIC_GLOW.b, a = CLASSIC_GLOW.a}
 	p.platerBorder.ON = false
 

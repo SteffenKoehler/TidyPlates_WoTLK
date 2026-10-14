@@ -572,7 +572,7 @@ end
 -- radial gradient: the corners are its quadrants, the edges a thin slice through
 -- the middle, so the glow is brightest at the border line and fades outwards.
 local GLOW_TEXTURE = "Interface\\AddOns\\TidyPlates_ThreatPlates\\Media\\ClassicGlow"
-local GLOW_SIZE = 7 -- how far the glow reaches out (default of classicLook.glowSize)
+local GLOW_SIZE = 5 -- how far the glow reaches out (default of classicLook.glowSize)
 local GLOW_OVERLAP = 2 -- the tooltip edge has a transparent margin: start at the line
 
 local GLOW_PIECES = {
