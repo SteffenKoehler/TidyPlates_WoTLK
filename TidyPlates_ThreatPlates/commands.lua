@@ -206,7 +206,7 @@ end
 -- Classic widget, name above the bar, health text as in the Default profile.
 -- Same versioning rule as for Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 12
+local CLASSIC_LOOK_VERSION = 13
 
 -- Castbar "interruptible, kick ready" in gold like WoW Forever (mid tone of
 -- its light-to-dark gradient bar; previously cyan)
@@ -426,13 +426,9 @@ local ClassicMigrations = {
 			p.platerCast.colorReady = {r = c.r, g = c.g, b = c.b}
 		end
 	end,
-	-- border thickness now in pixels (2 = 2 px instead of 1 px): wider inset, relayout
-	[12] = function(p)
-		if (p.classicLook.lineSize or 2) > 3 then
-			p.classicLook.lineSize = 3
-		end
-		ClassicLayout(p)
-	end
+	-- back to the thin border (version 12 had doubled it): relayout
+	[12] = ClassicLayout,
+	[13] = ClassicLayout
 }
 
 -- Custom look profiles: name, apply, version (field in the profile) and migrations

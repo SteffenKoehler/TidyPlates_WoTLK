@@ -4240,7 +4240,7 @@ local function GetOptions()
 											type = "range",
 											order = 1.2,
 											min = 1,
-											max = 3,
+											max = 4,
 											step = 1,
 											disabled = function()
 												return not (db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD")

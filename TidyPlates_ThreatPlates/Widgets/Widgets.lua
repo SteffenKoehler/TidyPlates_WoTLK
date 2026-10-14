@@ -538,11 +538,9 @@ local function Anchor(obj, point, rel, relPoint, x, y)
 	return true
 end
 
--- Border thickness 1-3 -> edge size of the tooltip texture; the bar is indented by "inset".
--- The visible line of the tooltip texture is about edge/10 wide (measured in-game:
--- edge 10 = 1 px on the target), so thickness N gives about N pixels.
+-- Border thickness 1-4 -> edge size of the tooltip texture; the bar is indented by "inset"
 local function SimpleEdge(lineSize)
-	local edge = 10 * (lineSize or 2)
+	local edge = 6 + 2 * (lineSize or 2)
 	return edge, math.floor(edge / 3 + 0.5)
 end
 ThreatPlatesWidgets.ClassicSimpleEdge = SimpleEdge
