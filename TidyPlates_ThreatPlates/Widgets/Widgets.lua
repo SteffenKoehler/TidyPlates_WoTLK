@@ -468,10 +468,12 @@ local function PlaceClassicCast(self)
 		if cl.frameStyle ~= "GOLD" then
 			return self:PlaceSimple()
 		end
+		self.glow:Hide()
 		return PlaceThinCast(self)
 	end
 	self.thin:Hide()
 	self.simple:Hide()
+	self.glow:Hide()
 	local art = TidyPlates.BlizzardArt
 	if art and not art.cast and TidyPlates.MeasureBlizzardCast then
 		TidyPlates.MeasureBlizzardCast(plate)
@@ -739,6 +741,14 @@ local function PlaceSimpleCast(self)
 	SimpleBackdrop(frame, edge, inset)
 	frame:Show()
 	bar:SetBackgroundColor(0, 0, 0, 0) -- dark background comes from the border
+	-- Target glow also around the castbar (optional)
+	if cfg.targetGlow and cfg.castGlow and self.plate.unit.isTarget then
+		SetSimpleGlowColor(self.glow, cfg.glowColor)
+		SetSimpleGlowSize(self.glow, cfg.glowSize or GLOW_SIZE)
+		self.glow:Show()
+	else
+		self.glow:Hide()
+	end
 
 	-- Placed directly below the health bar; space for the combo points only while they
 	-- are shown. Icon and spell name are attached to the bar. (The core resets the
@@ -894,6 +904,7 @@ function ThreatPlatesWidgets.CreateClassicLook(plate)
 	cast.simple = CreateFrame("Frame", nil, cb)
 	cast.simple:SetFrameLevel(math.max(0, cb:GetFrameLevel() - 1))
 	cast.simple:Hide()
+	cast.glow = CreateSimpleGlow(cb, cast.simple, cast.simple)
 	cast.PlaceSimple = PlaceSimpleCast
 	cast.SetKickReady = SetSimpleKickReady
 	cast.spark = cast:CreateTexture(nil, "OVERLAY")

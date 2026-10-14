@@ -4350,6 +4350,18 @@ local function GetOptions()
 											set = SetValue,
 											arg = {"classicLook", "glowSize"}
 										},
+										CastGlow = {
+											name = L["Glow around the castbar"],
+											desc = L["The target glow also surrounds the castbar while the target casts."],
+											type = "toggle",
+											order = 7,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.targetGlow and db.classicLook.frameStyle ~= "GOLD")
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "castGlow"}
+										},
 									}
 								},
 								NonTarget = {
