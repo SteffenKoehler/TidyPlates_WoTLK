@@ -8,19 +8,36 @@ _G.TidyPlates = TidyPlates
 -- Make sure TidyPlatesData always exists (even before ADDON_LOADED)
 TidyPlatesData = TidyPlatesData or {}
 
--- Remembers per spell (name) whether it can be interrupted. The client only knows this reliably
--- for target and mouseover; once stored it also applies to non-target castbars
--- (the combat log does not provide this information).
-local function LearnCastShield(spell, notInterruptible)
-	if not spell then
+-- Remembers per caster name and spell whether the cast can be interrupted. The client
+-- only knows this for units with a token (target, mouseover, focus, group targets);
+-- stored, it also applies to casts known only from the combat log, which has no such
+-- flag. Keyed by caster as well: a spell name shared by many mobs (Shadow Bolt) is often
+-- uninterruptible for one boss only. Replaces the old per-spell table (CastShield), whose
+-- entries could mark every mob's cast of that name.
+local function CastShieldKey(caster, spell)
+	return caster .. "\001" .. spell
+end
+
+local function LearnCastShield(caster, spell, notInterruptible)
+	if not (caster and spell) then
 		return
 	end
-	local known = TidyPlatesData.CastShield
+	local known = TidyPlatesData.CastShieldByCaster
 	if not known then
 		known = {}
-		TidyPlatesData.CastShield = known
+		TidyPlatesData.CastShieldByCaster = known
+		TidyPlatesData.CastShield = nil
 	end
-	known[spell] = notInterruptible and true or false
+	known[CastShieldKey(caster, spell)] = notInterruptible and true or false
+end
+TidyPlates.LearnCastShield = LearnCastShield
+
+-- true/false when learned, nil when unknown
+local function KnownCastShield(caster, spell)
+	local known = TidyPlatesData.CastShieldByCaster
+	if known and caster and spell then
+		return known[CastShieldKey(caster, spell)]
+	end
 end
 
 TidyPlates.callbacks = TidyPlates.callbacks or LibStub("CallbackHandler-1.0"):New(TidyPlates)
@@ -1371,7 +1388,8 @@ do
 				channel = true
 			end
 			if spell and startTime and endTime then
-				LearnCastShield(spell, notInterruptible)
+				notInterruptible = notInterruptible and true or false
+				LearnCastShield(UnitName("mouseover"), spell, notInterruptible)
 				TidyPlates.StartTimedCastOnNameplate(plate, u.guid, spell, nil, icon, notInterruptible, startTime / 1000, endTime / 1000, channel)
 			end
 		end
@@ -1462,9 +1480,10 @@ do
 			unit.isCasting = true
 			unit.spellName = spell
 			unit.spellID = spellid
-			-- Unknown (combat log): use stored knowledge about the spell
-			if not notInterruptible and TidyPlatesData.CastShield and TidyPlatesData.CastShield[spell] then
-				notInterruptible = true
+			-- nil = unknown (combat log): use what was learned for this caster and spell;
+			-- true/false come from the client and are exact
+			if notInterruptible == nil then
+				notInterruptible = KnownCastShield(unit.name, spell) or false
 			end
 			unit.spellIsShielded = notInterruptible
 			unit.spellInterruptible = not notInterruptible
@@ -1575,7 +1594,8 @@ do
 			StopTargetCastFallback()
 			local guid = UnitGUID("target")
 			if spell then
-				LearnCastShield(spell, nonInt)
+				nonInt = nonInt and true or false
+				LearnCastShield(UnitName("target"), spell, nonInt)
 				if guid and startMS and endMS and endMS > startMS and TidyPlates.RememberTargetCast then
 					TidyPlates.RememberTargetCast(guid, spell, spellid, icon, nonInt, startMS / 1000, endMS / 1000, channel)
 				end

@@ -217,12 +217,13 @@ local function OnSpellCast(...)
 	if FoundPlate then
 		local FoundPlateUnit = FoundPlate.extended.unit
 		if not FoundPlateUnit.isTarget then
-			StartTimedCast(FoundPlate, sourceGUID, spell, spellid, icon, false, now, now + castTime / 1000, false)
+			-- interruptible unknown (nil): the core uses what it learned for this caster
+			StartTimedCast(FoundPlate, sourceGUID, spell, spellid, icon, nil, now, now + castTime / 1000, false)
 		end
 	else
 		-- Nameplate (not yet) known: remember the cast so it shows up with the
 		-- remaining time once the nameplate is identified
-		RememberCast(sourceGUID, spell, spellid, icon, false, now, now + castTime / 1000, false)
+		RememberCast(sourceGUID, spell, spellid, icon, nil, now, now + castTime / 1000, false)
 	end
 end
 
@@ -313,8 +314,11 @@ local function PollUnitCast(uid, now, targetGUID)
 		notInterruptible = notInterruptible and true or false
 		local startTime, endTime = startMS / 1000, endMS / 1000
 		local plate = TidyPlates.NameplatesByGUID[guid]
+		TidyPlates.LearnCastShield(UnitName(uid), spell, notInterruptible)
+		-- A cast from the combat log (interruptible unknown) is restarted once with the
+		-- client's exact values
 		local same = c and c.spell == spell and math.abs(c.endTime - endTime) < 0.05
-			and (c.notInterruptible and true or false) == notInterruptible
+			and c.notInterruptible == notInterruptible
 		if same then
 			-- Known cast: only make sure it is shown (plate identified meanwhile)
 			if plate and not ActiveCasts[plate] then
