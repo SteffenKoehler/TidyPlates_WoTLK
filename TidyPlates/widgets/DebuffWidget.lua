@@ -592,8 +592,11 @@ local function UpdateWidgetTime(frame, expiration)
 	end
 end
 
--- Expiration shade (spirals/cooldown models are not drawn on nameplates in 3.3.5a)
+-- Expiration shade (spirals/cooldown models are not drawn on nameplates in 3.3.5a).
+-- Redrawn about every 1/360 of the duration (one degree of the clock), at most 30x and
+-- at least 4x per second: long debuffs no longer redraw at the full rate.
 local SHADE_INTERVAL = 0.033
+local SHADE_INTERVAL_MAX = 0.25
 -- Clock: the elapsed time is drawn as a dark circular sector clockwise from 12 o'clock.
 -- Cooldown models don't work on nameplates, so it is built from parts: full quarters
 -- as rectangles, the partial quarter from a triangle (texture ClockTriangle =
@@ -627,14 +630,28 @@ local function PlaceClockRect(tex, frame, q, cx, cy, u0, u1, v0, v1)
 	local x0, x1 = min(xa, xb), max(xa, xb)
 	local y0, y1 = min(ya, yb), max(ya, yb)
 	if x1 - x0 < 0.05 or y1 - y0 < 0.05 then
-		tex:Hide()
+		if tex.on ~= false then
+			tex.on = false
+			tex:Hide()
+		end
 		return
 	end
-	tex:ClearAllPoints()
+	-- Only anchored at BOTTOMLEFT, so SetPoint replaces the previous anchor
 	tex:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", x0, y0)
 	tex:SetWidth(x1 - x0)
 	tex:SetHeight(y1 - y0)
-	tex:Show()
+	if not tex.on then
+		tex.on = true
+		tex:Show()
+	end
+end
+
+-- Hides a clock part (tracked in tex.on to skip redundant Show/Hide calls)
+local function HidePart(tex)
+	if tex.on ~= false then
+		tex.on = false
+		tex:Hide()
+	end
 end
 
 local function CreateClock(frame)
@@ -664,11 +681,12 @@ local function HideClock(frame)
 	local clock = frame.Clock
 	if clock then
 		for q = 1, 4 do
-			clock.quarters[q]:Hide()
+			HidePart(clock.quarters[q])
 		end
-		clock.extra:Hide()
-		clock.triangle:Hide()
-		clock.hand:Hide()
+		HidePart(clock.extra)
+		HidePart(clock.triangle)
+		HidePart(clock.hand)
+		clock.full, clock.triQ, clock.handSize = nil, nil, nil
 	end
 end
 
@@ -678,15 +696,24 @@ local function UpdateClock(frame, frac)
 	local cx, cy = w / 2, h / 2
 	local angle = frac * TWO_PI
 	local full = mfloor(angle / HALF_PI)
-	for q = 1, 4 do
-		local a, b = cx, cy
-		if q == 2 or q == 4 then
-			a, b = cy, cx
-		end
-		if q <= full then
-			PlaceClockRect(clock.quarters[q], frame, q, cx, cy, 0, a, 0, b)
-		else
-			clock.quarters[q]:Hide()
+	if clock.w ~= w or clock.h ~= h then
+		clock.w, clock.h = w, h
+		clock.full, clock.handSize = nil, nil
+		clock.hand:SetPoint("CENTER", frame, "BOTTOMLEFT", cx, cy)
+	end
+	-- Full quarters only change when the hand enters the next quarter
+	if clock.full ~= full then
+		clock.full = full
+		for q = 1, 4 do
+			local a, b = cx, cy
+			if q == 2 or q == 4 then
+				a, b = cy, cx
+			end
+			if q <= full then
+				PlaceClockRect(clock.quarters[q], frame, q, cx, cy, 0, a, 0, b)
+			else
+				HidePart(clock.quarters[q])
+			end
 		end
 	end
 	local q = full + 1
@@ -697,12 +724,15 @@ local function UpdateClock(frame, frac)
 		end
 		local phi = angle - full * HALF_PI
 		local tri = clock.triangle
-		local c = TRI_COORDS[q]
-		tri:SetTexCoord(c[1], c[2], c[3], c[4])
+		if clock.triQ ~= q then
+			clock.triQ = q
+			local c = TRI_COORDS[q]
+			tri:SetTexCoord(c[1], c[2], c[3], c[4])
+		end
 		if phi <= matan2(a, b) then
 			-- Ray hits the outer edge in the start direction
 			PlaceClockRect(tri, frame, q, cx, cy, 0, b * mtan(phi), 0, b)
-			clock.extra:Hide()
+			HidePart(clock.extra)
 		else
 			-- Ray hits the side edge: rectangle above + triangle below
 			local v1 = a / mtan(phi)
@@ -710,8 +740,8 @@ local function UpdateClock(frame, frac)
 			PlaceClockRect(tri, frame, q, cx, cy, 0, a, 0, v1)
 		end
 	else
-		clock.triangle:Hide()
-		clock.extra:Hide()
+		HidePart(clock.triangle)
+		HidePart(clock.extra)
 	end
 	-- Hand: square texture around the center, image rotated clockwise via texture
 	-- coordinates. The size is chosen per angle so that the line ends exactly at the
@@ -721,22 +751,27 @@ local function UpdateClock(frame, frac)
 	local co, si = mcos(angle), msin(angle)
 	local reach = min(si ~= 0 and cx / mabs(si) or cx * 100, co ~= 0 and cy / mabs(co) or cy * 100)
 	local size = 2 * reach / HAND_LENGTH
-	hand:ClearAllPoints()
-	hand:SetPoint("CENTER", frame, "BOTTOMLEFT", cx, cy)
-	hand:SetWidth(size)
-	hand:SetHeight(size)
+	-- Anchored at the center once (on resize); the size only changes near the corners
+	if not clock.handSize or mabs(clock.handSize - size) > 0.05 then
+		clock.handSize = size
+		hand:SetWidth(size)
+		hand:SetHeight(size)
+	end
 	-- Texture point = center + inverse rotation of the screen point (y pointing down)
 	hand:SetTexCoord(
 		0.5 - 0.5 * co - 0.5 * si, 0.5 + 0.5 * si - 0.5 * co, -- top left
 		0.5 - 0.5 * co + 0.5 * si, 0.5 + 0.5 * si + 0.5 * co, -- bottom left
 		0.5 + 0.5 * co - 0.5 * si, 0.5 - 0.5 * si - 0.5 * co, -- top right
 		0.5 + 0.5 * co + 0.5 * si, 0.5 - 0.5 * si + 0.5 * co) -- bottom right
-	hand:Show()
+	if not hand.on then
+		hand.on = true
+		hand:Show()
+	end
 end
 
 local function ShadeOnUpdate(frame, elapsed)
 	local tick = frame.shadeTick + elapsed
-	if tick < SHADE_INTERVAL then
+	if tick < frame.shadeInterval then
 		frame.shadeTick = tick
 		return
 	end
@@ -751,21 +786,27 @@ local function ShadeOnUpdate(frame, elapsed)
 		return
 	end
 	if frac <= 0.02 or frac >= 1 then
-		frame.Shade:Hide()
-		frame.ShadeEdge:Hide()
-		frame.Grey:Hide()
+		if frame.barOn then
+			frame.barOn = false
+			frame.Shade:Hide()
+			frame.ShadeEdge:Hide()
+			frame.Grey:Hide()
+		end
 	else
 		local height = frame:GetHeight() * frac
 		frame.Shade:SetHeight(height)
 		-- Crop the grey copy of the icon to the elapsed (upper) part; reuse the icon's
-		-- crop coordinates (themes trim the edges)
+		-- crop coordinates (themes trim the edges; read once in UpdateIcon)
 		local grey = frame.Grey
-		local left, top, _, bottom, right = frame.Icon:GetTexCoord()
-		grey:SetTexCoord(left, right, top, top + (bottom - top) * frac)
+		local tc = frame.iconCoords
+		grey:SetTexCoord(tc[1], tc[2], tc[3], tc[3] + (tc[4] - tc[3]) * frac)
 		grey:SetHeight(height)
-		grey:Show()
-		frame.Shade:Show()
-		frame.ShadeEdge:Show()
+		if not frame.barOn then
+			frame.barOn = true
+			grey:Show()
+			frame.Shade:Show()
+			frame.ShadeEdge:Show()
+		end
 	end
 end
 
@@ -780,7 +821,8 @@ local function UpdateIcon(frame, texture, expiration, stacks, duration)
 		local widget = frame:GetParent()
 		if widget.showSpiral and duration and duration > 0 then
 			frame.shadeStart, frame.shadeDuration = expiration - duration, duration
-			frame.shadeTick = SHADE_INTERVAL
+			frame.shadeInterval = max(SHADE_INTERVAL, min(SHADE_INTERVAL_MAX, duration / 360))
+			frame.shadeTick = frame.shadeInterval
 			-- Style: "BAR" (grey bar, default) or "CLOCK" (clock)
 			local style = widget.timerStyle == "CLOCK" and "CLOCK" or "BAR"
 			if frame.timerStyle ~= style then
@@ -788,8 +830,13 @@ local function UpdateIcon(frame, texture, expiration, stacks, duration)
 				frame.Shade:Hide()
 				frame.ShadeEdge:Hide()
 				frame.Grey:Hide()
+				frame.barOn = false
 				HideClock(frame)
 			end
+			local tc = frame.iconCoords or {}
+			local left, top, _, bottom, right = frame.Icon:GetTexCoord()
+			tc[1], tc[2], tc[3], tc[4] = left, right, top, bottom
+			frame.iconCoords = tc
 			frame:SetScript("OnUpdate", ShadeOnUpdate)
 			frame.Grey:SetTexture(texture)
 			frame.Grey:SetDesaturated(true)
@@ -798,6 +845,7 @@ local function UpdateIcon(frame, texture, expiration, stacks, duration)
 			frame.Shade:Hide()
 			frame.ShadeEdge:Hide()
 			frame.Grey:Hide()
+			frame.barOn = false
 			HideClock(frame)
 		end
 
