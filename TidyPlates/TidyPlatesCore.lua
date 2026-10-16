@@ -246,6 +246,9 @@ do
 	local texturegroup = {"castborder", "castnostop", "healthborder", "threatborder", "eliteicon", "skullicon", "highlight", "target"}
 	-- UpdateStyle:
 	function UpdateStyle()
+		-- Themes can skip re-placing regions while this is unchanged (anchors and fonts
+		-- of the style regions are only reset here)
+		extended.styleSerial = (extended.styleSerial or 0) + 1
 		-- Frame
 		SetAnchorGroupObject(extended, style.frame, nameplate)
 		-- Anchorgroup
