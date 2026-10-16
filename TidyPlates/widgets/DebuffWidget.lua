@@ -1,6 +1,27 @@
 TidyPlatesWidgets.DebuffWidgetBuild = 2
 
 local GetSpellInfo = GetSpellInfo
+
+-- Spell names and icons never change: looked up once per spell ID instead of on every
+-- combat log aura event and every redraw
+local SpellNames, SpellTextures = {}, {}
+local function SpellName(spellid)
+	local name = SpellNames[spellid]
+	if not name then
+		name = GetSpellInfo(spellid)
+		SpellNames[spellid] = name
+	end
+	return name
+end
+local function SpellTexture(spellid)
+	local texture = SpellTextures[spellid]
+	if not texture then
+		local _
+		_, _, texture = GetSpellInfo(spellid)
+		SpellTextures[spellid] = texture
+	end
+	return texture
+end
 local PolledHideIn = TidyPlatesWidgets.PolledHideIn
 local AuraMonitor = CreateFrame("Frame")
 
@@ -376,6 +397,9 @@ local function UpdateAuraByLookup(guid)
 	elseif guid == UnitGUID("mouseover") then
 		UpdateAurasByUnitID("mouseover")
 		return true
+	elseif guid == UnitGUID("focus") then
+		UpdateAurasByUnitID("focus")
+		return true
 	end
 	if TargetOfGroupMembersDirty then
 		RebuildTargetOfGroupMembers()
@@ -396,7 +420,7 @@ end
 local function CombatLog_ApplyAura(...)
 	local timestamp, sourceGUID, destGUID, destName, spellid = ...
 	local duration = GetSpellDuration(spellid)
-	local _, _, texture = GetSpellInfo(spellid)
+	local texture = SpellTexture(spellid)
 	SetAuraInstance(destGUID, spellid, GetTime() + (duration or 0), 1, sourceGUID, duration, texture, AURA_TYPE_DEBUFF, AURA_TARGET_HOSTILE)
 end
 
@@ -408,7 +432,7 @@ end
 local function CombatLog_UpdateAuraStacks(...)
 	local timestamp, sourceGUID, destGUID, destName, spellid, stackCount = ...
 	local duration = GetSpellDuration(spellid)
-	local _, _, texture = GetSpellInfo(spellid)
+	local texture = SpellTexture(spellid)
 	SetAuraInstance(destGUID, spellid, GetTime() + (duration or 0), stackCount, sourceGUID, duration, texture, AURA_TYPE_DEBUFF, AURA_TARGET_HOSTILE)
 end
 
@@ -433,14 +457,13 @@ local function EventRaidTarget()
 	wipe(ByRaidIconName)
 end
 
+-- Target, focus and mouseover (live update while hovering): the GUID is queued like
+-- combat log aura events, so several UNIT_AURA events per frame (and the combat log
+-- events of the same unit) cause a single rescan in ProcessPending
+local QueueGUID
 local function EventUnitAura(unitid)
-	if unitid == "target" then
-		UpdateAurasByUnitID("target")
-	elseif unitid == "focus" then
-		UpdateAurasByUnitID("focus")
-	elseif unitid == "mouseover" then
-		-- Live update while hovering over a nameplate
-		UpdateAurasByUnitID("mouseover")
+	if unitid == "target" or unitid == "focus" or unitid == "mouseover" then
+		QueueGUID(UnitGUID(unitid))
 	end
 end
 
@@ -504,7 +527,7 @@ local function ProcessPending(self)
 	end
 end
 
-local function QueueGUID(guid, raidicon, name)
+function QueueGUID(guid, raidicon, name)
 	if not guid then
 		return
 	end
@@ -898,8 +921,9 @@ local function UpdateIconGrid(frame, guid)
 			aura.spellid, aura.expiration, aura.stacks, aura.caster, aura.duration, aura.texture, aura.type, aura.target =
 				GetAuraInstance(guid, instanceid)
 
-			if tonumber(aura.spellid) then
-				aura.name = GetSpellInfo(tonumber(aura.spellid))
+			local spellid = tonumber(aura.spellid)
+			if spellid then
+				aura.name = SpellName(spellid)
 				aura.unit = frame.unit
 
 				-- Call Filter Function
