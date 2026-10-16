@@ -1,7 +1,7 @@
 # 🟦 Tidy Plates Backport for WotLK 3.3.5a
 > A fully functional, modernized backport for **World of Warcraft: Wrath of the Lich King (3.3.5a)**
 
-[![Version](https://img.shields.io/badge/version-6.7.0-blue.svg)](CHANGES.md)
+[![Version](https://img.shields.io/badge/version-6.9.0-blue.svg)](CHANGES.md)
 [![WoW](https://img.shields.io/badge/WoW-3.3.5a-orange.svg)](https://wowpedia.fandom.com/wiki/World_of_Warcraft:_Wrath_of_the_Lich_King)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -47,16 +47,18 @@ border, HP as `11.8k (100%)`, name below the bar, small level top right.
 | ![Plater stacking](docs/images/plater-stacking.png) | Out of combat (red = hostile) with stacking: plates move out of each other's way instead of overlapping. |
 | ![Plater castbar](docs/images/plater-look.png) | Target castbar with the 1 px border, HP as `72.8k (24%)`. |
 
-**Classic look** (profile `Classic`, `/tptpclassic`): flat bar in a rounded frame,
-separate level box, yellow-green line on the target. Non-target plates are
-smaller (75 %); when you change targets, the plates grow and shrink smoothly
-(*Extensions* → *Classic look* → "Smooth size change", "Transition time").
+**Classic look** (profile `Classic`, `/tptpclassic`): nameplates modeled on
+WoW Forever (*Extensions* →
+*Classic look* → "Style": **Forever Modern** (default), Forever Classic,
+Simple). Non-target plates are smaller (75 %); when you change targets, the
+plates grow and shrink smoothly ("Smooth size change", "Transition time").
 
 | | |
 |---|---|
-| ![Classic castbar](docs/images/classic-castbar.png) | Castbar like WoW Forever: attached under the bar, as wide as bar + level box, yellow while your interrupt is ready (grey on cooldown, lock for uninterruptible casts); spell name and remaining time below. Purple bar = your aggro. |
-| ![Classic look with combo points](docs/images/classic-combo-points.png) | Combo points as a segmented strip under the target's bar, colored by count (1 blue … 5 red). |
-| ![Quest icon](docs/images/classic-quest-icon.png) | Quest icon in front of the name for mobs that are an open kill objective in the quest log (*Extensions* → *Quest icon*). |
+| ![Forever Modern target](docs/images/forever-target.png) | Style "Forever Modern": yellow target line with a gold glow around bar and level box, level box in the bar's style, castbar 4 units below as wide as bar + box (gold fill = your interrupt is ready, grey on cooldown, lock for uninterruptible casts; white line while you can kick), spell name and remaining time below. Line and glow are adjustable (*Target*: "Border size" 50-200 %, "Target: glow", "Glow size" 50-150 %). The "!" in front of the name marks a quest mob. |
+| ![Quest icon](docs/images/classic-quest-icon.png) | Quest icon "!" in front of the name for mobs that are an open kill objective in the quest log (*Extensions* → *Quest icon*). Aura stack counts sit in the icon's bottom right corner. |
+| ![Simple style with target glow](docs/images/classic-glow.png) | Style "Simple": flat bar in a rounded frame with a separate level box and a soft glow in the Blizzard UI gold ("Glow size", "Glow around the castbar"), castbar spark at the end of the fill like the Blizzard/ElvUI castbar. |
+| ![Classic look with combo points](docs/images/classic-combo-points.png) | Combo points as a segmented strip under the target's bar, colored by count (1 blue … 5 red) (style Simple). |
 
 **Stacking** (`/tptp` → *Extensions* → *Stacking*): enemy plates move out of each
 other's way, the target stays pinned above its model ("Pin target").

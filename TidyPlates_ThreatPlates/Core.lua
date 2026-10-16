@@ -789,17 +789,22 @@ function TidyPlatesThreat:OnInitialize()
 			-- mouseover = Blizzard highlight
 			classicLook = {
 				ON = false,
-				frameStyle = "SIMPLE", -- "SIMPLE" = thin line + level box (Classic Era), "GOLD" = Blizzard gold border
+				frameStyle = "SIMPLE", -- "SIMPLE" = rounded line + level box, "MODERN" = WoW Forever's nameplates, "GOLD" = Blizzard gold border (Forever Classic)
 				lineSize = 2, -- line thickness of the plain border (screen pixels)
 				lineTargetColor = {r = 0.8, g = 0.9, b = 0.25}, -- line on the target (plain border)
 				targetBorder = true, -- color the border (with level box) on the target
 				targetColor = {r = 0.45, g = 1, b = 0.15},
 				targetGlow = false,
-				glowColor = {r = 1, g = 0.9, b = 0.55, a = 0.9},
+				glowColor = {r = 1, g = 0.82, b = 0, a = 0.9}, -- Blizzard UI gold
+				castGlow = true, -- target glow also around the castbar
+				glowSize = 5, -- how far the glow reaches out around the plain border
+				modernGlowScale = 1, -- Forever Modern: glow reach relative to Forever's (1 = 9 units)
+				modernLineScale = 1, -- Forever Modern: target line thickness relative to Forever's (1 = 2 units)
 				levelSize = 0.85, -- level relative to the Blizzard font size
 				castBorder = false, -- Blizzard castbar border (otherwise thin bar with 1 px border)
 				kickHighlight = true, -- castbar border bright when you can interrupt right now
 				kickReadyColor = {r = 1, g = 1, b = 1},
+				castSpark = true, -- glowing spark at the end of the castbar fill
 				nonTargetScale = 0.75, -- scale of nameplates that are not the target (1 = off)
 				scaleSmooth = true, -- smooth instead of abrupt scale change on target/untarget
 				scaleSmoothTime = 0.2 -- transition duration in seconds
@@ -1392,8 +1397,8 @@ local function DebuffExtraTop(extended)
 	end
 	local second = icons[ceil(#icons / 2) + 1]
 	local rows = (second and second:IsShown()) and 2 or 1
-	-- icons 18 tall, second row 12 above, row starts 3 above the bar
-	return 3 + (rows * 18 + (rows - 1) * 12) * w:GetScale() + 4
+	-- icons 18 tall, second row 12 above (2 with stack counts inside), row starts 3 above the bar
+	return 3 + (rows * 18 + (rows - 1) * (w.rowGap or 12)) * w:GetScale() + 4
 end
 
 -- Pass stacking to TidyPlates. Minimum spacing = bar width + 10 or height of
@@ -1414,7 +1419,7 @@ function TidyPlatesThreat:ApplyStacking()
 	-- Classic: the Blizzard border (with level box) or line + level box is larger than the bar
 	local art = p.classicLook.ON and p.classicLook.frameStyle == "GOLD" and TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
 	if p.classicLook.ON and p.classicLook.frameStyle ~= "GOLD" and ThreatPlatesWidgets and ThreatPlatesWidgets.ClassicSimpleExtent then
-		xspace = width + ThreatPlatesWidgets.ClassicSimpleExtent(height, p.classicLook.lineSize) + 8
+		xspace = width + ThreatPlatesWidgets.ClassicSimpleExtent(height, p.classicLook.lineSize, p.classicLook.frameStyle) + 8
 		top, bottom = top + 4, bottom - 4
 	elseif art then
 		local b = art.healthborder

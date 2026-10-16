@@ -206,38 +206,99 @@ end
 -- Classic widget, name above the bar, health text as in the Default profile.
 -- Same versioning rule as for Plater (CLASSIC_LOOK_VERSION + ClassicMigrations).
 local CLASSIC_PROFILE = "Classic"
-local CLASSIC_LOOK_VERSION = 11
+local CLASSIC_LOOK_VERSION = 22
 
 -- Castbar "interruptible, kick ready" in gold like WoW Forever (mid tone of
 -- its light-to-dark gradient bar; previously cyan)
 local CLASSIC_CAST_READY = {r = 1, g = 0.8, b = 0.2}
 
+-- Target glow in the Blizzard UI gold
+local CLASSIC_GLOW = {r = 1, g = 0.82, b = 0, a = 0.9}
+
 -- Positions that depend on bar size and border style. Runs when the look is applied
 -- and again when width/height, border or border thickness is changed in profile "Classic".
+-- Forever values: name 2 above
+-- the bar (Modern) or 4 above it (Classic), castbar 2 (Modern) / 4 (Classic) below.
 local function ClassicLayout(p)
 	local s = p.settings
 	local width, height = s.healthbar.width or 150, s.healthbar.height or 12
 	local top, bottom, left = height / 2, -height / 2, -width / 2
-	local gold = p.classicLook.frameStyle == "GOLD"
-	-- Bottom edge of the border: plain line or Blizzard gold border (if already measured)
+	local style = p.classicLook.frameStyle
+	local gold = style == "GOLD"
+	local modern = style == "MODERN"
+	-- Edges of the border: plain line or Blizzard gold border (if already measured)
 	local borderBottom = bottom - 4
 	local art = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
 	if gold and art and art.healthborder then
 		borderBottom = math.min(bottom, (art.healthborder.bottom - 0.5) * height)
 	end
-
-	-- Name truncated to bar width, closer to the bar with the plain border
-	s.name.width = width
-	s.name.y = top + (gold and 11 or 10)
 	local auraScale = p.debuffWidget.scale or 1.15
-	p.debuffWidget.y = (s.name.y + s.name.size / 2 + 2) / auraScale + 9
 
-	-- Health text centered in the bar, raid marker to the left of the border
-	s.customtext.width = width - 10
+	-- Name truncated to the frame width
+	local nameSize = s.name.size or 12
+	if modern then
+		-- Forever Modern: level box to the right of the bar, name across bar + box; the gap
+		-- grows with the target line (Widgets.lua: MODERN_BOX_GAP x line scale)
+		local k = height / 13
+		local lineScale = math.floor((p.classicLook.modernLineScale or 1) * 4 + 0.5) / 4
+		local boxW, gap = math.floor(24 * k + 0.5), 4 * lineScale * k
+		s.name.width = width + gap + boxW
+		s.name.x = (gap + boxW) / 2
+		s.name.y = top + 2 + nameSize / 2
+		-- auras left-aligned with the bar (the widget is 128 wide, icons start on its left)
+		p.debuffWidget.x = left / auraScale + 64
+	else
+		s.name.width = width
+		s.name.x = 0
+		s.name.y = gold and (top + 4 + nameSize / 2) or (top + 10)
+		p.debuffWidget.x = 64 - (3 * 24 + 2 * 2) / 2
+	end
+	p.debuffWidget.y = (s.name.y + nameSize / 2 + 2) / auraScale + 9
+
+	-- Health text in the bar, raid marker to the left of the border
+	s.customtext.width = width - 8
+	s.customtext.x = 0
 	s.raidicon.x = left - 22
 
 	local castHeight, castY
-	if gold then
+	if modern then
+		-- Forever Modern: 6 high bar 4 below the health bar, as wide as bar + level box;
+		-- icon (10) and spell name (10) below it on the left, remaining time on the right.
+		-- The widget anchors these again on every cast (combo points move it lower).
+		local k = height / 13
+		local lineScale = math.floor((p.classicLook.modernLineScale or 1) * 4 + 0.5) / 4
+		local boxW, gap = math.floor(24 * k + 0.5), 4 * lineScale * k
+		local full = width + gap + boxW
+		castHeight = math.max(4, math.floor(6 * k + 0.5))
+		-- 2 + line width below the bar (Widgets.lua: MODERN_CAST_GAP)
+		castY = bottom - (2 + 2 * lineScale) * k - castHeight / 2
+		local icon = math.floor(10 * k + 0.5)
+		local textY = castY - castHeight / 2 - 2 - icon / 2
+		local textWidth = full - icon - 2 - 30
+		s.spelltext.width = textWidth
+		s.spelltext.align = "LEFT"
+		s.spelltext.x = left + icon + 2 + textWidth / 2
+		s.spelltext.y = textY
+		s.spellicon.show = true
+		s.spellicon.scale = icon
+		s.spellicon.x = left + icon / 2
+		s.spellicon.y = textY
+	elseif gold and p.classicLook.castBorder then
+		-- Forever Classic: castbar as tall and wide as the health bar in the Blizzard castbar
+		-- border, 4 below the health border; spell name centered inside, icon from the border art
+		castHeight = height
+		local pad = 3
+		local cast = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.cast
+		if cast and cast.castborder then
+			pad = math.max(0, (cast.castborder.top - 1) * castHeight)
+		end
+		castY = borderBottom - 4 - pad - castHeight / 2
+		s.spelltext.width = width - 10
+		s.spelltext.align = "CENTER"
+		s.spelltext.x = 0
+		s.spelltext.y = castY
+		s.spellicon.show = true
+	elseif gold then
 		-- Gold: thin bar directly below the border, small spell name below it, no icon
 		castHeight = 5
 		castY = borderBottom - 1 - castHeight / 2
@@ -249,7 +310,7 @@ local function ClassicLayout(p)
 	else
 		-- Plain: castbar in the same border as the bar, 9 px tall, spell name on the left
 		-- inside the bar (remaining time on the right), spell icon to its left as tall as the border
-		local inset = math.floor((6 + 2 * (p.classicLook.lineSize or 2)) / 3 + 0.5)
+		local _, inset = ThreatPlatesWidgets.ClassicSimpleEdge(p.classicLook.lineSize)
 		castHeight = 9
 		-- directly below the bar border; with combo points the widget moves the castbar lower
 		castY = bottom - inset - 2 - inset - castHeight / 2
@@ -270,6 +331,52 @@ local function ClassicLayout(p)
 	s.castnostop.y = castY
 end
 
+-- Sizes, fonts and fills per border style. Switching the style sets these (the user's
+-- choice: dimensions change along with the style).
+local FRAME_STYLES = {
+	-- Forever Modern: 190 wide nameplate minus 2 x 12 inset and the level box (28 + 5)
+	-- = 133 x 13 bar; name Friz Quadrata 12, health text 10 (both outlined), health text right in the bar
+	MODERN = {width = 133, height = 13, nameSize = 12, outline = true, textSize = 10, textFont = "Friz Quadrata TT", textAlign = "RIGHT", spellSize = 10, texture = "Forever", castTexture = "Forever Cast", castBorder = false},
+	-- Forever Classic: classic gold border 128 x 16 around a 104 x 10 bar,
+	-- name and health text 10, castbar in the classic castbar border
+	GOLD = {width = 104, height = 10, nameSize = 10, textSize = 10, textFont = "Arial Narrow", textAlign = "CENTER", spellSize = 10, texture = "Blizzard Nameplate", castTexture = "Blizzard Nameplate", castBorder = true},
+	-- simple tooltip border (the look before the Forever styles)
+	SIMPLE = {width = 150, height = 12, nameSize = 12, textSize = 10, textFont = "Arial Narrow", textAlign = "CENTER", spellSize = 9, texture = "Flat", castTexture = "Flat", castBorder = false},
+}
+
+-- keepSize: keep the profile's bar size (look reset)
+local function ApplyClassicFrameStyle(p, style, keepSize)
+	local d = FRAME_STYLES[style]
+	if not d then
+		style, d = "MODERN", FRAME_STYLES.MODERN
+	end
+	local s = p.settings
+	p.classicLook.frameStyle = style
+	p.classicLook.castBorder = d.castBorder
+	if not keepSize then
+		local height = d.height
+		-- gold: keep the aspect ratio of the measured original bar so the border is not distorted
+		local art = TidyPlates.BlizzardArt and TidyPlates.BlizzardArt.health
+		if style ~= "MODERN" and art and art.width > 0 then
+			height = math.floor(d.width * art.height / art.width + 0.5)
+		end
+		s.healthbar.width = d.width
+		s.healthbar.height = height
+	end
+	s.healthbar.texture = d.texture
+	s.castbar.texture = d.castTexture
+	s.name.size = d.nameSize
+	s.name.flags = d.outline and "OUTLINE" or "NONE"
+	s.name.shadow = not d.outline
+	s.customtext.typeface = d.textFont
+	s.customtext.flags = "OUTLINE"
+	s.customtext.shadow = false
+	s.customtext.size = d.textSize
+	s.customtext.align = d.textAlign
+	s.spelltext.size = d.spellSize
+	ClassicLayout(p)
+end
+
 -- Version 2 (modeled on the Classic client): name truncated to bar width, castbar directly
 -- below the border, small spell name, quest icon on. Also used as a migration.
 local function ApplyClassicV2(p)
@@ -286,9 +393,15 @@ end
 -- keepSize: keep the profile's bar size (look reset), otherwise default size
 local function ApplyClassicLook(p, keepSize)
 	local s = p.settings
+	-- reset keeps the chosen border style, new profiles start with Forever Modern
+	local style = keepSize and p.classicLook.frameStyle or "MODERN"
 	p.classicLook.frameStyle = "SIMPLE"
 	p.classicLookVersion = CLASSIC_LOOK_VERSION
 	p.classicLook.ON = true
+	p.classicLook.lineSize = 1
+	p.classicLook.targetGlow = true
+	p.classicLook.glowSize = 5
+	p.classicLook.glowColor = {r = CLASSIC_GLOW.r, g = CLASSIC_GLOW.g, b = CLASSIC_GLOW.b, a = CLASSIC_GLOW.a}
 	p.platerBorder.ON = false
 
 	-- Threat Plates' own borders, elite icon and target arrows off; border, dragon and
@@ -364,6 +477,7 @@ local function ApplyClassicLook(p, keepSize)
 	p.debuffWidget.x = 64 - (3 * 24 + 2 * 2) / 2
 
 	ApplyClassicV2(p)
+	ApplyClassicFrameStyle(p, style, keepSize)
 end
 
 local function ProfileExists(db, name)
@@ -425,6 +539,52 @@ local ClassicMigrations = {
 			local c = CLASSIC_CAST_READY
 			p.platerCast.colorReady = {r = c.r, g = c.g, b = c.b}
 		end
+	end,
+	-- back to the thin border (version 12 had doubled it): relayout
+	[12] = ClassicLayout,
+	[13] = ClassicLayout,
+	-- soft golden glow around the target's border
+	[14] = function(p)
+		p.classicLook.targetGlow = true
+	end,
+	-- glow in the Blizzard UI gold
+	[15] = function(p)
+		local c = CLASSIC_GLOW
+		p.classicLook.glowColor = {r = c.r, g = c.g, b = c.b, a = c.a}
+	end,
+	-- Forever spacing of name and castbar (the style itself stays as chosen)
+	[16] = ClassicLayout,
+	-- Forever Modern: health text in Friz Quadrata with outline like the name (Forever's font)
+	[17] = function(p)
+		if p.classicLook.frameStyle == "MODERN" then
+			local t = p.settings.customtext
+			t.typeface = "Friz Quadrata TT"
+			t.flags = "OUTLINE"
+			t.shadow = false
+		end
+	end,
+	-- Forever Modern: health text 12 (14 touched the bar edges), level box 3 instead of 5 from the bar
+	[18] = function(p)
+		if p.classicLook.frameStyle == "MODERN" then
+			p.settings.customtext.size = 12
+		end
+		ClassicLayout(p)
+	end,
+	-- Forever Modern: level box measured at its gold rim (24 wide instead of 28)
+	[19] = ClassicLayout,
+	-- Forever Modern: level box 4 from the bar (3 let the target lines merge)
+	[20] = ClassicLayout,
+	-- Forever Modern: castbar 4 below the bar (2 let the target line touch the kick line)
+	[21] = ClassicLayout,
+	-- Forever Modern: name 12 and health text 10 (14/12 looked too big); glow stays on
+	-- (its switch and size now apply to this style as well)
+	[22] = function(p)
+		if p.classicLook.frameStyle == "MODERN" then
+			p.settings.name.size = 12
+			p.settings.customtext.size = 10
+			p.classicLook.targetGlow = true
+		end
+		ClassicLayout(p)
 	end
 }
 
@@ -467,6 +627,12 @@ function TidyPlatesThreat:RelayoutLook()
 	if layout then
 		layout(self.db.profile)
 	end
+end
+
+-- Border style of the Classic look changed in the options: sizes, fonts and fills of the
+-- style (Forever Modern / Forever Classic / simple) are set together with it
+function TidyPlatesThreat:SetClassicFrameStyle(style)
+	ApplyClassicFrameStyle(self.db.profile, style)
 end
 
 -- Creates the look profiles if they are still missing on this account (copy of

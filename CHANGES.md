@@ -2,7 +2,7 @@
 
 Changes for WoW 3.3.5a on top of the
 **Hypopheria Remaster** (TidyPlates 6.6.0 / Threat Plates 6.0).
-Current version of this fork: **TidyPlates 6.7.0 / Threat Plates 6.1**.
+Current version of this fork: **TidyPlates 6.9.0 / Threat Plates 6.3**.
 
 Based on:
 
@@ -114,6 +114,67 @@ Target and mouseover are authoritative. Additionally, only when unique:
 - Castbar like WoW Forever: attached under the bar, as wide as bar + level
   box, gold/yellow while your interrupt is ready, grey on cooldown, lock for
   uninterruptible casts; spell name and remaining time below.
+- Castbar spark (option "Castbar spark", default on): the Blizzard castbar
+  spark (`Interface\CastingBar\UI-CastingBar-Spark`, additive) glows at the
+  end of the fill like on the ElvUI/Blizzard player castbar. It is anchored to
+  the fill edge, so it moves without an own update.
+- Target glow (options "Target: glow", "Color", "Glow size", "Glow around the
+  castbar"; on in the profile "Classic"): a soft glow in the Blizzard UI gold
+  (1 / 0.82 / 0, 90 %) around the target's frame and level box, brightest at
+  the line and fading out over 5 units. Optionally it also surrounds the
+  castbar while the target casts. Drawn as a nine-slice from a radial gradient
+  (`Media/ClassicGlow.tga`, new file - needs a full client restart once).
+  With the gold frame style the option keeps the Blizzard glow behind the plate.
+- The level number is centered in its box: the font box reserves room for
+  descenders that digits don't have, so it moves down by 15 % of the font size.
+- Defaults of the profile "Classic": border size 1, glow size 5.
+- Border styles that look like WoW Forever's nameplates (option "Style").
+  Switching the style also sets its bar size, fonts and bar textures:
+  - **Forever Modern** (default for new "Classic" profiles): 133 x 13 bar with
+    own textures (`Media/Forever`, drawn by `tools/forever_textures.py`;
+    new files - needs a full client restart once). Sizes follow Forever's
+    default style "Thin"; where that didn't work on our plates the values
+    were tuned in-game:
+    - Health fill without dark shading at the top and bottom and with a soft
+      left-to-right gradient (75 % to 100 % brightness; Forever's runs from
+      about 53 %, which made the start of the bar and low-health bars look
+      much darker).
+    - Dark background with a thin gray rim right at the bar on every side
+      (placed symmetrically; Forever's offsets leave the rim further out on
+      the right and bottom). 30 % darkening of every non-target, gray line
+      on mouseover.
+    - Level box in the bar's style (same background and rim instead of
+      Forever's gold-rimmed level indicator), 24 wide, as high as the bar
+      including its rim, 4 units right of the bar.
+    - Target: yellow line with a gold glow around bar and level box. Glow
+      and line are separate layers: the glows lie below bar and box and
+      merge in the gap, the lines lie above, so neither the bar
+      nor the box covers them. Between the lines of bar and box, and between
+      the bar and the castbar's kick line, stays a 1 unit seam.
+    - Name in Friz Quadrata 12 and health text 10, both outlined (the health
+      text keeps its configured format), name 2 above the bar centered over
+      bar + box, health text right in the bar.
+    - Castbar 6 high, 4 below the bar, as wide as bar + box, marbled fill
+      tinted by the interrupt colors, background like the bar's, white line
+      around it while your interrupt is ready; icon and
+      spell name (10) below it. No extra golden glow around the castbar in
+      this style (it lies in the bar's glow).
+    - Auras left-aligned with the bar.
+    - Options of the style (*Target*): "Target: color border" switches the
+      line, "Target: glow" the glow, "Glow size" sets its reach (50-150 % of
+      Forever's), "Border size" the line thickness (50-200 % in 25 % steps,
+      one texture per step rendered with the same beveled corners; the
+      gaps to the level box and the castbar grow with the line so the seams
+      stay 1 unit wide). Glow color, line color and "Glow around the castbar"
+      don't apply to this style and are greyed out.
+    - No atlas region ends right at a neighbouring element (texture
+      filtering let neighbours bleed in, e.g. a gray line below the castbar).
+  - **Forever Classic**: classic gold border around a 104 x 10 bar, name and
+    health text 10, name 4 above the border, castbar as tall as the bar in the
+    classic castbar border 4 below.
+  - **Simple**: the previous rounded line with level box.
+- Aura stack counts sit in the bottom right corner of the icon (like WoW
+  Forever) while the Classic look is on; the second aura row moves closer.
 - Name above the bar, health text as in "Default", Plater-style auras above
   the name, interrupt castbar colors and stacking as in the Plater look.
 - Quest icon (any profile, option `questIcon`): shown in front of the name of
@@ -174,7 +235,8 @@ logout), so results can be read outside the game.
 
 Options: `/tptp` → tab **Extensions** (German client: Erweiterungen) with the
 sub-pages Plater look, Classic look, Castbar (interrupt colors), Stacking and
-Quest icon. Profiles are switched via the regular profile dropdown; each look
+Quest icon. The Classic look page is grouped into General, Target,
+Non-targets and Castbar. Profiles are switched via the regular profile dropdown; each look
 page has a "Reset look" button (enabled only in the matching profile).
 
 The regular size options keep working in the look profiles: changing the
