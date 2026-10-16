@@ -781,7 +781,7 @@ local MODERN_LEVEL_FONT = 10 -- LEVEL_FONT_HEIGHT
 -- file, texture width/height, region x0, y0, x1, y1, slice margins left, right, top,
 -- bottom (texture pixels), screen units per texture pixel (2x textures: 0.5)
 local MODERN_ART = {
-	-- dark bar background with gray rim and a shadow to the bottom right
+	-- dark bar background with gray rim (no shadow)
 	background = {"Bar", 256, 32, 88, 0, 220, 18, 5, 9, 5, 8, 1},
 	-- target: yellow 2 px line with a gold glow, untinted; glow 9 px, then the line
 	select = {"Selected", 64, 64, 1, 1, 62, 62, 14, 14, 14, 14, 1},
