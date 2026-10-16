@@ -186,6 +186,10 @@ MediaRegister("statusbar", "ThreatPlatesBar", [[Interface\Addons\TidyPlates_Thre
 MediaRegister("statusbar", "Blizzard Nameplate", [[Interface\TargetingFrame\UI-TargetingFrame-BarFill]])
 -- Completely flat fill (solid color, no dark edges at top/bottom)
 MediaRegister("statusbar", "Flat", [[Interface\Buttons\WHITE8X8]])
+-- Fills of WoW Forever's nameplates (Classic look "Forever Modern"): light gradient bar,
+-- castbar with marbled structure (both tinted by the bar color)
+MediaRegister("statusbar", "Forever", [[Interface\Addons\TidyPlates_ThreatPlates\Media\Forever\HealthFill]])
+MediaRegister("statusbar", "Forever Cast", [[Interface\Addons\TidyPlates_ThreatPlates\Media\Forever\CastFill]])
 MediaRegister("font", "Accidental Presidency", [[Interface\Addons\TidyPlates_ThreatPlates\Media\Fonts\Accidental Presidency.ttf]])
 
 -- Functions
@@ -4219,18 +4223,17 @@ local function GetOptions()
 											arg = {"classicLook", "ON"}
 										},
 										FrameStyle = {
-											name = L["Border"],
-											desc = L["Simple: thin line, dark background and a separate level box like the Classic Era client. Gold: original Blizzard gold border from WotLK."],
+											name = L["Border style"],
+											desc = L["Forever Modern: looks like the nameplates of WoW Forever (sizes of its modern style). Forever Classic: classic gold border like WoW Forever's classic style. Simple: rounded line with a separate level box. Switching the style also sets its bar size, fonts and bar textures."],
 											type = "select",
 											order = 2,
-											values = {SIMPLE = L["Simple (Classic Era)"], GOLD = L["Gold (Blizzard WotLK)"]},
+											values = {MODERN = L["Forever Modern"], GOLD = L["Forever Classic"], SIMPLE = L["Simple (rounded line)"]},
 											disabled = function()
 												return not db.classicLook.ON
 											end,
 											get = GetValue,
 											set = function(info, val)
-												db.classicLook.frameStyle = val
-												TidyPlatesThreat:RelayoutLook()
+												TidyPlatesThreat:SetClassicFrameStyle(val)
 												Update()
 											end,
 											arg = {"classicLook", "frameStyle"}
@@ -4242,8 +4245,11 @@ local function GetOptions()
 											min = 1,
 											max = 4,
 											step = 1,
+											hidden = function()
+												return db.classicLook.frameStyle == "MODERN"
+											end,
 											disabled = function()
-												return not (db.classicLook.ON and db.classicLook.frameStyle ~= "GOLD")
+												return not (db.classicLook.ON and db.classicLook.frameStyle == "SIMPLE")
 											end,
 											get = GetValue,
 											set = function(info, val)
@@ -4252,6 +4258,29 @@ local function GetOptions()
 												Update()
 											end,
 											arg = {"classicLook", "lineSize"}
+										},
+										ModernLineSize = {
+											name = L["Border size"],
+											desc = L["Thickness of the target's line (100 % = like WoW Forever). The gaps to the level box and the castbar follow it."],
+											type = "range",
+											order = 3,
+											min = 0.5,
+											max = 2,
+											step = 0.25, -- one line texture per step
+											isPercent = true,
+											hidden = function()
+												return db.classicLook.frameStyle ~= "MODERN"
+											end,
+											disabled = function()
+												return not db.classicLook.ON
+											end,
+											get = GetValue,
+											set = function(info, val)
+												db.classicLook.modernLineScale = val
+												TidyPlatesThreat:RelayoutLook()
+												Update()
+											end,
+											arg = {"classicLook", "modernLineScale"}
 										},
 										LevelSize = {
 											name = L["Level font size"],
@@ -4294,7 +4323,9 @@ local function GetOptions()
 											type = "color",
 											order = 2,
 											disabled = function()
-												return not (db.classicLook.ON and db.classicLook.targetBorder and db.classicLook.frameStyle ~= "GOLD")
+												-- Forever Modern keeps the line's own yellow
+												local style = db.classicLook.frameStyle
+												return not (db.classicLook.ON and db.classicLook.targetBorder and style ~= "GOLD" and style ~= "MODERN")
 											end,
 											get = GetColor,
 											set = SetColor,
@@ -4329,7 +4360,8 @@ local function GetOptions()
 											order = 5,
 											hasAlpha = true,
 											disabled = function()
-												return not (db.classicLook.ON and db.classicLook.targetGlow)
+												-- Forever Modern keeps the glow's own gold
+												return not (db.classicLook.ON and db.classicLook.targetGlow and db.classicLook.frameStyle ~= "MODERN")
 											end,
 											get = GetColorAlpha,
 											set = SetColorAlpha,
@@ -4343,6 +4375,9 @@ local function GetOptions()
 											min = 2,
 											max = 20,
 											step = 1,
+											hidden = function()
+												return db.classicLook.frameStyle == "MODERN"
+											end,
 											disabled = function()
 												return not (db.classicLook.ON and db.classicLook.targetGlow and db.classicLook.frameStyle ~= "GOLD")
 											end,
@@ -4350,13 +4385,34 @@ local function GetOptions()
 											set = SetValue,
 											arg = {"classicLook", "glowSize"}
 										},
+										ModernGlowSize = {
+											name = L["Glow size"],
+											desc = L["How far the glow reaches out around the border (100 % = like WoW Forever)."],
+											type = "range",
+											order = 6,
+											min = 0.5,
+											max = 1.5,
+											step = 0.05,
+											isPercent = true,
+											hidden = function()
+												return db.classicLook.frameStyle ~= "MODERN"
+											end,
+											disabled = function()
+												return not (db.classicLook.ON and db.classicLook.targetGlow)
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"classicLook", "modernGlowScale"}
+										},
 										CastGlow = {
 											name = L["Glow around the castbar"],
 											desc = L["The target glow also surrounds the castbar while the target casts."],
 											type = "toggle",
 											order = 7,
 											disabled = function()
-												return not (db.classicLook.ON and db.classicLook.targetGlow and db.classicLook.frameStyle ~= "GOLD")
+												-- Forever Modern: the castbar lies in the bar's glow
+												local style = db.classicLook.frameStyle
+												return not (db.classicLook.ON and db.classicLook.targetGlow and style ~= "GOLD" and style ~= "MODERN")
 											end,
 											get = GetValue,
 											set = SetValue,
@@ -4427,10 +4483,14 @@ local function GetOptions()
 											type = "toggle",
 											order = 1,
 											disabled = function()
-												return not db.classicLook.ON
+												return not (db.classicLook.ON and db.classicLook.frameStyle ~= "MODERN")
 											end,
 											get = GetValue,
-											set = SetValue,
+											set = function(info, val)
+												db.classicLook.castBorder = val
+												TidyPlatesThreat:RelayoutLook()
+												Update()
+											end,
 											arg = {"classicLook", "castBorder"}
 										},
 										CastSpark = {

@@ -501,10 +501,11 @@ L["Classic look"] = true
 L["Look like the nameplates of the Classic client. Applies to the current profile; the profile \"Classic\" is preconfigured (/tptpclassic)."] = true
 L["Classic look enabled"] = true
 L["Border in the style of the Classic client (simple or Blizzard gold), target highlighted in color, smaller non-targets. The profile \"Classic\" also sets matching sizes, fonts and castbar."] = true
-L["Border"] = true
-L["Simple: thin line, dark background and a separate level box like the Classic Era client. Gold: original Blizzard gold border from WotLK."] = true
-L["Simple (Classic Era)"] = true
-L["Gold (Blizzard WotLK)"] = true
+L["Border style"] = true
+L["Forever Modern: looks like the nameplates of WoW Forever (sizes of its modern style). Forever Classic: classic gold border like WoW Forever's classic style. Simple: rounded line with a separate level box. Switching the style also sets its bar size, fonts and bar textures."] = true
+L["Forever Modern"] = true
+L["Forever Classic"] = true
+L["Simple (rounded line)"] = true
 L["Border size"] = true
 L["Target: color border"] = true
 L["Border and level box of the target are highlighted in the chosen color (yellow-green like the Classic client)."] = true
@@ -517,6 +518,8 @@ L["Non-targets"] = true
 L["Glow around the castbar"] = true
 L["The target glow also surrounds the castbar while the target casts."] = true
 L["How far the glow reaches out around the border."] = true
+L["How far the glow reaches out around the border (100 % = like WoW Forever)."] = true
+L["Thickness of the target's line (100 % = like WoW Forever). The gaps to the level box and the castbar follow it."] = true
 L["Soft glow around the target's border and level box (gold border: behind the nameplate)."] = true
 L["Non-target size"] = true
 L["Nameplates that are not your target are scaled down to this fraction (1 = same size)."] = true

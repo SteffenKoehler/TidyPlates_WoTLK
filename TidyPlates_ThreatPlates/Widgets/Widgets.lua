@@ -439,6 +439,21 @@ local function ShowIf(t, condition)
 	end
 end
 
+-- Shows/hides all textures of a Forever Modern nine-slice (see CreateModernSlice)
+local function ModernShow(slice, shown)
+	if slice.shown == shown then
+		return
+	end
+	slice.shown = shown
+	for i = 1, #slice do
+		if shown then
+			slice[i]:Show()
+		else
+			slice[i]:Hide()
+		end
+	end
+end
+
 -- Castbar border; not interruptible = Blizzard's shield border
 local function SetClassicShielded(self, shielded)
 	shielded = shielded and self.shieldBorder.valid
@@ -451,6 +466,8 @@ end
 local function PlaceThinCast(self)
 	local bar = self.bar
 	self.placed = nil
+	ModernShow(self.modernBG, false)
+	ModernShow(self.modernSelect, false)
 	self.simple:Hide()
 	self.border:Hide()
 	self.shieldBorder:Hide()
@@ -464,7 +481,8 @@ end
 local function PlaceClassicCast(self)
 	local plate = self.plate
 	local cl = TidyPlatesThreat.db.profile.classicLook
-	if not cl.castBorder then
+	-- Forever Modern has its own castbar (the Blizzard castbar border belongs to gold)
+	if not cl.castBorder or cl.frameStyle == "MODERN" then
 		if cl.frameStyle ~= "GOLD" then
 			return self:PlaceSimple()
 		end
@@ -474,6 +492,8 @@ local function PlaceClassicCast(self)
 	self.thin:Hide()
 	self.simple:Hide()
 	self.glow:Hide()
+	ModernShow(self.modernBG, false)
+	ModernShow(self.modernSelect, false)
 	local art = TidyPlates.BlizzardArt
 	if art and not art.cast and TidyPlates.MeasureBlizzardCast then
 		TidyPlates.MeasureBlizzardCast(plate)
@@ -508,10 +528,25 @@ local function HideGoldParts(look)
 	look.targetBorder:Hide()
 end
 
+local function HideModernParts(look)
+	local m = look.modern
+	m.bg:Hide()
+	m.select:Hide()
+	m.hover:Hide()
+	m.dim:Hide()
+	m.box:Hide()
+	m.glow:Hide()
+	m.glow2:Hide()
+	m.boxGlow:Hide()
+	m.boxFill:Hide()
+	m.boxSelect:Hide()
+end
+
 local function HideSimpleParts(look)
 	look.frame:Hide()
 	look.box:Hide()
 	look.simpleGlow:Hide()
+	HideModernParts(look)
 end
 
 local function HideClassicParts(look)
@@ -674,6 +709,9 @@ local COMBO_HEIGHT = 4
 
 function ThreatPlatesWidgets.PlaceClassicCombo(widget, plate, db)
 	local _, inset = SimpleEdge(db.classicLook.lineSize)
+	if db.classicLook.frameStyle == "MODERN" then
+		inset = 1 -- Forever Modern: the background's rim sits right at the bar edge
+	end
 	local width = db.settings.healthbar.width or 150
 	widget:ClearAllPoints()
 	widget:SetWidth(width)
@@ -704,8 +742,403 @@ function ThreatPlatesWidgets.PlaceClassicCombo(widget, plate, db)
 	end
 end
 
+-- Forever Modern: looks like the nameplates of WoW Forever. Own textures in
+-- Media\Forever (tools/forever_textures.py), regions in texture pixels. Sizes are
+-- Forever's values for a 13 high bar and scale with the bar height.
+local FOREVER = "Interface\\AddOns\\TidyPlates_ThreatPlates\\Media\\Forever\\"
+local MODERN_REF_HEIGHT = 13 -- SMALL_HEALTH_BAR_HEIGHT
+-- Level box in the bar's style (same background, gray rim) instead of Forever's gold-rimmed
+-- level indicator; measured at its rim, as high as the bar so both target frames line up
+local MODERN_BOX_WIDTH = 24
+-- The bar background's gray rim lies 1 unit outside the bar (background placed with
+-- MODERN_BG_OUTSETS): box 2 units higher than the bar so its rim lines up with it.
+-- Target line (2 units, 9 units of glow outside it) runs from the bar edge 2 units out and
+-- covers both rims: outset 11 at the bar, 10 at the box (whose frame already includes the rim).
+local MODERN_RIM = 1
+local MODERN_GLOW_REACH = 9 -- glow of the target texture outside its line (texture pixels)
+local MODERN_LINE_WIDTH = 2 -- target line at 100 % (texture pixels)
+
+-- Thickness of the target line (option, 1 = Forever's 2 units) in steps of 25 %, one
+-- texture per step (SelectedLine050 .. 200, rendered with the original's corners)
+local function ModernLineScale()
+	local s = TidyPlatesThreat.db.profile.classicLook.modernLineScale or 1
+	return math.max(0.5, math.min(2, math.floor(s * 4 + 0.5) / 4))
+end
+-- Forever places the background -2, 3 / 6, -6 (rim 0 left, 1 top, 2 right and bottom);
+-- symmetric here so the rim hugs the bar on every side
+local MODERN_BG_OUTSETS = {3, 5, 3, 5}
+-- Forever: 5. Per unit of line scale: 4 leaves a 1 unit seam between the target lines of
+-- bar and box (seam = gap + 1 - 2 x line width)
+local MODERN_BOX_GAP = 4
+local MODERN_CAST_HEIGHT = 6 -- SMALL_CAST_BAR_HEIGHT
+-- Forever: 2. 2 + line width leaves a 1 unit seam between the target line and the kick line
+local MODERN_CAST_GAP = 2
+local MODERN_CAST_FONT = 10 -- CAST_BAR_FONT_HEIGHT
+local MODERN_CAST_ICON = 10 -- CAST_BAR_ICON_HEIGHT
+local MODERN_LEVEL_FONT = 10 -- LEVEL_FONT_HEIGHT
+
+-- file, texture width/height, region x0, y0, x1, y1, slice margins left, right, top,
+-- bottom (texture pixels), screen units per texture pixel (2x textures: 0.5)
+local MODERN_ART = {
+	-- dark bar background with gray rim and a shadow to the bottom right
+	background = {"Bar", 256, 32, 88, 0, 220, 18, 5, 9, 5, 8, 1},
+	-- target: yellow 2 px line with a gold glow, untinted; glow 9 px, then the line
+	select = {"Selected", 64, 64, 1, 1, 62, 62, 14, 14, 14, 14, 1},
+	-- the same line without the glow: drawn above bar and box while the glow lies below them
+	selectLine = {"SelectedLine", 64, 64, 1, 1, 62, 62, 14, 14, 14, 14, 1},
+	-- white line with a soft glow (castbar while the kick is ready, tinted); ends one row above
+	-- the gray hover line, which otherwise bled in as a gray line below the castbar
+	kickLine = {"Nameplates", 256, 256, 0, 101, 218, 120, 7, 7, 7, 7, 1},
+	-- gray 2 px line (mouseover)
+	hover = {"Nameplates", 256, 256, 0, 121, 212, 135, 3, 3, 3, 3, 1},
+	-- 30 % black over the bar of every non-target
+	dim = {"Nameplates", 256, 256, 2, 137, 210, 147},
+}
+
+-- Nine-slice from an atlas region: corners keep their size, edges and center stretch.
+-- Returns a table with the textures; ModernPlace anchors it around a region.
+local function CreateModernSlice(parent, layer, art, withCenter)
+	local file, tw, th, x0, y0, x1, y1, l, r, t, b, scale = unpack(art)
+	local xs = {x0, x0 + l, x1 - r, x1}
+	local ys = {y0, y0 + t, y1 - b, y1}
+	local slice = {l = l * scale, r = r * scale, t = t * scale, b = b * scale}
+	slice.base = {slice.l, slice.r, slice.t, slice.b}
+	slice.art = art
+	for row = 1, 3 do
+		for col = 1, 3 do
+			if withCenter or row ~= 2 or col ~= 2 then
+				local tex = parent:CreateTexture(nil, layer)
+				tex:SetTexture(FOREVER .. file)
+				tex:SetTexCoord(xs[col] / tw, xs[col + 1] / tw, ys[row] / th, ys[row + 1] / th)
+				tex.row, tex.col = row, col
+				tex:Hide()
+				slice[#slice + 1] = tex
+			end
+		end
+	end
+	return slice
+end
+
+-- Target line at other thicknesses: own textures (line from the region edge inwards)
+local MODERN_LINE_ARTS = {}
+
+-- Returns the line's art and the distance from its region edge to the line (texture pixels)
+local function ModernLineArt(scale)
+	local pct = math.floor(scale * 100 + 0.5)
+	if pct == 100 then
+		return MODERN_ART.selectLine, MODERN_GLOW_REACH
+	end
+	local art = MODERN_LINE_ARTS[pct]
+	if not art then
+		art = {string.format("SelectedLine%03d", pct), 32, 32, 0, 0, 32, 32, 7, 7, 7, 7, 1}
+		MODERN_LINE_ARTS[pct] = art
+	end
+	return art, 0
+end
+
+-- Switches a slice to another art (texture, regions and corner sizes)
+local function ModernSetArt(slice, art)
+	if slice.art == art then
+		return
+	end
+	slice.art = art
+	local file, tw, th, x0, y0, x1, y1, l, r, t, b, scale = unpack(art)
+	local xs = {x0, x0 + l, x1 - r, x1}
+	local ys = {y0, y0 + t, y1 - b, y1}
+	for i = 1, #slice do
+		local tex = slice[i]
+		tex:SetTexture(FOREVER .. file)
+		tex:SetTexCoord(xs[tex.col] / tw, xs[tex.col + 1] / tw, ys[tex.row] / th, ys[tex.row + 1] / th)
+	end
+	slice.l, slice.r, slice.t, slice.b = l * scale, r * scale, t * scale, b * scale
+	slice.base = {slice.l, slice.r, slice.t, slice.b}
+	slice.s = nil
+	slice.rel = nil
+end
+
+-- Scales the slice's corners and edges (e.g. a wider or narrower glow); ModernPlace
+-- has to follow with the new outsets
+local function ModernScaleSlice(slice, s)
+	if slice.s == s then
+		return
+	end
+	slice.s = s
+	local base = slice.base
+	slice.l, slice.r, slice.t, slice.b = base[1] * s, base[2] * s, base[3] * s, base[4] * s
+	slice.rel = nil
+end
+
+-- Anchors the slice around rel, extended by the outsets (screen units)
+local function ModernPlace(slice, rel, left, right, top, bottom)
+	if slice.rel == rel and slice.left == left and slice.right == right and slice.top == top and slice.bottom == bottom then
+		return
+	end
+	slice.rel, slice.left, slice.right, slice.top, slice.bottom = rel, left, right, top, bottom
+	local xs = {-left, -left + slice.l, right - slice.r, right}
+	local ys = {top, top - slice.t, -bottom + slice.b, -bottom}
+	-- column 1 hangs on the left edge, column 3 on the right edge; rows likewise
+	local hPoint = {"LEFT", "LEFT", "RIGHT", "RIGHT"}
+	local vPoint = {"TOP", "TOP", "BOTTOM", "BOTTOM"}
+	for i = 1, #slice do
+		local tex = slice[i]
+		local c, r = tex.col, tex.row
+		tex:ClearAllPoints()
+		tex:SetPoint("TOPLEFT", rel, vPoint[r] .. hPoint[c], xs[c], ys[r])
+		tex:SetPoint("BOTTOMRIGHT", rel, vPoint[r + 1] .. hPoint[c + 1], xs[c + 1], ys[r + 1])
+	end
+end
+
+local function ModernColor(slice, r, g, b, a)
+	if slice.cr == r and slice.cg == g and slice.cb == b and slice.ca == a then
+		return
+	end
+	slice.cr, slice.cg, slice.cb, slice.ca = r, g, b, a
+	for i = 1, #slice do
+		slice[i]:SetVertexColor(r, g, b, a or 1)
+	end
+end
+
+-- Wraps a slice so it can be hidden like a region (HideModernParts)
+local function ModernPart(slice)
+	slice.Hide = function(self)
+		ModernShow(self, false)
+	end
+	return slice
+end
+
+local function CreateModernParts(look, hb)
+	local level = math.max(0, hb:GetFrameLevel() - 1)
+	-- Background below the fill: own frame one level lower (like the simple border)
+	local back = CreateFrame("Frame", nil, hb)
+	back:SetFrameLevel(level)
+	back:SetAllPoints(hb)
+	local m = {}
+	-- Below bar and box: target glows (BACKGROUND, ARTWORK with thick lines), bar
+	-- background (BORDER), level box (OVERLAY); the glows of bar and box merge in the gap
+	-- and never cover either
+	m.glow2 = ModernPart(CreateModernSlice(back, "BACKGROUND", MODERN_ART.select))
+	m.boxGlow = ModernPart(CreateModernSlice(back, "BACKGROUND", MODERN_ART.select))
+	m.bg = ModernPart(CreateModernSlice(back, "BORDER", MODERN_ART.background, true))
+	m.boxFill = ModernPart(CreateModernSlice(back, "OVERLAY", MODERN_ART.background, true))
+	-- Above the fill: target lines of bar and box, hover line and darkening (texts of the
+	-- nameplate stay above them)
+	m.select = ModernPart(CreateModernSlice(hb, "OVERLAY", MODERN_ART.selectLine))
+	m.boxSelect = ModernPart(CreateModernSlice(hb, "OVERLAY", MODERN_ART.selectLine))
+	m.hover = ModernPart(CreateModernSlice(hb, "OVERLAY", MODERN_ART.hover))
+	local dim = hb:CreateTexture(nil, "OVERLAY")
+	local d = MODERN_ART.dim
+	dim:SetTexture(FOREVER .. d[1])
+	dim:SetTexCoord(d[4] / d[2], d[6] / d[2], d[5] / d[3], d[7] / d[3])
+	dim:SetPoint("TOPLEFT", hb, "TOPLEFT", 0, 1)
+	dim:SetPoint("BOTTOMRIGHT", hb, "BOTTOMRIGHT", 0, -1)
+	dim:Hide()
+	m.dim = dim
+	-- Level box: frame at its rim (size/position in UpdateModernLook), textures above.
+	-- Target: same yellow line with glow as around the bar (the white Forever frame looked detached).
+	local box = CreateFrame("Frame", nil, hb)
+	box:SetFrameLevel(level)
+	local o, rim = MODERN_BG_OUTSETS, MODERN_RIM
+	ModernPlace(m.boxFill, box, o[1] - rim, o[2] - rim, o[3] - rim, o[4] - rim)
+	box:Hide()
+	m.box = box
+	-- Golden target glow (option) from the bar's edge to the box's edge. The glow expects
+	-- frames with the tooltip margin (GLOW_OVERLAP), hence anchor frames 2 units further out.
+	local barEdge = CreateFrame("Frame", nil, hb)
+	barEdge:SetPoint("TOPLEFT", hb, "TOPLEFT", -GLOW_OVERLAP, GLOW_OVERLAP)
+	barEdge:SetPoint("BOTTOMRIGHT", hb, "BOTTOMRIGHT", GLOW_OVERLAP, -GLOW_OVERLAP)
+	local boxEdge = CreateFrame("Frame", nil, box)
+	boxEdge:SetPoint("TOPLEFT", box, "TOPLEFT", -GLOW_OVERLAP, GLOW_OVERLAP)
+	boxEdge:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", GLOW_OVERLAP, -GLOW_OVERLAP)
+	m.glow = CreateSimpleGlow(hb, barEdge, boxEdge)
+	look.modern = m
+end
+
+-- Size factor relative to Forever's 13 unit bar
+local function ModernScale(h)
+	return h / MODERN_REF_HEIGHT
+end
+
+local function ModernBoxSize(h)
+	local k = ModernScale(h)
+	return math.floor(MODERN_BOX_WIDTH * k + 0.5), math.floor(h + 0.5) + 2 * MODERN_RIM, MODERN_BOX_GAP * ModernLineScale() * k
+end
+
+local function UpdateModernLook(plate, unit, look, cfg)
+	HideGoldParts(look)
+	look.frame:Hide()
+	look.box:Hide()
+	look.simpleGlow:Hide()
+	local m = look.modern
+	local bar = plate.bars.healthbar
+	local h = bar:GetHeight()
+
+	local o = MODERN_BG_OUTSETS
+	ModernPlace(m.bg, bar, o[1], o[2], o[3], o[4])
+	ModernShow(m.bg, true)
+	local isTarget = unit.isTarget
+	-- target: line from the bar edge over the gray rim, own colors like Forever. Its
+	-- thickness is an option (line width w = 2 x scale): outside the bar 0 .. w, at the
+	-- box (whose frame includes the rim) from 1 inside to w - 1 outside
+	local selected = cfg.targetBorder and isTarget
+	local ls = ModernLineScale()
+	local w = MODERN_LINE_WIDTH * ls
+	if selected then
+		local art, pad = ModernLineArt(ls)
+		ModernSetArt(m.select, art)
+		ModernSetArt(m.boxSelect, art)
+		local out = w + pad
+		ModernPlace(m.select, bar, out, out, out, out)
+		ModernPlace(m.boxSelect, m.box, out - 1, out - 1, out - 1, out - 1)
+	end
+	ModernShow(m.select, selected)
+	-- target glow (option, size in % of Forever's 9 units): its own copy of the line
+	-- stays aligned with the outer edge of the drawn line
+	local glowOn = cfg.targetGlow and isTarget
+	if glowOn then
+		local gs = cfg.modernGlowScale or 1
+		ModernScaleSlice(m.glow2, gs)
+		ModernScaleSlice(m.boxGlow, gs)
+		local reach = MODERN_GLOW_REACH * gs
+		ModernPlace(m.glow2, bar, w + reach, w + reach, w + reach, w + reach)
+		ModernPlace(m.boxGlow, m.box, w - 1 + reach, w - 1 + reach, w - 1 + reach, w - 1 + reach)
+	end
+	-- above 100 % the line's wider corner bevels would show the dark outer fringe of the
+	-- background through them: the glow then lies above the background (at 100 % and below
+	-- the order stays as before)
+	if glowOn then
+		local layer = ls > 1 and "ARTWORK" or "BACKGROUND"
+		if m.glowLayer ~= layer then
+			m.glowLayer = layer
+			for i = 1, #m.glow2 do
+				m.glow2[i]:SetDrawLayer(layer)
+			end
+			for i = 1, #m.boxGlow do
+				m.boxGlow[i]:SetDrawLayer(layer)
+			end
+		end
+	end
+	ModernShow(m.glow2, glowOn)
+	if unit.isMouseover and not isTarget then
+		ModernPlace(m.hover, bar, 1, 1, 1, 1)
+		ModernShow(m.hover, true)
+	else
+		ModernShow(m.hover, false)
+	end
+	if isTarget then
+		m.dim:Hide()
+	else
+		m.dim:Show()
+	end
+
+	local box = m.box
+	local boxW, boxH, gap = ModernBoxSize(h)
+	if Anchor(box, "LEFT", bar, "RIGHT", gap, 0) or box:GetWidth() ~= boxW or box:GetHeight() ~= boxH then
+		box:SetWidth(boxW)
+		box:SetHeight(boxH)
+	end
+	ModernShow(m.boxSelect, selected)
+	ModernShow(m.boxGlow, glowOn)
+	ModernShow(m.boxFill, true)
+	box:Show()
+	-- The target texture brings its own glow: no extra golden glow in this style
+	m.glow:Hide()
+
+	-- Level centered in the box like UpdateSimpleLook; font 10 at the default level size
+	local level = plate.visual.level
+	local art = TidyPlates.BlizzardArt
+	local font = (art and art.levelFont and art.levelFont[1]) or STANDARD_TEXT_FONT
+	local size = MODERN_LEVEL_FONT * ModernScale(h) * (cfg.levelSize or 0.85) / 0.85
+	if Anchor(level, "CENTER", box, "CENTER", 0.5, -math.floor(size * 0.15 + 0.5)) then
+		level:SetJustifyH("CENTER")
+	end
+	local curFont, curSize, curFlags = level:GetFont()
+	if curFont ~= font or not curSize or math.abs(curSize - size) > 0.5 or curFlags ~= "OUTLINE" then
+		level:SetFont(font, size, "OUTLINE")
+	end
+	if unit.isElite and unit.level then
+		local text = unit.level .. "+"
+		if level:GetText() ~= text then
+			level:SetText(text)
+		end
+	end
+	local skull = plate.visual.skullicon
+	Anchor(skull, "CENTER", box, "CENTER", 0, 0)
+	local skullSize = boxH + 2
+	if skull:GetWidth() ~= skullSize or skull:GetHeight() ~= skullSize then
+		skull:SetWidth(skullSize)
+		skull:SetHeight(skullSize)
+	end
+end
+
+-- Castbar in Forever Modern style: thin bar 2 units below the health bar, as wide as
+-- bar + level box, with the same background; icon and spell name small below it on the
+-- left, remaining time below on the right. Kick ready = white line around the castbar.
+local function PlaceModernCast(self)
+	local bar = self.bar
+	local cfg = TidyPlatesThreat.db.profile.classicLook
+	self.placed = nil
+	self.border:Hide()
+	self.shieldBorder:Hide()
+	self.thin:Hide()
+	self.simple:Hide()
+	self.simple.inset = nil -- the simple style re-anchors the frame
+	bar:SetBackgroundColor(0, 0, 0, 0)
+
+	local plate = self.plate
+	local hb = plate.bars.healthbar
+	local h = hb:GetHeight()
+	local k = ModernScale(h)
+	local combo = plate.widgets and plate.widgets.ComboPoints
+	local gap = (MODERN_CAST_GAP + MODERN_LINE_WIDTH * ModernLineScale()) * k
+	if combo and combo:IsShown() then
+		gap = gap + COMBO_HEIGHT + 3
+	end
+	local boxW, _, boxGap = ModernBoxSize(h)
+	local castHeight = math.max(4, math.floor(MODERN_CAST_HEIGHT * k + 0.5))
+	Anchor(bar, "TOPLEFT", hb, "BOTTOMLEFT", 0, -gap)
+	local width = hb:GetWidth() + boxGap + boxW
+	if math.abs(bar:GetWidth() - width) > 0.1 or math.abs(bar:GetHeight() - castHeight) > 0.1 then
+		bar:SetWidth(width)
+		bar:SetHeight(castHeight)
+	end
+	-- symmetric like the health bar; the background's corners need 13 units of height:
+	-- grow upwards on very thin bars
+	local o = MODERN_BG_OUTSETS
+	ModernPlace(self.modernBG, bar, o[1], o[2], math.max(o[3], 13 - o[4] - castHeight), o[4])
+	ModernShow(self.modernBG, true)
+	-- No golden glow of the simple style here: the castbar lies in the glow of the
+	-- target's health bar (option castGlow applies to the other styles only)
+	self.glow:Hide()
+
+	local iconSize = math.floor(MODERN_CAST_ICON * k + 0.5)
+	local fontSize = MODERN_CAST_FONT * k
+	local icon = plate.visual.spellicon
+	Anchor(icon, "TOPLEFT", bar, "BOTTOMLEFT", 0, -2)
+	if icon:GetWidth() ~= iconSize or icon:GetHeight() ~= iconSize then
+		icon:SetWidth(iconSize)
+		icon:SetHeight(iconSize)
+	end
+	local name = plate.visual.spelltext
+	Anchor(name, "LEFT", icon, "RIGHT", 2, 0)
+	name:SetJustifyH("LEFT")
+	for _, fs in ipairs({name, self.text}) do
+		local font, size, flags = fs:GetFont()
+		if font and (not size or math.abs(size - fontSize) > 0.5 or flags ~= "OUTLINE") then
+			fs:SetFont(font, fontSize, "OUTLINE")
+		end
+	end
+	Anchor(self.text, "TOPRIGHT", bar, "BOTTOMRIGHT", 0, -2)
+	local ready = self.kickReady
+	self.kickReady = nil
+	self:SetKickReady(ready or false)
+end
+
 -- Space to the right of the bar (border + box) for the stacking offsets
-function ThreatPlatesWidgets.ClassicSimpleExtent(height, lineSize)
+function ThreatPlatesWidgets.ClassicSimpleExtent(height, lineSize, frameStyle)
+	if frameStyle == "MODERN" then
+		local boxW, _, gap = ModernBoxSize(height)
+		return gap + boxW
+	end
 	local _, inset = SimpleEdge(lineSize)
 	local outer = height + 2 * inset
 	return inset + SIMPLE_GAP + math.floor(outer * SIMPLE_BOX_RATIO + 0.5)
@@ -726,6 +1159,11 @@ end
 local function PlaceSimpleCast(self)
 	local bar = self.bar
 	local cfg = TidyPlatesThreat.db.profile.classicLook
+	if cfg.frameStyle == "MODERN" then
+		return PlaceModernCast(self)
+	end
+	ModernShow(self.modernBG, false)
+	ModernShow(self.modernSelect, false)
 	self.placed = nil
 	self.border:Hide()
 	self.shieldBorder:Hide()
@@ -793,6 +1231,23 @@ end
 -- Castbar border bright while the cast is interruptible and your kick is ready
 local function SetSimpleKickReady(self, ready)
 	local frame = self.simple
+	local cl = TidyPlatesThreat.db.profile.classicLook
+	if cl.frameStyle == "MODERN" then
+		-- Forever Modern: white line (kick color) around the castbar while ready
+		if self.kickReady == ready then
+			return
+		end
+		self.kickReady = ready
+		if ready and cl.kickHighlight then
+			local c = cl.kickReadyColor
+			ModernPlace(self.modernSelect, self.bar, 4, 4, 5, 4)
+			ModernColor(self.modernSelect, c.r, c.g, c.b)
+			ModernShow(self.modernSelect, true)
+		else
+			ModernShow(self.modernSelect, false)
+		end
+		return
+	end
 	if not frame:IsShown() or self.kickReady == ready then
 		return
 	end
@@ -887,6 +1342,7 @@ function ThreatPlatesWidgets.CreateClassicLook(plate)
 		Hide = HideClassicParts
 	}
 	CreateSimpleParts(look, hb)
+	CreateModernParts(look, hb)
 	-- Castbar: own level above the bar, remaining time/color like Plater
 	local cb = plate.bars.castbar
 	local cast = CreateFrame("Frame", nil, cb)
@@ -905,6 +1361,12 @@ function ThreatPlatesWidgets.CreateClassicLook(plate)
 	cast.simple:SetFrameLevel(math.max(0, cb:GetFrameLevel() - 1))
 	cast.simple:Hide()
 	cast.glow = CreateSimpleGlow(cb, cast.simple, cast.simple)
+	-- Forever Modern: background below the fill (own frame one level lower), kick line above it
+	local castBack = CreateFrame("Frame", nil, cb)
+	castBack:SetFrameLevel(math.max(0, cb:GetFrameLevel() - 1))
+	castBack:SetAllPoints(cb)
+	cast.modernBG = CreateModernSlice(castBack, "BACKGROUND", MODERN_ART.background, true)
+	cast.modernSelect = CreateModernSlice(cast, "OVERLAY", MODERN_ART.kickLine)
 	cast.PlaceSimple = PlaceSimpleCast
 	cast.SetKickReady = SetSimpleKickReady
 	cast.spark = cast:CreateTexture(nil, "OVERLAY")
@@ -929,6 +1391,8 @@ function ThreatPlatesWidgets.HideClassicLook(look)
 	look.cast:Hide()
 	look.cast.thin:Hide()
 	look.cast.simple:Hide()
+	ModernShow(look.cast.modernBG, false)
+	ModernShow(look.cast.modernSelect, false)
 end
 
 local function HasBar(barstyle)
@@ -947,7 +1411,15 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 		HideClassicParts(look)
 		return
 	end
+	if cfg.frameStyle == "MODERN" then
+		UpdateModernLook(plate, unit, look, cfg)
+		if plate.bars.castbar:IsShown() then
+			look.cast:Place()
+		end
+		return
+	end
 	if cfg.frameStyle ~= "GOLD" then
+		HideModernParts(look)
 		UpdateSimpleLook(plate, unit, look, cfg)
 		if plate.bars.castbar:IsShown() then
 			look.cast:Place()
@@ -1157,11 +1629,13 @@ end
 
 -- Aura icons in Plater style: rectangular with 1 px border, large remaining time centered,
 -- stacks above, tight spacing. Applied once per debuff widget.
-function ThreatPlatesWidgets.StylePlaterAuras(widget)
+-- stacksInside (Classic look): stacks in the bottom right corner of the icon like WoW Forever.
+function ThreatPlatesWidgets.StylePlaterAuras(widget, stacksInside)
 	if widget.platerStyled then
 		return
 	end
 	widget.platerStyled = true
+	widget.rowGap = stacksInside and 2 or 12 -- also used by the stacking (DebuffExtraTop)
 	local icons = widget.AuraIconFrames
 	local perRow = math.ceil(#icons / 2)
 	for i, icon in ipairs(icons) do
@@ -1180,9 +1654,14 @@ function ThreatPlatesWidgets.StylePlaterAuras(widget)
 		icon.TimeLeft:SetWidth(24)
 
 		icon.Stacks:ClearAllPoints()
-		icon.Stacks:SetPoint("BOTTOM", icon, "TOP", 0, 1)
+		if stacksInside then
+			icon.Stacks:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 2, -2)
+			icon.Stacks:SetJustifyH("RIGHT")
+		else
+			icon.Stacks:SetPoint("BOTTOM", icon, "TOP", 0, 1)
+			icon.Stacks:SetJustifyH("CENTER")
+		end
 		icon.Stacks:SetFont(PLATER_FONT, 9, "OUTLINE")
-		icon.Stacks:SetJustifyH("CENTER")
 		icon.Stacks:SetWidth(24)
 
 		-- Rearrange: two rows, 2 px gap, second row with room for stack counts
@@ -1190,7 +1669,8 @@ function ThreatPlatesWidgets.StylePlaterAuras(widget)
 		if i == 1 then
 			icon:SetPoint("LEFT", widget)
 		elseif i == perRow + 1 then
-			icon:SetPoint("BOTTOMLEFT", icons[1], "TOPLEFT", 0, 12)
+			-- room for the stack counts above the first row (not needed when they are inside)
+			icon:SetPoint("BOTTOMLEFT", icons[1], "TOPLEFT", 0, widget.rowGap)
 		else
 			icon:SetPoint("LEFT", icons[i - 1], "RIGHT", 2, 0)
 		end
@@ -1528,7 +2008,7 @@ local function OnInitialize(plate)
 
 	-- Auras in Plater style (icon style option, otherwise automatic with the Plater/Classic look)
 	if w.WidgetDebuff and ThreatPlatesWidgets.UsePlaterAuras(db) then
-		ThreatPlatesWidgets.StylePlaterAuras(w.WidgetDebuff)
+		ThreatPlatesWidgets.StylePlaterAuras(w.WidgetDebuff, db.classicLook.ON)
 	end
 
 	-- Combo Point Widget
