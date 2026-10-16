@@ -120,6 +120,17 @@ function TidyPlates.ResumeCastForGUID(plate, guid)
 	StartTimedCast(plate, guid, c.spell, c.spellid, c.icon, c.notInterruptible, c.startTime, c.endTime, c.channel)
 end
 
+-- The target's cast, with exact times from UnitCastingInfo/UnitChannelInfo (the combat
+-- log start of the target is skipped): resumed on its plate once it is no longer the target
+function TidyPlates.RememberTargetCast(guid, spell, spellid, icon, notInterruptible, startTime, endTime, channel)
+	RememberCast(guid, spell, spellid, icon, notInterruptible, startTime, endTime, channel)
+end
+
+-- True while a self-driven castbar runs on this plate
+function TidyPlates.HasTimedCast(plate)
+	return ActiveCasts[plate] ~= nil
+end
+
 -- Ends the castbar of the enemy with this GUID (success/interrupt/death)
 local function StopCastByGUID(guid)
 	if not guid then
@@ -132,6 +143,7 @@ local function StopCastByGUID(guid)
 		end
 	end
 end
+TidyPlates.StopCastForGUID = StopCastByGUID
 
 local function SearchNameplateByGUID(SearchFor)
 	for VisiblePlate in pairs(TidyPlates.NameplatesByVisible) do

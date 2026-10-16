@@ -1211,7 +1211,13 @@ do
 	end
 
 	function OnHideCastbar(cast)
-		StopCastAnimation(cast.parentPlate)
+		local plate = cast.parentPlate
+		-- Blizzard hides its castbar on the previous target; a cast resumed on that
+		-- plate (ResumeCastForGUID) keeps running
+		if plate and not plate.extended.unit.isTarget and TidyPlates.HasTimedCast and TidyPlates.HasTimedCast(plate) then
+			return
+		end
+		StopCastAnimation(plate)
 	end
 
 	function OnValueChangedCastbar(cast, value)
@@ -1241,7 +1247,12 @@ do
 		local alpha = HasTarget and plate.alpha or 1
 		local isTarget = HasTarget and alpha == 1
 		if unit.isTarget or isTarget then
+			local wasTarget = unit.isTarget
 			OnUpdateNameplate(plate)
+			-- Previous target: its running cast continues as a non-target castbar
+			if wasTarget and not unit.isTarget and unit.guid and TidyPlates.ResumeCastForGUID then
+				TidyPlates.ResumeCastForGUID(plate, unit.guid)
+			end
 			return
 		end
 
@@ -1554,8 +1565,12 @@ do
 			end
 
 			StopTargetCastFallback()
+			local guid = UnitGUID("target")
 			if spell then
 				LearnCastShield(spell, nonInt)
+				if guid and startMS and endMS and endMS > startMS and TidyPlates.RememberTargetCast then
+					TidyPlates.RememberTargetCast(guid, spell, spellid, icon, nonInt, startMS / 1000, endMS / 1000, channel)
+				end
 				-- Blizzard's target castbar only starts on the next cast start. If an enemy is
 				-- targeted mid-cast, it has no values: drive it ourselves then.
 				local blizz = plate.extended.bars.cast
@@ -1572,6 +1587,10 @@ do
 				end
 			else
 				StopCastAnimation(plate)
+				-- Cast over (stop/interrupt event of the target): nothing to resume
+				if guid and TidyPlates.StopCastForGUID then
+					TidyPlates.StopCastForGUID(guid)
+				end
 			end
 		end
 	end
