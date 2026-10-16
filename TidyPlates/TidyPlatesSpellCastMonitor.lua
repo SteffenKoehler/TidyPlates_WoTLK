@@ -120,6 +120,17 @@ function TidyPlates.ResumeCastForGUID(plate, guid)
 	StartTimedCast(plate, guid, c.spell, c.spellid, c.icon, c.notInterruptible, c.startTime, c.endTime, c.channel)
 end
 
+-- The target's cast, with exact times from UnitCastingInfo/UnitChannelInfo (the combat
+-- log start of the target is skipped): resumed on its plate once it is no longer the target
+function TidyPlates.RememberTargetCast(guid, spell, spellid, icon, notInterruptible, startTime, endTime, channel)
+	RememberCast(guid, spell, spellid, icon, notInterruptible, startTime, endTime, channel)
+end
+
+-- True while a self-driven castbar runs on this plate
+function TidyPlates.HasTimedCast(plate)
+	return ActiveCasts[plate] ~= nil
+end
+
 -- Ends the castbar of the enemy with this GUID (success/interrupt/death)
 local function StopCastByGUID(guid)
 	if not guid then
@@ -132,6 +143,7 @@ local function StopCastByGUID(guid)
 		end
 	end
 end
+TidyPlates.StopCastForGUID = StopCastByGUID
 
 local function SearchNameplateByGUID(SearchFor)
 	for VisiblePlate in pairs(TidyPlates.NameplatesByVisible) do
@@ -205,12 +217,13 @@ local function OnSpellCast(...)
 	if FoundPlate then
 		local FoundPlateUnit = FoundPlate.extended.unit
 		if not FoundPlateUnit.isTarget then
-			StartTimedCast(FoundPlate, sourceGUID, spell, spellid, icon, false, now, now + castTime / 1000, false)
+			-- interruptible unknown (nil): the core uses what it learned for this caster
+			StartTimedCast(FoundPlate, sourceGUID, spell, spellid, icon, nil, now, now + castTime / 1000, false)
 		end
 	else
 		-- Nameplate (not yet) known: remember the cast so it shows up with the
 		-- remaining time once the nameplate is identified
-		RememberCast(sourceGUID, spell, spellid, icon, false, now, now + castTime / 1000, false)
+		RememberCast(sourceGUID, spell, spellid, icon, nil, now, now + castTime / 1000, false)
 	end
 end
 
@@ -254,6 +267,100 @@ local function OnCombatEvent(self, event, ...)
 	end
 end
 
+--------------------------------------
+-- Casts of units the client knows by a unit token
+-- The combat log only gives the start (base cast time, no channels, no stop on stuns,
+-- silences or jukes). For enemies that someone in the group targets (or focus,
+-- target of target, arena, boss) UnitCastingInfo/UnitChannelInfo give the exact
+-- times, channels and the interruptible flag, and show when a cast ended early.
+-- No events fire for these compound tokens, so they are polled.
+--------------------------------------
+local CAST_POLL_INTERVAL = 0.2
+-- A cast the combat log just reported may not be visible through the API yet
+local CAST_START_GRACE = 0.3
+local CastPollUnits = {"focus", "focustarget", "targettarget", "pettarget", "boss1", "boss2", "boss3", "boss4"}
+for i = 1, 5 do
+	CastPollUnits[#CastPollUnits + 1] = "arena" .. i
+end
+local PartyTargetUnits, RaidTargetUnits = {}, {}
+for i = 1, 4 do
+	PartyTargetUnits[i] = "party" .. i .. "target"
+end
+for i = 1, 40 do
+	RaidTargetUnits[i] = "raid" .. i .. "target"
+end
+local PolledGUIDs = {}
+local CastPoller = CreateFrame("Frame")
+CastPoller:Hide()
+
+local function PollUnitCast(uid, now, targetGUID)
+	if not UnitExists(uid) or UnitIsFriend("player", uid) then
+		return
+	end
+	local guid = UnitGUID(uid)
+	-- The target's castbar is Blizzard's; each enemy once per poll
+	if not guid or guid == targetGUID or PolledGUIDs[guid] then
+		return
+	end
+	PolledGUIDs[guid] = true
+	local spell, _, _, icon, startMS, endMS, _, _, notInterruptible = UnitCastingInfo(uid)
+	local channel = false
+	if not spell then
+		spell, _, _, icon, startMS, endMS, _, notInterruptible = UnitChannelInfo(uid)
+		channel = spell and true or false
+	end
+	local c = CastsByGUID[guid]
+	if spell and startMS and endMS and endMS > startMS then
+		notInterruptible = notInterruptible and true or false
+		local startTime, endTime = startMS / 1000, endMS / 1000
+		local plate = TidyPlates.NameplatesByGUID[guid]
+		TidyPlates.LearnCastShield(UnitName(uid), spell, notInterruptible)
+		-- A cast from the combat log (interruptible unknown) is restarted once with the
+		-- client's exact values
+		local same = c and c.spell == spell and math.abs(c.endTime - endTime) < 0.05
+			and c.notInterruptible == notInterruptible
+		if same then
+			-- Known cast: only make sure it is shown (plate identified meanwhile)
+			if plate and not ActiveCasts[plate] then
+				TidyPlates.ResumeCastForGUID(plate, guid)
+			end
+		elseif plate and plate:IsShown() and not plate.extended.unit.isTarget then
+			-- New cast, channel, pushback or corrected duration: (re)start with exact times
+			StartTimedCast(plate, guid, spell, c and c.spellid, icon, notInterruptible, startTime, endTime, channel)
+		else
+			RememberCast(guid, spell, c and c.spellid, icon, notInterruptible, startTime, endTime, channel)
+		end
+	elseif c and c.startTime < now - CAST_START_GRACE and c.endTime > now + 0.1 then
+		-- Not casting any more although the cast should still run: stunned, silenced,
+		-- interrupted without a combat log event, or a player juked
+		StopCastByGUID(guid)
+	end
+end
+
+CastPoller:SetScript("OnUpdate", function(self, elapsed)
+	self.elapsed = (self.elapsed or 0) + elapsed
+	if self.elapsed < CAST_POLL_INTERVAL then
+		return
+	end
+	self.elapsed = 0
+	local now = GetTime()
+	local targetGUID = UnitGUID("target")
+	for i = 1, #CastPollUnits do
+		PollUnitCast(CastPollUnits[i], now, targetGUID)
+	end
+	local numRaid = GetNumRaidMembers()
+	if numRaid > 0 then
+		for i = 1, numRaid do
+			PollUnitCast(RaidTargetUnits[i], now, targetGUID)
+		end
+	else
+		for i = 1, GetNumPartyMembers() do
+			PollUnitCast(PartyTargetUnits[i], now, targetGUID)
+		end
+	end
+	wipe(PolledGUIDs)
+end)
+
 -----------------------------------
 -- External control functions
 -----------------------------------
@@ -264,6 +371,7 @@ local function StartSpellCastWatcher()
 	end
 	CombatCastEventWatcher:SetScript("OnEvent", OnCombatEvent)
 	CombatCastEventWatcher:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+	CastPoller:Show()
 end
 
 local function StopSpellCastWatcher()
@@ -272,6 +380,7 @@ local function StopSpellCastWatcher()
 		CombatCastEventWatcher:UnregisterAllEvents()
 		CombatCastEventWatcher = nil
 	end
+	CastPoller:Hide()
 end
 
 TidyPlates.StartSpellCastWatcher = StartSpellCastWatcher

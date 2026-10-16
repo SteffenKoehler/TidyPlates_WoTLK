@@ -8,19 +8,36 @@ _G.TidyPlates = TidyPlates
 -- Make sure TidyPlatesData always exists (even before ADDON_LOADED)
 TidyPlatesData = TidyPlatesData or {}
 
--- Remembers per spell (name) whether it can be interrupted. The client only knows this reliably
--- for target and mouseover; once stored it also applies to non-target castbars
--- (the combat log does not provide this information).
-local function LearnCastShield(spell, notInterruptible)
-	if not spell then
+-- Remembers per caster name and spell whether the cast can be interrupted. The client
+-- only knows this for units with a token (target, mouseover, focus, group targets);
+-- stored, it also applies to casts known only from the combat log, which has no such
+-- flag. Keyed by caster as well: a spell name shared by many mobs (Shadow Bolt) is often
+-- uninterruptible for one boss only. Replaces the old per-spell table (CastShield), whose
+-- entries could mark every mob's cast of that name.
+local function CastShieldKey(caster, spell)
+	return caster .. "\001" .. spell
+end
+
+local function LearnCastShield(caster, spell, notInterruptible)
+	if not (caster and spell) then
 		return
 	end
-	local known = TidyPlatesData.CastShield
+	local known = TidyPlatesData.CastShieldByCaster
 	if not known then
 		known = {}
-		TidyPlatesData.CastShield = known
+		TidyPlatesData.CastShieldByCaster = known
+		TidyPlatesData.CastShield = nil
 	end
-	known[spell] = notInterruptible and true or false
+	known[CastShieldKey(caster, spell)] = notInterruptible and true or false
+end
+TidyPlates.LearnCastShield = LearnCastShield
+
+-- true/false when learned, nil when unknown
+local function KnownCastShield(caster, spell)
+	local known = TidyPlatesData.CastShieldByCaster
+	if known and caster and spell then
+		return known[CastShieldKey(caster, spell)]
+	end
 end
 
 TidyPlates.callbacks = TidyPlates.callbacks or LibStub("CallbackHandler-1.0"):New(TidyPlates)
@@ -246,6 +263,9 @@ do
 	local texturegroup = {"castborder", "castnostop", "healthborder", "threatborder", "eliteicon", "skullicon", "highlight", "target"}
 	-- UpdateStyle:
 	function UpdateStyle()
+		-- Themes can skip re-placing regions while this is unchanged (anchors and fonts
+		-- of the style regions are only reset here)
+		extended.styleSerial = (extended.styleSerial or 0) + 1
 		-- Frame
 		SetAnchorGroupObject(extended, style.frame, nameplate)
 		-- Anchorgroup
@@ -974,12 +994,17 @@ do
 		unit.isMouseover = regions.highlight:IsShown()
 		-- GUID
 		if unit.isTarget then
-			currentTarget = plate
-			OnUpdateTargetCastbar(plate)
-			-- UpdateCurrentGUID: target is authoritative and corrects a heuristic assignment if needed
-			local targetGUID = UnitGUID("target")
-			if targetGUID and unit.guid ~= targetGUID then
-				AssignGUID(plate, targetGUID, true)
+			-- Right after a target change the alpha of the previous target can still be 1 for
+			-- a frame: the target's GUID, castbar and currentTarget only go to a plate whose
+			-- name (read fresh, unit.name is gathered after this) is the target's
+			if regions.name:GetText() == UnitName("target") then
+				currentTarget = plate
+				OnUpdateTargetCastbar(plate)
+				-- UpdateCurrentGUID: target is authoritative and corrects a heuristic assignment if needed
+				local targetGUID = UnitGUID("target")
+				if targetGUID and unit.guid ~= targetGUID then
+					AssignGUID(plate, targetGUID, true)
+				end
 			end
 			extended:SetFrameLevel(127)
 		else
@@ -1211,7 +1236,13 @@ do
 	end
 
 	function OnHideCastbar(cast)
-		StopCastAnimation(cast.parentPlate)
+		local plate = cast.parentPlate
+		-- Blizzard hides its castbar on the previous target; a cast resumed on that
+		-- plate (ResumeCastForGUID) keeps running
+		if plate and not plate.extended.unit.isTarget and TidyPlates.HasTimedCast and TidyPlates.HasTimedCast(plate) then
+			return
+		end
+		StopCastAnimation(plate)
 	end
 
 	function OnValueChangedCastbar(cast, value)
@@ -1241,7 +1272,12 @@ do
 		local alpha = HasTarget and plate.alpha or 1
 		local isTarget = HasTarget and alpha == 1
 		if unit.isTarget or isTarget then
+			local wasTarget = unit.isTarget
 			OnUpdateNameplate(plate)
+			-- Previous target: its running cast continues as a non-target castbar
+			if wasTarget and not unit.isTarget and unit.guid and TidyPlates.ResumeCastForGUID then
+				TidyPlates.ResumeCastForGUID(plate, unit.guid)
+			end
 			return
 		end
 
@@ -1326,7 +1362,7 @@ do
 			visual.highlight:Show()
 			-- Mouseover is authoritative and corrects a heuristic assignment if needed
 			local mouseoverGUID = UnitGUID("mouseover")
-			if mouseoverGUID and unit.guid ~= mouseoverGUID then
+			if mouseoverGUID and unit.guid ~= mouseoverGUID and regions.name:GetText() == UnitName("mouseover") then
 				AssignGUID(plate, mouseoverGUID, true)
 			end
 		else
@@ -1352,7 +1388,8 @@ do
 				channel = true
 			end
 			if spell and startTime and endTime then
-				LearnCastShield(spell, notInterruptible)
+				notInterruptible = notInterruptible and true or false
+				LearnCastShield(UnitName("mouseover"), spell, notInterruptible)
 				TidyPlates.StartTimedCastOnNameplate(plate, u.guid, spell, nil, icon, notInterruptible, startTime / 1000, endTime / 1000, channel)
 			end
 		end
@@ -1443,9 +1480,10 @@ do
 			unit.isCasting = true
 			unit.spellName = spell
 			unit.spellID = spellid
-			-- Unknown (combat log): use stored knowledge about the spell
-			if not notInterruptible and TidyPlatesData.CastShield and TidyPlatesData.CastShield[spell] then
-				notInterruptible = true
+			-- nil = unknown (combat log): use what was learned for this caster and spell;
+			-- true/false come from the client and are exact
+			if notInterruptible == nil then
+				notInterruptible = KnownCastShield(unit.name, spell) or false
 			end
 			unit.spellIsShielded = notInterruptible
 			unit.spellInterruptible = not notInterruptible
@@ -1554,8 +1592,13 @@ do
 			end
 
 			StopTargetCastFallback()
+			local guid = UnitGUID("target")
 			if spell then
-				LearnCastShield(spell, nonInt)
+				nonInt = nonInt and true or false
+				LearnCastShield(UnitName("target"), spell, nonInt)
+				if guid and startMS and endMS and endMS > startMS and TidyPlates.RememberTargetCast then
+					TidyPlates.RememberTargetCast(guid, spell, spellid, icon, nonInt, startMS / 1000, endMS / 1000, channel)
+				end
 				-- Blizzard's target castbar only starts on the next cast start. If an enemy is
 				-- targeted mid-cast, it has no values: drive it ourselves then.
 				local blizz = plate.extended.bars.cast
@@ -1572,6 +1615,10 @@ do
 				end
 			else
 				StopCastAnimation(plate)
+				-- Cast over (stop/interrupt event of the target): nothing to resume
+				if guid and TidyPlates.StopCastForGUID then
+					TidyPlates.StopCastForGUID(guid)
+				end
 			end
 		end
 	end
@@ -1634,10 +1681,19 @@ do
 			return
 		end
 		local hp, hpmax = UnitHealth(uid), UnitHealthMax(uid)
+		-- Unhurt NPCs of the same name look identical; if the unit's own plate is not
+		-- visible, another unhurt plate of that name would match (whelp packs)
+		if hp >= hpmax and not UnitIsPlayer(uid) then
+			return
+		end
+		local level = UnitLevel(uid)
+		level = level == -1 and "??" or tostring(level)
+		local icon = MarkerByIndex[GetRaidTargetIndex(uid) or 0]
 		local match
 		for plate in pairs(PlatesVisible) do
 			local u = plate.extended.unit
-			if not u.guid and u.name == name and u.health == hp and u.healthmax == hpmax then
+			if not u.guid and u.name == name and u.health == hp and u.healthmax == hpmax
+				and u.level == level and u.raidIcon == icon then
 				if match then
 					return -- ambiguous
 				end

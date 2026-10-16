@@ -64,7 +64,10 @@ local WidgetList = {}
 local CrowdControlledUnits = {}
 local CrowdControlExpirationTimes = {}
 -- Raid Icon to GUID 		-- ex.  ByRaidIcon["SKULL"] = GUID
+-- Only valid while the mark stays on that unit: wiped on RAID_TARGET_UPDATE and
+-- used only when the plate's name matches (ByRaidIconName)
 local ByRaidIcon = {}
+local ByRaidIconName = {}
 -- Name to GUID
 local ByName = {}
 
@@ -131,9 +134,10 @@ local function CrowdControlAura_Update(targetguid, targetname, sourceguid, sourc
 		CrowdControlExpirationTimes[targetguid] = GetTime() + 10
 	end
 
-	-- Update all nameplates immediately
-	if TidyPlates then
-		TidyPlates:ForceUpdate()
+	-- The core's state poll picks up the CC color (PollPlateState); a full ForceUpdate
+	-- here reset every plate (flicker, non-target castbars lost) on each CC event
+	if TidyPlates and TidyPlates.RequestStatePoll then
+		TidyPlates:RequestStatePoll()
 	end
 end
 
@@ -141,9 +145,8 @@ local function CrowdControlAura_Remove(targetguid, ...)
 	CrowdControlledUnits[targetguid] = nil
 	CrowdControlExpirationTimes[targetguid] = 0
 
-	-- Update all nameplates immediately
-	if TidyPlates then
-		TidyPlates:ForceUpdate()
+	if TidyPlates and TidyPlates.RequestStatePoll then
+		TidyPlates:RequestStatePoll()
 	end
 end
 
@@ -168,7 +171,21 @@ local RaidIconBit = {
 	["SKULL"] = 0x08000000
 }
 
+-- GUID of a plate without its own GUID: players by name, NPCs by raid icon (same name only)
+local function GuessGUID(unit)
+	if unit.type == "PLAYER" then
+		return ByName[unit.name]
+	elseif unit.isMarked and ByRaidIconName[unit.raidIcon] == unit.name then
+		return ByRaidIcon[unit.raidIcon]
+	end
+end
+
 local function CrowdControlEventHandler(frame, event, timestamp, combatevent, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, spellId, spellName, ...)
+	if event == "RAID_TARGET_UPDATE" then
+		wipe(ByRaidIcon)
+		wipe(ByRaidIconName)
+		return
+	end
 	local CombatLogFunction = CombatLogEvents[combatevent]
 
 	if CombatLogFunction and (bit.band(destFlags, COMBATLOG_OBJECT_REACTION_HOSTILE) > 0) then
@@ -182,6 +199,7 @@ local function CrowdControlEventHandler(frame, event, timestamp, combatevent, so
 			for iconname, bitmask in pairs(RaidIconBit) do
 				if bit.band(destFlags, bitmask) > 0 then
 					ByRaidIcon[iconname] = destGUID
+					ByRaidIconName[iconname] = destName
 					break
 				end
 			end
@@ -201,15 +219,7 @@ end
 function TidyPlatesWidgets.IsUnitCrowdControlled(unit)
 	if not unit then return false end
 
-	local guid = unit.guid
-	if not guid then
-		if unit.type == "PLAYER" then
-			guid = ByName[unit.name]
-		elseif unit.isMarked then
-			guid = ByRaidIcon[unit.raidIcon]
-		end
-	end
-
+	local guid = unit.guid or GuessGUID(unit)
 	if guid then
 		local spellid = CrowdControlledUnits[guid]
 		local expiration = CrowdControlExpirationTimes[guid]
@@ -225,6 +235,7 @@ end
 local function Enable()
 	CrowdControlMonitor:SetScript("OnEvent", CrowdControlEventHandler)
 	CrowdControlMonitor:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+	CrowdControlMonitor:RegisterEvent("RAID_TARGET_UPDATE")
 end
 
 local function Disable()
@@ -234,6 +245,7 @@ local function Disable()
 	wipe(CrowdControlExpirationTimes)
 	wipe(ByName)
 	wipe(ByRaidIcon)
+	wipe(ByRaidIconName)
 end
 
 ------------------------------------------------- Widget Frames
@@ -248,16 +260,7 @@ local function UpdateWidgetIcon(frame)
 	local unit = frame.Unit
 	local guid, spellid, expiration
 	if unit.reaction == "HOSTILE" then
-		if unit.guid then
-			guid = unit.guid
-		else
-			if unit.type == "PLAYER" then
-				guid = ByName[unit.name]
-			elseif unit.isMarked then
-				guid = ByRaidIcon[unit.raidIcon]
-			end
-		end
-
+		guid = unit.guid or GuessGUID(unit)
 		if guid then
 			spellid = CrowdControlledUnits[guid]
 			expiration = CrowdControlExpirationTimes[guid]

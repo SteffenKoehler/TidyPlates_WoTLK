@@ -2,7 +2,7 @@
 
 Changes for WoW 3.3.5a on top of the
 **Hypopheria Remaster** (TidyPlates 6.6.0 / Threat Plates 6.0).
-Current version of this fork: **TidyPlates 6.9.0 / Threat Plates 6.3**.
+Current version of this fork: **TidyPlates 6.10.0 / Threat Plates 6.4**.
 
 Based on:
 
@@ -51,6 +51,21 @@ chat bubble visibility) are not merged yet.
   start color ignored the remaining cast time; recycled plates inherited the
   stacking offset; `threatWarning` compared as number; classic combo strip got
   an extra CENTER anchor; class icon not hidden without class info.
+- Review after 6.9.0 (2026-10-16):
+  - Crowd control no longer resets every plate: each CC applied or removed on
+    any hostile unit ran a full `ForceUpdate` (all plates faded in again and
+    lost their non-target castbars). The CC color now comes from the 10 Hz
+    state poll, which is brought forward on CC events.
+  - Debuff clock and bar redraw only what changed (full quarters when the
+    hand enters the next one, hand anchored once, Show/Hide on transitions);
+    the redraw interval follows the duration (1/360 of it, 4-30 per second).
+  - `UNIT_AURA` of target, focus and mouseover is batched per frame together
+    with the combat log events of the same unit; spell names and icons are
+    cached per spell ID.
+  - Plater border and Classic look are no longer updated twice per update
+    (context + normal update); the other frame styles' parts are hidden only
+    on a style switch; the gold style re-places level and skull only after
+    a style reset (`extended.styleSerial`) or size change.
 
 ## Castbars
 
@@ -59,18 +74,39 @@ chat bubble visibility) are not merged yet.
 - Castbars for non-target units, timed from `GetSpellInfo` cast times and
   stopped on success, failure, interrupt or death; enabled by default.
 - Mouseover provides exact cast times and aura updates.
+- Exact non-target castbars: at 5 Hz the cast watcher reads
+  `UnitCastingInfo`/`UnitChannelInfo` of focus, focus target, target of
+  target, pet target, `boss1-4`, `arena1-5` and the party/raid members'
+  targets. Their plates get exact times, channels (the combat log has no
+  channel start), pushback and the interruptible flag, and the bar ends as
+  soon as the unit stops casting (stun, silence, juke).
+- The target's cast continues on its plate after you switch targets (it is
+  remembered with exact times instead of being dropped).
+- Uninterruptible casts are learned per caster name and spell
+  (`TidyPlatesData.CastShieldByCaster`) instead of per spell name, so one
+  boss's uninterruptible Shadow Bolt no longer locks every mob's. Exact
+  information from the client always wins over the learned value.
 
 ## GUID assignment (nameplates have no GUID in 3.3.5a)
 
-Target and mouseover are authoritative. Additionally, only when unique:
+Target and mouseover are authoritative (only for a plate with the unit's
+name, so a plate that still looks like the target for a frame after a target
+change keeps its GUID). Additionally, only when unique:
 
-1. Focus, pet target, party/raid targets and `boss1-4`: match name + health.
+1. Focus, pet target, party/raid targets and `boss1-4`: match name, health,
+   level and raid marker; unhurt NPCs are skipped (a same-named unhurt plate
+   would match when the unit's own plate is not visible).
 2. Raid markers: combat log flags and `GetRaidTargetIndex` map each marker to
    a GUID; the plate showing that marker gets it.
 3. Fingerprint: a damaged plate that disappears is recognized again within
    30 s by name, level and plausible health.
 4. Damage correlation: combat log damage matched to the health drop of
    exactly one plate within 0.35 s.
+
+The debuff and crowd control widgets no longer write a GUID guessed from a
+raid marker into the plate: their marker cache was never cleared, so a mark
+moved to another mob showed the previous mob's debuffs and CC. The caches are
+wiped on `RAID_TARGET_UPDATE` and used only when the plate's name matches.
 
 ## Colors and tank view
 
@@ -141,7 +177,8 @@ Target and mouseover are authoritative. Additionally, only when unique:
       much darker).
     - Dark background with a thin gray rim right at the bar on every side
       (placed symmetrically; Forever's offsets leave the rim further out on
-      the right and bottom). 30 % darkening of every non-target, gray line
+      the right and bottom), no shadow (it showed as a gray box on light
+      ground). 30 % darkening of every non-target, gray line
       on mouseover.
     - Level box in the bar's style (same background and rim instead of
       Forever's gold-rimmed level indicator), 24 wide, as high as the bar
@@ -179,8 +216,9 @@ Target and mouseover are authoritative. Additionally, only when unique:
   the name, interrupt castbar colors and stacking as in the Plater look.
 - Quest icon (any profile, option `questIcon`): shown in front of the name of
   mobs that are an open kill objective in the quest log (matched by name via
-  `QUEST_MONSTERS_KILLED`). Collect objectives and quests under collapsed
-  headers are not detected.
+  `QUEST_MONSTERS_KILLED`). Quests under collapsed quest log headers are
+  included: the scan expands them while the quest log window is closed and
+  collapses them again. Collect objectives are not detected.
 - Combo points (classic frame): five separate segments with a 2 px gap, same
   colors as the original art (1 blue ... 5 red).
 - Debuff timer on the aura icons (option "Show elapsed time", any look,

@@ -552,6 +552,7 @@ end
 local function HideClassicParts(look)
 	HideGoldParts(look)
 	HideSimpleParts(look)
+	look.activeStyle = nil
 end
 
 -- Simple border (like the Classic Era client's nameplates): rounded tooltip border
@@ -780,7 +781,7 @@ local MODERN_LEVEL_FONT = 10 -- LEVEL_FONT_HEIGHT
 -- file, texture width/height, region x0, y0, x1, y1, slice margins left, right, top,
 -- bottom (texture pixels), screen units per texture pixel (2x textures: 0.5)
 local MODERN_ART = {
-	-- dark bar background with gray rim and a shadow to the bottom right
+	-- dark bar background with gray rim (no shadow)
 	background = {"Bar", 256, 32, 88, 0, 220, 18, 5, 9, 5, 8, 1},
 	-- target: yellow 2 px line with a gold glow, untinted; glow 9 px, then the line
 	select = {"Selected", 64, 64, 1, 1, 62, 62, 14, 14, 14, 14, 1},
@@ -964,10 +965,6 @@ local function ModernBoxSize(h)
 end
 
 local function UpdateModernLook(plate, unit, look, cfg)
-	HideGoldParts(look)
-	look.frame:Hide()
-	look.box:Hide()
-	look.simpleGlow:Hide()
 	local m = look.modern
 	local bar = plate.bars.healthbar
 	local h = bar:GetHeight()
@@ -1121,11 +1118,13 @@ local function PlaceModernCast(self)
 	local name = plate.visual.spelltext
 	Anchor(name, "LEFT", icon, "RIGHT", 2, 0)
 	name:SetJustifyH("LEFT")
-	for _, fs in ipairs({name, self.text}) do
-		local font, size, flags = fs:GetFont()
-		if font and (not size or math.abs(size - fontSize) > 0.5 or flags ~= "OUTLINE") then
-			fs:SetFont(font, fontSize, "OUTLINE")
-		end
+	local font, size, flags = name:GetFont()
+	if font and (not size or math.abs(size - fontSize) > 0.5 or flags ~= "OUTLINE") then
+		name:SetFont(font, fontSize, "OUTLINE")
+	end
+	font, size, flags = self.text:GetFont()
+	if font and (not size or math.abs(size - fontSize) > 0.5 or flags ~= "OUTLINE") then
+		self.text:SetFont(font, fontSize, "OUTLINE")
 	end
 	Anchor(self.text, "TOPRIGHT", bar, "BOTTOMRIGHT", 0, -2)
 	local ready = self.kickReady
@@ -1261,7 +1260,6 @@ local function SetSimpleKickReady(self, ready)
 end
 
 local function UpdateSimpleLook(plate, unit, look, cfg)
-	HideGoldParts(look)
 	local bar = plate.bars.healthbar
 	local h = bar:GetHeight()
 	local edge, inset = SimpleEdge(cfg.lineSize)
@@ -1275,8 +1273,11 @@ local function UpdateSimpleLook(plate, unit, look, cfg)
 	SimpleBackdrop(frame, edge, inset)
 	SimpleBackdrop(box, edge, inset)
 	local outer = h + 2 * inset
-	box:SetWidth(math.floor(outer * SIMPLE_BOX_RATIO + 0.5))
-	box:SetHeight(outer)
+	local boxW = math.floor(outer * SIMPLE_BOX_RATIO + 0.5)
+	if box:GetWidth() ~= boxW or box:GetHeight() ~= outer then
+		box:SetWidth(boxW)
+		box:SetHeight(outer)
+	end
 
 	local r, g, b = 0.3, 0.3, 0.3
 	if cfg.targetBorder and unit.isTarget then
@@ -1411,7 +1412,16 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 		HideClassicParts(look)
 		return
 	end
+	-- The other styles' parts are hidden once when the style changes (or after the look
+	-- was hidden), not on every update
 	if cfg.frameStyle == "MODERN" then
+		if look.activeStyle ~= "MODERN" then
+			look.activeStyle = "MODERN"
+			HideGoldParts(look)
+			look.frame:Hide()
+			look.box:Hide()
+			look.simpleGlow:Hide()
+		end
 		UpdateModernLook(plate, unit, look, cfg)
 		if plate.bars.castbar:IsShown() then
 			look.cast:Place()
@@ -1419,17 +1429,25 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 		return
 	end
 	if cfg.frameStyle ~= "GOLD" then
-		HideModernParts(look)
+		if look.activeStyle ~= "SIMPLE" then
+			look.activeStyle = "SIMPLE"
+			HideModernParts(look)
+			HideGoldParts(look)
+		end
 		UpdateSimpleLook(plate, unit, look, cfg)
 		if plate.bars.castbar:IsShown() then
 			look.cast:Place()
 		end
 		return
 	end
-	HideSimpleParts(look)
+	if look.activeStyle ~= "GOLD" then
+		look.activeStyle = "GOLD"
+		HideSimpleParts(look)
+	end
 	local art = ThreatPlatesWidgets.ClassicArt()
 	if not art then -- gold selected, original nameplate not measured yet
 		HideGoldParts(look)
+		look.activeStyle = nil
 		return
 	end
 	local geo = art.health
@@ -1468,9 +1486,15 @@ function ThreatPlatesWidgets.UpdateClassicLook(plate, unit, look, cfg)
 	end
 
 	-- Level into the border's level box, skull (boss) in the same spot. The core resets position
-	-- and font on style changes, hence on every update.
-	PlaceRect(plate.visual.skullicon, bar, geo.skullicon, w, h)
+	-- and font on style changes (styleSerial), so only then or when the bar's size changed.
+	local serial, levelSize = plate.styleSerial or 0, cfg.levelSize or 1
 	local rect = geo.level
+	if look.goldSerial == serial and look.goldW == w and look.goldH == h and look.goldLevelSize == levelSize then
+		rect = nil
+	else
+		look.goldSerial, look.goldW, look.goldH, look.goldLevelSize = serial, w, h, levelSize
+		PlaceRect(plate.visual.skullicon, bar, geo.skullicon, w, h)
+	end
 	if rect then
 		local fx, fy = w / geo.width, h / geo.height
 		local point = art.levelPoint or "CENTER"
@@ -1532,8 +1556,55 @@ local function ObjectiveMob(text)
 	return name
 end
 
+-- Quests under a collapsed header are not listed by GetNumQuestLogEntries. If there is
+-- one, all headers are expanded for the scan and collapsed again afterwards (selection
+-- restored). Not while the quest log window is open (the player is using it); the
+-- QUEST_LOG_UPDATE events this causes are ignored for a moment (questScanner).
+local questLogBusyUntil = 0
+local function ExpandForScan()
+	if QuestLogFrame and QuestLogFrame:IsShown() then
+		return
+	end
+	local collapsed
+	for i = 1, GetNumQuestLogEntries() do
+		local title, _, _, _, isHeader, isCollapsed = GetQuestLogTitle(i)
+		if isHeader and isCollapsed and title then
+			collapsed = collapsed or {}
+			collapsed[title] = true
+		end
+	end
+	if not collapsed then
+		return
+	end
+	local selected = GetQuestLogSelection()
+	local selectedTitle = selected and selected > 0 and GetQuestLogTitle(selected)
+	questLogBusyUntil = GetTime() + 0.3
+	ExpandQuestHeader(0)
+	return collapsed, selectedTitle
+end
+
+local function RestoreAfterScan(collapsed, selectedTitle)
+	-- Bottom up: collapsing a header shifts the entries below it
+	for i = GetNumQuestLogEntries(), 1, -1 do
+		local title, _, _, _, isHeader = GetQuestLogTitle(i)
+		if isHeader and collapsed[title] then
+			CollapseQuestHeader(i)
+		end
+	end
+	if selectedTitle then
+		for i = 1, GetNumQuestLogEntries() do
+			if GetQuestLogTitle(i) == selectedTitle then
+				SelectQuestLogEntry(i)
+				break
+			end
+		end
+	end
+	questLogBusyUntil = GetTime() + 0.3
+end
+
 local function ScanQuestLog()
 	local found = {}
+	local collapsed, selectedTitle = ExpandForScan()
 	for i = 1, GetNumQuestLogEntries() do
 		local _, _, _, _, isHeader, _, isComplete = GetQuestLogTitle(i)
 		if not isHeader and isComplete ~= 1 then
@@ -1547,6 +1618,9 @@ local function ScanQuestLog()
 				end
 			end
 		end
+	end
+	if collapsed then
+		RestoreAfterScan(collapsed, selectedTitle)
 	end
 	-- Only update nameplates on change
 	local changed = false
@@ -1576,7 +1650,11 @@ questScanner:SetScript("OnUpdate", function(self)
 		ScanQuestLog()
 	end
 end)
-questScanner:SetScript("OnEvent", function(self)
+questScanner:SetScript("OnEvent", function(self, event)
+	-- Updates caused by our own expand/collapse during a scan
+	if event == "QUEST_LOG_UPDATE" and GetTime() < questLogBusyUntil then
+		return
+	end
 	if not self:IsShown() then
 		scanAt = GetTime() + 0.5
 		self:Show()
@@ -2101,14 +2179,9 @@ end
 local function OnContextUpdate(plate, unit)
 	db = TidyPlatesThreat.db.profile
 	local w = plate.widgets
-	-- Plater border (target/mouseover change here)
-	if db.platerBorder.ON then
-		if not w.PlaterHealthBorder then
-			OnInitialize(plate)
-		end
-		UpdatePlaterBorder(plate, unit)
-	end
-	UpdateClassic(plate, unit)
+	-- Plater border and Classic look: the core calls OnUpdate right after every context
+	-- update (GatherData_Alpha -> ProcessUnitChanges, mouseover, widget update), which
+	-- updates them with the final style
 	-- Debuff Widget
 	if db.debuffWidget.ON then
 		if not w.WidgetDebuff then

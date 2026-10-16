@@ -1,7 +1,7 @@
 # 🟦 Tidy Plates Backport for WotLK 3.3.5a
 > A fully functional, modernized backport for **World of Warcraft: Wrath of the Lich King (3.3.5a)**
 
-[![Version](https://img.shields.io/badge/version-6.9.0-blue.svg)](CHANGES.md)
+[![Version](https://img.shields.io/badge/version-6.10.0-blue.svg)](CHANGES.md)
 [![WoW](https://img.shields.io/badge/WoW-3.3.5a-orange.svg)](https://wowpedia.fandom.com/wiki/World_of_Warcraft:_Wrath_of_the_Lich_King)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 

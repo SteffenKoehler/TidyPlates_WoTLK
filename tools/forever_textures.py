@@ -64,8 +64,9 @@ def save(im, name):
 
 
 # ---------------------------------------------------------------------------
-# Bar.tga: dark bar background with a 1 px gray rim, rounded corners and a soft
-# shadow to the bottom right. Region 88,0 - 220,18 (132 x 18).
+# Bar.tga: dark bar background with a 1 px gray rim and rounded corners, no shadow
+# (it showed as a gray box around the plate on light ground). Region 88,0 - 220,18
+# (132 x 18).
 def bar():
     im = Image.new("RGBA", (256, 32), (0, 0, 0, 0))
     X0, W, H = 88, 132, 18
@@ -76,10 +77,7 @@ def bar():
         for x in range(W):
             px, py = x + 0.5, y + 0.5
             d = rrect_sdf(px, py, *rect, R)
-            # shadow: faint halo all around, stronger shifted to the bottom right
-            ds = max(0.0, rrect_sdf(px - 0.5, py - 0.8, *rect, R))
-            shadow = max(0.72 * math.exp(-ds ** 1.5 / 1.6), 0.3 * math.exp(-max(d, 0) / 4))
-            c = (0, 0, 0, shadow if d > -1 else 0)
+            c = (0, 0, 0, 0)
             # rim (supersampled band -1 < d < 0) and fill
             rim = coverage(lambda u, v: -1 <= rrect_sdf(u, v, *rect, R) < 0, x, y)
             inside = coverage(lambda u, v: rrect_sdf(u, v, *rect, R) < -1, x, y)

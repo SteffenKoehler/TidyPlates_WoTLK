@@ -1,6 +1,27 @@
 TidyPlatesWidgets.DebuffWidgetBuild = 2
 
 local GetSpellInfo = GetSpellInfo
+
+-- Spell names and icons never change: looked up once per spell ID instead of on every
+-- combat log aura event and every redraw
+local SpellNames, SpellTextures = {}, {}
+local function SpellName(spellid)
+	local name = SpellNames[spellid]
+	if not name then
+		name = GetSpellInfo(spellid)
+		SpellNames[spellid] = name
+	end
+	return name
+end
+local function SpellTexture(spellid)
+	local texture = SpellTextures[spellid]
+	if not texture then
+		local _
+		_, _, texture = GetSpellInfo(spellid)
+		SpellTextures[spellid] = texture
+	end
+	return texture
+end
 local PolledHideIn = TidyPlatesWidgets.PolledHideIn
 local AuraMonitor = CreateFrame("Frame")
 
@@ -71,8 +92,10 @@ local RaidIconIndex = {
 	"SKULL"
 }
 
--- TODO: keep an eye on weak tables.
-local ByRaidIcon = setmetatable({}, weaktable)
+-- Raid icon -> GUID (and the unit's name): only valid while the mark stays on that
+-- unit, so wiped on RAID_TARGET_UPDATE and used only when the plate's name matches
+local ByRaidIcon = {}
+local ByRaidIconName = {}
 local ByName = setmetatable({}, weaktable)
 
 local PlayerDispelCapabilities = {
@@ -348,6 +371,7 @@ local function UpdateAurasByUnitID(unitid)
 	raidicon = RaidIconIndex[GetRaidTargetIndex(unitid) or ""]
 	if raidicon then
 		ByRaidIcon[raidicon] = guid
+		ByRaidIconName[raidicon] = UnitName(unitid)
 	end
 
 	CallForWidgetUpdate(guid, raidicon, name)
@@ -373,6 +397,9 @@ local function UpdateAuraByLookup(guid)
 	elseif guid == UnitGUID("mouseover") then
 		UpdateAurasByUnitID("mouseover")
 		return true
+	elseif guid == UnitGUID("focus") then
+		UpdateAurasByUnitID("focus")
+		return true
 	end
 	if TargetOfGroupMembersDirty then
 		RebuildTargetOfGroupMembers()
@@ -393,7 +420,7 @@ end
 local function CombatLog_ApplyAura(...)
 	local timestamp, sourceGUID, destGUID, destName, spellid = ...
 	local duration = GetSpellDuration(spellid)
-	local _, _, texture = GetSpellInfo(spellid)
+	local texture = SpellTexture(spellid)
 	SetAuraInstance(destGUID, spellid, GetTime() + (duration or 0), 1, sourceGUID, duration, texture, AURA_TYPE_DEBUFF, AURA_TARGET_HOSTILE)
 end
 
@@ -405,7 +432,7 @@ end
 local function CombatLog_UpdateAuraStacks(...)
 	local timestamp, sourceGUID, destGUID, destName, spellid, stackCount = ...
 	local duration = GetSpellDuration(spellid)
-	local _, _, texture = GetSpellInfo(spellid)
+	local texture = SpellTexture(spellid)
 	SetAuraInstance(destGUID, spellid, GetTime() + (duration or 0), stackCount, sourceGUID, duration, texture, AURA_TYPE_DEBUFF, AURA_TARGET_HOSTILE)
 end
 
@@ -424,14 +451,19 @@ local function EventPlayerTarget()
 	end
 end
 
+-- A mark may now sit on another unit
+local function EventRaidTarget()
+	wipe(ByRaidIcon)
+	wipe(ByRaidIconName)
+end
+
+-- Target, focus and mouseover (live update while hovering): the GUID is queued like
+-- combat log aura events, so several UNIT_AURA events per frame (and the combat log
+-- events of the same unit) cause a single rescan in ProcessPending
+local QueueGUID
 local function EventUnitAura(unitid)
-	if unitid == "target" then
-		UpdateAurasByUnitID("target")
-	elseif unitid == "focus" then
-		UpdateAurasByUnitID("focus")
-	elseif unitid == "mouseover" then
-		-- Live update while hovering over a nameplate
-		UpdateAurasByUnitID("mouseover")
+	if unitid == "target" or unitid == "focus" or unitid == "mouseover" then
+		QueueGUID(UnitGUID(unitid))
 	end
 end
 
@@ -455,6 +487,7 @@ local CombatLogEvents = {
 local GeneralEvents = {
 	["UNIT_TARGET"] = EventUnitTarget,
 	["UNIT_AURA"] = EventUnitAura,
+	["RAID_TARGET_UPDATE"] = EventRaidTarget,
 	["PLAYER_ENTERING_WORLD"] = CleanAuraLists,
 	["PLAYER_REGEN_ENABLED"] = CleanAuraLists,
 	["PLAYER_TALENT_UPDATE"] = UpdatePlayerDispelTypes,
@@ -494,7 +527,7 @@ local function ProcessPending(self)
 	end
 end
 
-local function QueueGUID(guid, raidicon, name)
+function QueueGUID(guid, raidicon, name)
 	if not guid then
 		return
 	end
@@ -558,6 +591,7 @@ local function CombatEventHandler(frame, event, ...)
 				for iconname, bitmask in pairs(RaidIconBit) do
 					if bit.band(destRaidFlag, bitmask) > 0 then
 						ByRaidIcon[iconname] = destGUID
+						ByRaidIconName[iconname] = destName
 						raidicon = iconname
 						break
 					end
@@ -581,8 +615,11 @@ local function UpdateWidgetTime(frame, expiration)
 	end
 end
 
--- Expiration shade (spirals/cooldown models are not drawn on nameplates in 3.3.5a)
+-- Expiration shade (spirals/cooldown models are not drawn on nameplates in 3.3.5a).
+-- Redrawn about every 1/360 of the duration (one degree of the clock), at most 30x and
+-- at least 4x per second: long debuffs no longer redraw at the full rate.
 local SHADE_INTERVAL = 0.033
+local SHADE_INTERVAL_MAX = 0.25
 -- Clock: the elapsed time is drawn as a dark circular sector clockwise from 12 o'clock.
 -- Cooldown models don't work on nameplates, so it is built from parts: full quarters
 -- as rectangles, the partial quarter from a triangle (texture ClockTriangle =
@@ -616,14 +653,28 @@ local function PlaceClockRect(tex, frame, q, cx, cy, u0, u1, v0, v1)
 	local x0, x1 = min(xa, xb), max(xa, xb)
 	local y0, y1 = min(ya, yb), max(ya, yb)
 	if x1 - x0 < 0.05 or y1 - y0 < 0.05 then
-		tex:Hide()
+		if tex.on ~= false then
+			tex.on = false
+			tex:Hide()
+		end
 		return
 	end
-	tex:ClearAllPoints()
+	-- Only anchored at BOTTOMLEFT, so SetPoint replaces the previous anchor
 	tex:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", x0, y0)
 	tex:SetWidth(x1 - x0)
 	tex:SetHeight(y1 - y0)
-	tex:Show()
+	if not tex.on then
+		tex.on = true
+		tex:Show()
+	end
+end
+
+-- Hides a clock part (tracked in tex.on to skip redundant Show/Hide calls)
+local function HidePart(tex)
+	if tex.on ~= false then
+		tex.on = false
+		tex:Hide()
+	end
 end
 
 local function CreateClock(frame)
@@ -653,11 +704,12 @@ local function HideClock(frame)
 	local clock = frame.Clock
 	if clock then
 		for q = 1, 4 do
-			clock.quarters[q]:Hide()
+			HidePart(clock.quarters[q])
 		end
-		clock.extra:Hide()
-		clock.triangle:Hide()
-		clock.hand:Hide()
+		HidePart(clock.extra)
+		HidePart(clock.triangle)
+		HidePart(clock.hand)
+		clock.full, clock.triQ, clock.handSize = nil, nil, nil
 	end
 end
 
@@ -667,15 +719,24 @@ local function UpdateClock(frame, frac)
 	local cx, cy = w / 2, h / 2
 	local angle = frac * TWO_PI
 	local full = mfloor(angle / HALF_PI)
-	for q = 1, 4 do
-		local a, b = cx, cy
-		if q == 2 or q == 4 then
-			a, b = cy, cx
-		end
-		if q <= full then
-			PlaceClockRect(clock.quarters[q], frame, q, cx, cy, 0, a, 0, b)
-		else
-			clock.quarters[q]:Hide()
+	if clock.w ~= w or clock.h ~= h then
+		clock.w, clock.h = w, h
+		clock.full, clock.handSize = nil, nil
+		clock.hand:SetPoint("CENTER", frame, "BOTTOMLEFT", cx, cy)
+	end
+	-- Full quarters only change when the hand enters the next quarter
+	if clock.full ~= full then
+		clock.full = full
+		for q = 1, 4 do
+			local a, b = cx, cy
+			if q == 2 or q == 4 then
+				a, b = cy, cx
+			end
+			if q <= full then
+				PlaceClockRect(clock.quarters[q], frame, q, cx, cy, 0, a, 0, b)
+			else
+				HidePart(clock.quarters[q])
+			end
 		end
 	end
 	local q = full + 1
@@ -686,12 +747,15 @@ local function UpdateClock(frame, frac)
 		end
 		local phi = angle - full * HALF_PI
 		local tri = clock.triangle
-		local c = TRI_COORDS[q]
-		tri:SetTexCoord(c[1], c[2], c[3], c[4])
+		if clock.triQ ~= q then
+			clock.triQ = q
+			local c = TRI_COORDS[q]
+			tri:SetTexCoord(c[1], c[2], c[3], c[4])
+		end
 		if phi <= matan2(a, b) then
 			-- Ray hits the outer edge in the start direction
 			PlaceClockRect(tri, frame, q, cx, cy, 0, b * mtan(phi), 0, b)
-			clock.extra:Hide()
+			HidePart(clock.extra)
 		else
 			-- Ray hits the side edge: rectangle above + triangle below
 			local v1 = a / mtan(phi)
@@ -699,8 +763,8 @@ local function UpdateClock(frame, frac)
 			PlaceClockRect(tri, frame, q, cx, cy, 0, a, 0, v1)
 		end
 	else
-		clock.triangle:Hide()
-		clock.extra:Hide()
+		HidePart(clock.triangle)
+		HidePart(clock.extra)
 	end
 	-- Hand: square texture around the center, image rotated clockwise via texture
 	-- coordinates. The size is chosen per angle so that the line ends exactly at the
@@ -710,22 +774,27 @@ local function UpdateClock(frame, frac)
 	local co, si = mcos(angle), msin(angle)
 	local reach = min(si ~= 0 and cx / mabs(si) or cx * 100, co ~= 0 and cy / mabs(co) or cy * 100)
 	local size = 2 * reach / HAND_LENGTH
-	hand:ClearAllPoints()
-	hand:SetPoint("CENTER", frame, "BOTTOMLEFT", cx, cy)
-	hand:SetWidth(size)
-	hand:SetHeight(size)
+	-- Anchored at the center once (on resize); the size only changes near the corners
+	if not clock.handSize or mabs(clock.handSize - size) > 0.05 then
+		clock.handSize = size
+		hand:SetWidth(size)
+		hand:SetHeight(size)
+	end
 	-- Texture point = center + inverse rotation of the screen point (y pointing down)
 	hand:SetTexCoord(
 		0.5 - 0.5 * co - 0.5 * si, 0.5 + 0.5 * si - 0.5 * co, -- top left
 		0.5 - 0.5 * co + 0.5 * si, 0.5 + 0.5 * si + 0.5 * co, -- bottom left
 		0.5 + 0.5 * co - 0.5 * si, 0.5 - 0.5 * si - 0.5 * co, -- top right
 		0.5 + 0.5 * co + 0.5 * si, 0.5 - 0.5 * si + 0.5 * co) -- bottom right
-	hand:Show()
+	if not hand.on then
+		hand.on = true
+		hand:Show()
+	end
 end
 
 local function ShadeOnUpdate(frame, elapsed)
 	local tick = frame.shadeTick + elapsed
-	if tick < SHADE_INTERVAL then
+	if tick < frame.shadeInterval then
 		frame.shadeTick = tick
 		return
 	end
@@ -740,21 +809,27 @@ local function ShadeOnUpdate(frame, elapsed)
 		return
 	end
 	if frac <= 0.02 or frac >= 1 then
-		frame.Shade:Hide()
-		frame.ShadeEdge:Hide()
-		frame.Grey:Hide()
+		if frame.barOn then
+			frame.barOn = false
+			frame.Shade:Hide()
+			frame.ShadeEdge:Hide()
+			frame.Grey:Hide()
+		end
 	else
 		local height = frame:GetHeight() * frac
 		frame.Shade:SetHeight(height)
 		-- Crop the grey copy of the icon to the elapsed (upper) part; reuse the icon's
-		-- crop coordinates (themes trim the edges)
+		-- crop coordinates (themes trim the edges; read once in UpdateIcon)
 		local grey = frame.Grey
-		local left, top, _, bottom, right = frame.Icon:GetTexCoord()
-		grey:SetTexCoord(left, right, top, top + (bottom - top) * frac)
+		local tc = frame.iconCoords
+		grey:SetTexCoord(tc[1], tc[2], tc[3], tc[3] + (tc[4] - tc[3]) * frac)
 		grey:SetHeight(height)
-		grey:Show()
-		frame.Shade:Show()
-		frame.ShadeEdge:Show()
+		if not frame.barOn then
+			frame.barOn = true
+			grey:Show()
+			frame.Shade:Show()
+			frame.ShadeEdge:Show()
+		end
 	end
 end
 
@@ -769,7 +844,8 @@ local function UpdateIcon(frame, texture, expiration, stacks, duration)
 		local widget = frame:GetParent()
 		if widget.showSpiral and duration and duration > 0 then
 			frame.shadeStart, frame.shadeDuration = expiration - duration, duration
-			frame.shadeTick = SHADE_INTERVAL
+			frame.shadeInterval = max(SHADE_INTERVAL, min(SHADE_INTERVAL_MAX, duration / 360))
+			frame.shadeTick = frame.shadeInterval
 			-- Style: "BAR" (grey bar, default) or "CLOCK" (clock)
 			local style = widget.timerStyle == "CLOCK" and "CLOCK" or "BAR"
 			if frame.timerStyle ~= style then
@@ -777,8 +853,13 @@ local function UpdateIcon(frame, texture, expiration, stacks, duration)
 				frame.Shade:Hide()
 				frame.ShadeEdge:Hide()
 				frame.Grey:Hide()
+				frame.barOn = false
 				HideClock(frame)
 			end
+			local tc = frame.iconCoords or {}
+			local left, top, _, bottom, right = frame.Icon:GetTexCoord()
+			tc[1], tc[2], tc[3], tc[4] = left, right, top, bottom
+			frame.iconCoords = tc
 			frame:SetScript("OnUpdate", ShadeOnUpdate)
 			frame.Grey:SetTexture(texture)
 			frame.Grey:SetDesaturated(true)
@@ -787,6 +868,7 @@ local function UpdateIcon(frame, texture, expiration, stacks, duration)
 			frame.Shade:Hide()
 			frame.ShadeEdge:Hide()
 			frame.Grey:Hide()
+			frame.barOn = false
 			HideClock(frame)
 		end
 
@@ -839,8 +921,9 @@ local function UpdateIconGrid(frame, guid)
 			aura.spellid, aura.expiration, aura.stacks, aura.caster, aura.duration, aura.texture, aura.type, aura.target =
 				GetAuraInstance(guid, instanceid)
 
-			if tonumber(aura.spellid) then
-				aura.name = GetSpellInfo(tonumber(aura.spellid))
+			local spellid = tonumber(aura.spellid)
+			if spellid then
+				aura.name = SpellName(spellid)
 				aura.unit = frame.unit
 
 				-- Call Filter Function
@@ -885,16 +968,16 @@ function UpdateWidget(frame)
 	local guid = unit.guid
 
 	if not guid then
-		-- Attempt to ID widget via Name or Raid Icon
+		-- Attempt to ID widget via Name or Raid Icon. Only used for the aura lookup:
+		-- the plate's GUID is assigned by the core (AssignGUID), which keeps the
+		-- GUID map consistent and checks the mark's name itself.
 		if unit.type == "PLAYER" then
 			guid = ByName[unit.name]
-		elseif unit.isMarked then
+		elseif unit.isMarked and ByRaidIconName[unit.raidIcon] == unit.name then
 			guid = ByRaidIcon[unit.raidIcon]
 		end
 
-		if guid then
-			unit.guid = guid -- Feed data back into unit table		-- Testing
-		else
+		if not guid then
 			frame:Hide()
 			return
 		end
@@ -937,6 +1020,7 @@ local function UpdateWidgetContext(frame, unit)
 		raidicon = unit.raidIcon
 		if guid and raidicon then
 			ByRaidIcon[raidicon] = guid
+			ByRaidIconName[raidicon] = unit.name
 		end
 	end
 	if unit.type == "PLAYER" and unit.reaction == "HOSTILE" then
