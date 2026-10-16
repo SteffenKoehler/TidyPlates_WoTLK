@@ -71,8 +71,10 @@ local RaidIconIndex = {
 	"SKULL"
 }
 
--- TODO: keep an eye on weak tables.
-local ByRaidIcon = setmetatable({}, weaktable)
+-- Raid icon -> GUID (and the unit's name): only valid while the mark stays on that
+-- unit, so wiped on RAID_TARGET_UPDATE and used only when the plate's name matches
+local ByRaidIcon = {}
+local ByRaidIconName = {}
 local ByName = setmetatable({}, weaktable)
 
 local PlayerDispelCapabilities = {
@@ -348,6 +350,7 @@ local function UpdateAurasByUnitID(unitid)
 	raidicon = RaidIconIndex[GetRaidTargetIndex(unitid) or ""]
 	if raidicon then
 		ByRaidIcon[raidicon] = guid
+		ByRaidIconName[raidicon] = UnitName(unitid)
 	end
 
 	CallForWidgetUpdate(guid, raidicon, name)
@@ -424,6 +427,12 @@ local function EventPlayerTarget()
 	end
 end
 
+-- A mark may now sit on another unit
+local function EventRaidTarget()
+	wipe(ByRaidIcon)
+	wipe(ByRaidIconName)
+end
+
 local function EventUnitAura(unitid)
 	if unitid == "target" then
 		UpdateAurasByUnitID("target")
@@ -455,6 +464,7 @@ local CombatLogEvents = {
 local GeneralEvents = {
 	["UNIT_TARGET"] = EventUnitTarget,
 	["UNIT_AURA"] = EventUnitAura,
+	["RAID_TARGET_UPDATE"] = EventRaidTarget,
 	["PLAYER_ENTERING_WORLD"] = CleanAuraLists,
 	["PLAYER_REGEN_ENABLED"] = CleanAuraLists,
 	["PLAYER_TALENT_UPDATE"] = UpdatePlayerDispelTypes,
@@ -558,6 +568,7 @@ local function CombatEventHandler(frame, event, ...)
 				for iconname, bitmask in pairs(RaidIconBit) do
 					if bit.band(destRaidFlag, bitmask) > 0 then
 						ByRaidIcon[iconname] = destGUID
+						ByRaidIconName[iconname] = destName
 						raidicon = iconname
 						break
 					end
@@ -885,16 +896,16 @@ function UpdateWidget(frame)
 	local guid = unit.guid
 
 	if not guid then
-		-- Attempt to ID widget via Name or Raid Icon
+		-- Attempt to ID widget via Name or Raid Icon. Only used for the aura lookup:
+		-- the plate's GUID is assigned by the core (AssignGUID), which keeps the
+		-- GUID map consistent and checks the mark's name itself.
 		if unit.type == "PLAYER" then
 			guid = ByName[unit.name]
-		elseif unit.isMarked then
+		elseif unit.isMarked and ByRaidIconName[unit.raidIcon] == unit.name then
 			guid = ByRaidIcon[unit.raidIcon]
 		end
 
-		if guid then
-			unit.guid = guid -- Feed data back into unit table		-- Testing
-		else
+		if not guid then
 			frame:Hide()
 			return
 		end
@@ -937,6 +948,7 @@ local function UpdateWidgetContext(frame, unit)
 		raidicon = unit.raidIcon
 		if guid and raidicon then
 			ByRaidIcon[raidicon] = guid
+			ByRaidIconName[raidicon] = unit.name
 		end
 	end
 	if unit.type == "PLAYER" and unit.reaction == "HOSTILE" then
