@@ -977,12 +977,17 @@ do
 		unit.isMouseover = regions.highlight:IsShown()
 		-- GUID
 		if unit.isTarget then
-			currentTarget = plate
-			OnUpdateTargetCastbar(plate)
-			-- UpdateCurrentGUID: target is authoritative and corrects a heuristic assignment if needed
-			local targetGUID = UnitGUID("target")
-			if targetGUID and unit.guid ~= targetGUID then
-				AssignGUID(plate, targetGUID, true)
+			-- Right after a target change the alpha of the previous target can still be 1 for
+			-- a frame: the target's GUID, castbar and currentTarget only go to a plate whose
+			-- name (read fresh, unit.name is gathered after this) is the target's
+			if regions.name:GetText() == UnitName("target") then
+				currentTarget = plate
+				OnUpdateTargetCastbar(plate)
+				-- UpdateCurrentGUID: target is authoritative and corrects a heuristic assignment if needed
+				local targetGUID = UnitGUID("target")
+				if targetGUID and unit.guid ~= targetGUID then
+					AssignGUID(plate, targetGUID, true)
+				end
 			end
 			extended:SetFrameLevel(127)
 		else
@@ -1340,7 +1345,7 @@ do
 			visual.highlight:Show()
 			-- Mouseover is authoritative and corrects a heuristic assignment if needed
 			local mouseoverGUID = UnitGUID("mouseover")
-			if mouseoverGUID and unit.guid ~= mouseoverGUID then
+			if mouseoverGUID and unit.guid ~= mouseoverGUID and regions.name:GetText() == UnitName("mouseover") then
 				AssignGUID(plate, mouseoverGUID, true)
 			end
 		else
