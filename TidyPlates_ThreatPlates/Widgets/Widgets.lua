@@ -1556,8 +1556,55 @@ local function ObjectiveMob(text)
 	return name
 end
 
+-- Quests under a collapsed header are not listed by GetNumQuestLogEntries. If there is
+-- one, all headers are expanded for the scan and collapsed again afterwards (selection
+-- restored). Not while the quest log window is open (the player is using it); the
+-- QUEST_LOG_UPDATE events this causes are ignored for a moment (questScanner).
+local questLogBusyUntil = 0
+local function ExpandForScan()
+	if QuestLogFrame and QuestLogFrame:IsShown() then
+		return
+	end
+	local collapsed
+	for i = 1, GetNumQuestLogEntries() do
+		local title, _, _, _, isHeader, isCollapsed = GetQuestLogTitle(i)
+		if isHeader and isCollapsed and title then
+			collapsed = collapsed or {}
+			collapsed[title] = true
+		end
+	end
+	if not collapsed then
+		return
+	end
+	local selected = GetQuestLogSelection()
+	local selectedTitle = selected and selected > 0 and GetQuestLogTitle(selected)
+	questLogBusyUntil = GetTime() + 0.3
+	ExpandQuestHeader(0)
+	return collapsed, selectedTitle
+end
+
+local function RestoreAfterScan(collapsed, selectedTitle)
+	-- Bottom up: collapsing a header shifts the entries below it
+	for i = GetNumQuestLogEntries(), 1, -1 do
+		local title, _, _, _, isHeader = GetQuestLogTitle(i)
+		if isHeader and collapsed[title] then
+			CollapseQuestHeader(i)
+		end
+	end
+	if selectedTitle then
+		for i = 1, GetNumQuestLogEntries() do
+			if GetQuestLogTitle(i) == selectedTitle then
+				SelectQuestLogEntry(i)
+				break
+			end
+		end
+	end
+	questLogBusyUntil = GetTime() + 0.3
+end
+
 local function ScanQuestLog()
 	local found = {}
+	local collapsed, selectedTitle = ExpandForScan()
 	for i = 1, GetNumQuestLogEntries() do
 		local _, _, _, _, isHeader, _, isComplete = GetQuestLogTitle(i)
 		if not isHeader and isComplete ~= 1 then
@@ -1571,6 +1618,9 @@ local function ScanQuestLog()
 				end
 			end
 		end
+	end
+	if collapsed then
+		RestoreAfterScan(collapsed, selectedTitle)
 	end
 	-- Only update nameplates on change
 	local changed = false
@@ -1600,7 +1650,11 @@ questScanner:SetScript("OnUpdate", function(self)
 		ScanQuestLog()
 	end
 end)
-questScanner:SetScript("OnEvent", function(self)
+questScanner:SetScript("OnEvent", function(self, event)
+	-- Updates caused by our own expand/collapse during a scan
+	if event == "QUEST_LOG_UPDATE" and GetTime() < questLogBusyUntil then
+		return
+	end
 	if not self:IsShown() then
 		scanAt = GetTime() + 0.5
 		self:Show()
