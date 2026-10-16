@@ -1634,10 +1634,19 @@ do
 			return
 		end
 		local hp, hpmax = UnitHealth(uid), UnitHealthMax(uid)
+		-- Unhurt NPCs of the same name look identical; if the unit's own plate is not
+		-- visible, another unhurt plate of that name would match (whelp packs)
+		if hp >= hpmax and not UnitIsPlayer(uid) then
+			return
+		end
+		local level = UnitLevel(uid)
+		level = level == -1 and "??" or tostring(level)
+		local icon = MarkerByIndex[GetRaidTargetIndex(uid) or 0]
 		local match
 		for plate in pairs(PlatesVisible) do
 			local u = plate.extended.unit
-			if not u.guid and u.name == name and u.health == hp and u.healthmax == hpmax then
+			if not u.guid and u.name == name and u.health == hp and u.healthmax == hpmax
+				and u.level == level and u.raidIcon == icon then
 				if match then
 					return -- ambiguous
 				end
