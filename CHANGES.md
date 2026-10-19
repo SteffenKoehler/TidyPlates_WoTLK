@@ -123,6 +123,9 @@ wiped on `RAID_TARGET_UPDATE` and used only when the plate's name matches.
   misses) of enemies on group members from the combat log, so AoE-tanked packs
   turn blue as soon as they hit the tank. Without any information a plate
   keeps its last color instead of turning red.
+- Threat colors apply as soon as the player or any group member is in combat
+  (e.g. the tank pulled before you are in combat). Only the color: alpha,
+  scale, threat border and stacking still follow your own combat state.
 
 ## Plater look (profile "Plater")
 

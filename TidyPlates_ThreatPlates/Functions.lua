@@ -293,9 +293,60 @@ do
 
 	local TotemNameFallback = TidyPlatesUtility.TotemNameFallback
 
+	-- Player or a party/raid member in combat (members cached for 0.25 s)
+	local partyUnits, raidUnits = {}, {}
+	for i = 1, 4 do partyUnits[i] = "party" .. i end
+	for i = 1, 40 do raidUnits[i] = "raid" .. i end
+	local groupCombat, groupCombatUntil = false, 0
+	local function GroupInCombat()
+		if InCombatLockdown() then
+			return true
+		end
+		local now = GetTime()
+		if now < groupCombatUntil then
+			return groupCombat
+		end
+		groupCombatUntil = now + 0.25
+		local n, units = GetNumRaidMembers(), raidUnits
+		if n == 0 then
+			n, units = GetNumPartyMembers(), partyUnits
+		end
+		groupCombat = false
+		for i = 1, n do
+			if UnitAffectingCombat(units[i]) then
+				groupCombat = true
+				break
+			end
+		end
+		return groupCombat
+	end
+
+	-- Threat colors already while only the group fights (e.g. the tank pulled before the
+	-- player is in combat). Only the color: style, alpha, scale and threat border keep
+	-- following the player's own combat. Same conditions as TidyPlatesThreat.SetStyle.
+	local function GroupThreatStyle(unit, db)
+		if InCombatLockdown() or not GroupInCombat() then
+			return nil
+		end
+		if not (db.threat.ON and unit.class == "UNKNOWN" and (unit.reaction == "HOSTILE" or unit.reaction == "NEUTRAL")) then
+			return nil
+		end
+		local T = TidyPlatesThreat.UnitType(unit)
+		if not (T and db.nameplate.toggle[T] and db.threat.toggle[T]) then
+			return nil
+		end
+		if db.threat.nonCombat and not (unit.isInCombat or (unit.health or 0) < (unit.healthmax or 0)) then
+			return nil
+		end
+		return TidyPlatesThreat.IsTanking() and "tank" or "dps"
+	end
+
 	local function SetHealthbarColor(unit)
 		local db = TidyPlatesThreat.db.profile
 		local style, custom = TidyPlatesThreat.SetStyle(unit)
+		if style == "normal" then
+			style = GroupThreatStyle(unit, db) or style
+		end
 
 		-- Pet color: overrides all other color modes for pets so they are instantly recognizable.
 		-- 3.3.5a: unit.name may contain a server suffix, so strip it with strsplit.
@@ -355,7 +406,7 @@ do
 						if u.allowMarked and unit.isMarked and db.settings.raidicon.hpColor then
 							local R = db.settings.raidicon.hpMarked[unit.raidIcon]
 							return R.r, R.g, R.b
-						elseif not unit.isMarked and db.threat.useHPColor and InCombatLockdown() and db.threat.ON then
+						elseif not unit.isMarked and db.threat.useHPColor and GroupInCombat() and db.threat.ON then
 							if TidyPlatesThreat.IsTanking() then
 								if unit.threatValue < 2 then
 									if isTanked(unit) then
@@ -379,7 +430,7 @@ do
 					end
 				end
 			end
-		elseif (((style == "tank") or (style == "dps")) and db.threat.useHPColor and InCombatLockdown()) then
+		elseif (((style == "tank") or (style == "dps")) and db.threat.useHPColor and GroupInCombat()) then
 			-- Threat color takes precedence over raid markers. Order:
 			-- 3 = I have solid aggro, 2 = have aggro, about to lose it,
 			-- 1 = about to pull aggro, otherwise: another tank holds it -> tank color,
