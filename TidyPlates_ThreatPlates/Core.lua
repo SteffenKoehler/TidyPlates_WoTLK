@@ -818,11 +818,12 @@ function TidyPlatesThreat:OnInitialize()
 			-- spacing is calculated from bar size and name
 			stacking = {
 				ON = false,
-				speed = 0.7,
+				duration = 0.5, -- seconds a movement takes (soft spring)
 				tallBossFix = true,
 				pinTarget = true, -- target stays above the model, others move aside
 				columns = true, -- large stacks in two side-by-side columns
 				columnsAt = 6, -- from this many nameplates in one stack
+				columnsStyle = "STAGGERED", -- STAGGERED: keep the mobs' offsets; STRAIGHT: plates aligned in each column
 				onlyEngaged = true -- in combat only stack enemies fighting me/my group
 			},
 			tankedWidget = {
@@ -1452,10 +1453,11 @@ function TidyPlatesThreat:ApplyStacking()
 		enabled = true,
 		xspace = xspace,
 		yspace = top - bottom + 5,
-		speed = p.stacking.speed,
+		duration = p.stacking.duration,
 		tallBossFix = p.stacking.tallBossFix,
 		pinTarget = p.stacking.pinTarget,
 		columnsAt = p.stacking.columns and p.stacking.columnsAt or 0,
+		columnsStaggered = p.stacking.columnsStyle == "STAGGERED",
 		onlyEngaged = p.stacking.onlyEngaged and true or false,
 		extraTop = DebuffExtraTop,
 		extraBottom = CastExtraBottom

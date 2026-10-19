@@ -1909,7 +1909,7 @@ do
 	local cfg = {
 		enabled = false,
 		xspace = 130, yspace = 20,                         -- minimum spacing between nameplates
-		speed = 0.7, speedraise = 1, speedlower = 1, speedreset = 1,
+		duration = 0.5,                                    -- seconds a movement takes (soft spring)
 		originpos = 20, upperborder = 30,
 		interval = 0.02,
 		tallBossFix = true,
@@ -1917,11 +1917,12 @@ do
 		extraTop = nil,                                    -- function(extended): extra space above the nameplate (e.g. debuffs)
 		extraBottom = nil,                                 -- function(extended): extra space below the nameplate (e.g. castbar)
 		columnsAt = 0,                                     -- two columns from this many nameplates in one tower (0 = off)
+		columnsStaggered = false,                          -- columns keep the mobs' horizontal offsets (no straight columns)
 		onlyEngaged = false                                -- in combat, only stack engaged enemies
 	}
-	local delta = cfg.speed * 5
-	local Stacked = {} -- [plate] = {xpos, ypos, position, bottom}
+	local Stacked = {} -- [plate] = {xpos, ypos, position, shown, ...}
 	local nextRun = 0
+	local lastRender = 0
 	local worldFrameEnlarged = false
 
 	local function ResetPlate(plate)
@@ -1937,14 +1938,32 @@ do
 
 	-- Sorted by x; only neighbors within xspace are compared
 	-- (previously all pairs, 50x per second)
-	local Order, ExOrder, ActiveOrder = {}, {}, {}
+	local Order, ActiveOrder = {}, {}
 	local function ByX(a, b)
 		return a.xpos < b.xpos
 	end
-	local function ByEx(a, b)
-		return a.ex < b.ex
+	-- Soft movement: the logic computes where every plate belongs (50x per second), the
+	-- display follows every frame as a critically damped spring: soft start, soft stop,
+	-- no overshoot, and a new target mid-move keeps the momentum. Stiffness so that about
+	-- 90 % of a movement is done after the chosen duration ((1 + w t) e^(-w t) = 0.09 at w t = 4).
+	local SPRING_WT = 4
+	local function Spring(cur, vel, target, omega, dt)
+		local x = omega * dt
+		local decay = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x)
+		local change = cur - target
+		local temp = (vel + omega * change) * dt
+		vel = (vel - omega * temp) * decay
+		cur = target + (change + temp) * decay
+		if abs(cur - target) < 0.1 and abs(vel) < 1 then
+			return target, 0
+		end
+		return cur, vel
 	end
-	local HSPEED = 0.25 -- fraction of the remaining distance per run when gliding sideways (~0.2 s)
+	-- Stacking order: currently shown height (keeps the order stable while mobs move)
+	local function ByShownY(a, b)
+		return a.sy < b.sy
+	end
+	local Placed, Engaged = {}, {}
 
 	-- Is the enemy engaged in my fight? true/false = certain, nil = unclear (no GUID,
 	-- name belongs to an engaged enemy, but the client does not show combat yet -
@@ -2027,12 +2046,15 @@ do
 	end
 
 	-- Two columns: a "tower" is a set of nameplates whose natural x position lies within
-	-- xspace of the leftmost one (all overlap). From columnsAt nameplates on, each gets
-	-- a side (left/right); the columns are one nameplate width apart and
-	-- thus stack independently. Sides are kept as long as the columns differ by no more
-	-- than one nameplate (no jumping when mobs move). The target stays
-	-- in place (between the columns).
-	local function AssignColumns(order, count, xspace, splitAt)
+	-- xspace of the leftmost one (all overlap). From columnsAt nameplates on, each plate keeps
+	-- to the side of the tower its mob is on (left/right of the tower's center) and only moves
+	-- outwards, never across its mob: a plate already far enough out stays where it is
+	-- (straight columns), or each side moves out as a whole only as far as needed for the
+	-- sides to clear each other, keeping the mobs' horizontal offsets (staggered). The
+	-- columns may differ in height. A plate changes sides only once its mob is clearly on the
+	-- other side (no flickering near the center). The target stays in place (between the columns).
+	local SIDE_HYSTERESIS = 15
+	local function AssignColumns(order, count, xspace, splitAt, staggered)
 		local i = 1
 		while i <= count do
 			local first = order[i]
@@ -2055,50 +2077,60 @@ do
 					sum = sum + order[k].xpos
 				end
 				local cx = sum / size
-				local left, right = 0, 0
+				local half = xspace / 2 + 1
+				local shiftL, shiftR = 0, 0
+				if staggered then
+					-- sides only need to be a plate width apart: innermost plate of each side
+					local maxL, minR
+					for k = i, j do
+						local p = order[k]
+						if not p.isTarget then
+							local d = p.xpos - cx
+							local side = p.side
+							if side == -1 and d > SIDE_HYSTERESIS then
+								side = 1
+							elseif side == 1 and d < -SIDE_HYSTERESIS then
+								side = -1
+							elseif not side then
+								side = d < 0 and -1 or 1
+							end
+							if side == -1 then
+								maxL = (not maxL or p.xpos > maxL) and p.xpos or maxL
+							else
+								minR = (not minR or p.xpos < minR) and p.xpos or minR
+							end
+						end
+					end
+					if maxL and minR then
+						local need = xspace + 2 - (minR - maxL)
+						if need > 0 then
+							shiftL, shiftR = -need / 2, need / 2
+						end
+					end
+				end
 				for k = i, j do
 					local p = order[k]
 					if p.isTarget then
-						p.side = nil
-					elseif p.side == -1 then
-						left = left + 1
-					elseif p.side == 1 then
-						right = right + 1
-					end
-				end
-				-- New members go to the smaller side (on a tie, by position relative to the center)
-				for k = i, j do
-					local p = order[k]
-					if not p.isTarget and not p.side then
-						if left < right or (left == right and p.xpos < cx) then
-							p.side, left = -1, left + 1
-						else
-							p.side, right = 1, right + 1
-						end
-					end
-				end
-				-- Rebalance: move the nameplate from the larger side that is closest to the
-				-- other side
-				while left - right > 1 or right - left > 1 do
-					local from = left > right and -1 or 1
-					local best
-					for k = i, j do
-						local p = order[k]
-						if p.side == from and (not best or (from == -1 and p.xpos > best.xpos) or (from == 1 and p.xpos < best.xpos)) then
-							best = p
-						end
-					end
-					best.side = -from
-					if from == -1 then
-						left, right = left - 1, right + 1
+						p.side, p.hgoal = nil, 0
 					else
-						left, right = left + 1, right - 1
+						local d = p.xpos - cx
+						if p.side == -1 and d > SIDE_HYSTERESIS then
+							p.side = 1
+						elseif p.side == 1 and d < -SIDE_HYSTERESIS then
+							p.side = -1
+						elseif not p.side then
+							p.side = d < 0 and -1 or 1
+						end
+						if staggered then
+							-- whole side out, only as far as needed
+							p.hgoal = p.side == -1 and shiftL or shiftR
+						elseif p.side == -1 then
+							-- outwards only: left column at most cx - half, right at least cx + half
+							p.hgoal = math.min(0, cx - half - p.xpos)
+						else
+							p.hgoal = math.max(0, cx + half - p.xpos)
+						end
 					end
-				end
-				local half = xspace / 2 + 1
-				for k = i, j do
-					local p = order[k]
-					p.hgoal = p.side and (cx + p.side * half - p.xpos) or 0
 				end
 			else
 				for k = i, j do
@@ -2129,7 +2161,7 @@ do
 			for key, value in pairs(options) do
 				cfg[key] = value
 			end
-			delta = cfg.speed * 5
+			cfg.duration = math.max(0.05, cfg.duration or 0.5)
 			if GetCVar("nameplateAllowOverlap") == "0" then
 				SetCVar("nameplateAllowOverlap", 1)
 			end
@@ -2144,12 +2176,10 @@ do
 		end
 	end
 
-	function UpdateStacking(now)
-		if not cfg.enabled or now < nextRun then
-			return
-		end
-		nextRun = now + cfg.interval
-		local xspace, yspace, originpos, upperborder = cfg.xspace, cfg.yspace, cfg.originpos, cfg.upperborder
+	-- Spacing logic: computes the final offset of every plate directly (instead of the
+	-- aura's step-by-step creeping, which took 1-2 s for a tower of three)
+	local function RunStacking(now)
+		local xspace, yspace = cfg.xspace, cfg.yspace
 
 		-- Reset vanished or friendly nameplates
 		for plate in pairs(Stacked) do
@@ -2206,116 +2236,135 @@ do
 		for i = #active, nActive + 1, -1 do
 			active[i] = nil
 		end
-		AssignColumns(active, nActive, xspace, cfg.columnsAt or 0)
+		AssignColumns(active, nActive, xspace, cfg.columnsAt or 0, cfg.columnsStaggered)
 		for i = 1, count do
 			local p = order[i]
-			local h, goal = p.hoff or 0, p.hgoal or 0
-			local diff = goal - h
-			if abs(diff) < 0.5 then
-				h = goal
-			else
-				h = h + diff * HSPEED
-			end
-			p.hoff = h
-			p.ex = p.xpos + h
+			p.hoff = p.hgoal or 0
+			p.ex = p.xpos + p.hoff
 		end
-		-- Stacking uses the actual (shifted) x position
-		local exorder = ExOrder
-		for i = 1, count do
-			exorder[i] = order[i]
-		end
-		for i = #exorder, count + 1, -1 do
-			exorder[i] = nil
-		end
-		table.sort(exorder, ByEx)
-		order = exorder
-		local screenWidth = GetScreenWidth() * UIParent:GetEffectiveScale()
 
-		-- For each nameplate, determine the distance to the next one below and smoothly
-		-- raise, lower or reset it (formulas unchanged from the aura).
-		-- Exception target: stays in place above the model, the others move out of the way.
+		-- Vertical: place the engaged plates from the bottom up, each at the lowest height at
+		-- or above its own position that keeps the spacing to every plate already placed
+		-- within xspace. The pinned target is placed first and stays put; a plate overlapping
+		-- it from below is pushed up past it. Unengaged plates glide back to their place.
+		local ne = 0
 		for i = 1, count do
-			local p1 = order[i]
-			local plate1 = p1.plate
-			local min, reset = 1000, true
-			-- first to the left, then to the right, as long as the x distance is < xspace
-			local j, step = i - 1, -1
-			while true do
-				local p2 = order[j]
-				if not p2 or abs(p1.ex - p2.ex) >= xspace then
-					if step < 0 then
-						j, step = i + 1, 1
-						p2 = order[j]
-						if not p2 or abs(p1.ex - p2.ex) >= xspace then
-							break
+			local p = order[i]
+			p.position = 0
+			if not p.passive then
+				ne = ne + 1
+				Engaged[ne] = p
+				p.sy = p.ypos + (p.shown or 0)
+			end
+		end
+		for i = #Engaged, ne + 1, -1 do
+			Engaged[i] = nil
+		end
+		table.sort(Engaged, ByShownY)
+		local np = 0
+		for pass = 1, 2 do
+			for i = 1, ne do
+				local p = Engaged[i]
+				if (pass == 1) == (p.isTarget and true or false) then
+					local y = p.ypos
+					if not p.isTarget then
+						-- Placed is sorted by height, so pushing up mostly only meets plates further
+						-- on; a second pass catches lower plates with a larger extra space
+						for _ = 1, 3 do
+							local moved = false
+							for k = 1, np do
+								local q = Placed[k]
+								if abs(p.ex - q.ex) < xspace then
+									local qy = q.ypos + q.position
+									local above = yspace + q.extra + p.extraBottom -- p above q
+									local below = yspace + p.extra + q.extraBottom -- p below q
+									if y < qy + above and y > qy - below then
+										y = qy + above
+										moved = true
+									end
+								end
+							end
+							if not moved then
+								break
+							end
 						end
-					else
-						break
 					end
+					p.position = y - p.ypos
+					-- insert sorted by placed height
+					local k = np
+					while k > 0 and Placed[k].ypos + Placed[k].position > y do
+						Placed[k + 1] = Placed[k]
+						k = k - 1
+					end
+					Placed[k + 1] = p
+					np = np + 1
 				end
-				if not p2.passive then
-					local ydiff = p1.ypos + p1.position - p2.ypos - p2.position
-					-- A nameplate overlapping the target from below counts as directly above it
-					-- and is pushed upwards past the target
-					if p2.isTarget and ydiff < 0 and ydiff > -yspace then
-						ydiff = 0
-					end
-					-- If the nameplate below shows debuffs or this one a castbar below itself,
-					-- more room is needed: the distance counts as smaller by that amount
-					local extra = p2.extra + p1.extraBottom
-					if ydiff >= 0 and ydiff - extra < min then
-						min = ydiff - extra
-					end
-					if abs(p1.ypos - p2.ypos - p2.position) < yspace + extra + 2 * delta then
-						reset = false
-					end
-				end
-				j = j + step
 			end
+		end
+		for i = #Placed, np + 1, -1 do
+			Placed[i] = nil
+		end
+	end
 
-			local old = p1.position
-			local new = old
-			if p1.isTarget or p1.passive then
-				-- Glide back quickly (approx. 0.2 s) to the natural position
-				new = old > 3 * delta and old - 3 * delta or 0
-			elseif old >= 2 * delta and reset then
-				new = old - exp(-10 / old) * delta * cfg.speedreset
-			elseif min < yspace then
-				new = old + exp(-min / yspace) * delta * cfg.speedraise
-			elseif old >= 2 * delta and min > yspace + 2 * delta then
-				new = old - exp(-yspace / min) * delta * 0.8 * cfg.speedlower
-			end
-			p1.position = new
+	-- Display, every frame: shown offsets ease towards the logic offsets; the natural
+	-- position is read fresh, so plates also follow moving mobs every frame
+	local function RenderStacking(dt)
+		local omega = SPRING_WT / cfg.duration
+		local originpos, upperborder = cfg.originpos, cfg.upperborder
+		local screenWidth = GetScreenWidth() * UIParent:GetEffectiveScale()
+		for plate, p in pairs(Stacked) do
+			local v, h
+			v, p.velV = Spring(p.shown or 0, p.velV or 0, p.position, omega, dt)
+			h, p.velH = Spring(p.shownH or 0, p.velH or 0, p.hoff or 0, omega, dt)
+			p.shown, p.shownH = v, h
+
+			local _, _, _, x, y = plate:GetPoint(1)
+			x, y = x or p.xpos, y or p.ypos
 
 			-- Sideways: without a shift, remember the nameplate's left edge (offset from the
 			-- anchor position); with a shift, set both sides of the clamp rect so
 			-- that exactly the desired x position fits on screen
 			local left, right = -10, 10
-			local hoff = p1.hoff
-			if hoff == 0 then
-				if p1.wasUnshifted then
-					local l = plate1:GetLeft()
+			if h == 0 then
+				if p.wasUnshifted then
+					local l = plate:GetLeft()
 					if l then
-						p1.kx = l - p1.xpos
+						p.kx = l - x
 					end
 				end
-				p1.wasUnshifted = true
+				p.wasUnshifted = true
 			else
-				p1.wasUnshifted = false
-				local w = plate1:GetWidth()
-				local nl = p1.xpos + (p1.kx or -w / 2)
-				left = -(nl + hoff)
-				right = screenWidth - (nl + w + hoff)
+				p.wasUnshifted = false
+				local w = plate:GetWidth()
+				local nl = x + (p.kx or -w / 2)
+				left = -(nl + h)
+				right = screenWidth - (nl + w + h)
 			end
 
 			-- Only reset the clamp rect if it changes noticeably
-			local bottom = -p1.ypos - new - originpos + plate1:GetHeight()
-			if not p1.bottom or abs(bottom - p1.bottom) > 0.5 or abs(left - p1.left) > 0.5 or abs(right - p1.right) > 0.5 then
-				p1.bottom, p1.left, p1.right = bottom, left, right
-				plate1:SetClampedToScreen()
-				plate1:SetClampRectInsets(left, right, upperborder, bottom)
+			local bottom = -y - v - originpos + plate:GetHeight()
+			if not p.bottom or abs(bottom - p.bottom) > 0.25 or abs(left - p.left) > 0.25 or abs(right - p.right) > 0.25 then
+				p.bottom, p.left, p.right = bottom, left, right
+				plate:SetClampedToScreen()
+				plate:SetClampRectInsets(left, right, upperborder, bottom)
 			end
 		end
+	end
+
+	function UpdateStacking(now)
+		if not cfg.enabled then
+			return
+		end
+		if now >= nextRun then
+			nextRun = now + cfg.interval
+			RunStacking(now)
+		end
+		local dt = now - lastRender
+		if dt > 0.1 then
+			dt = 0.1
+		end
+		lastRender = now
+		RenderStacking(dt)
 	end
 end
 

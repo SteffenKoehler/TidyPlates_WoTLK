@@ -4685,20 +4685,20 @@ local function GetOptions()
 											set = SetValue,
 											arg = {"stacking", "pinTarget"}
 										},
-										Speed = {
-											name = L["Speed"],
-											desc = L["How fast the nameplates move (default 0.7)."],
+										Duration = {
+											name = L["Movement duration"],
+											desc = L["How long a nameplate takes to move out of the way, in seconds; it starts and stops softly (default 0.5)."],
 											type = "range",
 											order = 3,
-											min = 0.2,
-											max = 2,
-											step = 0.1,
+											min = 0.15,
+											max = 1,
+											step = 0.05,
 											disabled = function()
 												return not db.stacking.ON
 											end,
 											get = GetValue,
 											set = SetValue,
-											arg = {"stacking", "speed"}
+											arg = {"stacking", "duration"}
 										},
 										TallBossFix = {
 											name = L["Keep tall bosses visible"],
@@ -4739,6 +4739,19 @@ local function GetOptions()
 											get = GetValue,
 											set = SetValue,
 											arg = {"stacking", "columnsAt"}
+										},
+										ColumnsStyle = {
+											name = L["Column style"],
+											desc = L["Straight: the nameplates of a column are aligned on top of each other. Staggered: each side moves out as a whole, so the nameplates keep the horizontal offsets of their enemies."],
+											type = "select",
+											order = 6.5,
+											values = {STRAIGHT = L["Straight"], STAGGERED = L["Staggered"]},
+											disabled = function()
+												return not (db.stacking.ON and db.stacking.columns)
+											end,
+											get = GetValue,
+											set = SetValue,
+											arg = {"stacking", "columnsStyle"}
 										},
 										OnlyEngaged = {
 											name = L["Only stack engaged enemies"],

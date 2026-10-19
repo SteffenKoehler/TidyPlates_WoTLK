@@ -247,17 +247,34 @@ wiped on `RAID_TARGET_UPDATE` and used only when the plate's name matches.
 
 ## Stacking
 
-Ported from the WeakAura *Cheeta - Enhanced Stacking Nameplate* (same
-formulas). Spacing is computed from bar size and name position. The current
-target stays above its model and other plates move around it. The WeakAura's
-in-combat hitbox trick is not included (it closed open windows). **Disable
-the WeakAura** when using this, otherwise both move the plates.
+Started as a port of the WeakAura *Cheeta - Enhanced Stacking Nameplate*.
+Spacing is computed from bar size and name position. The current target stays
+above its model and other plates move around it. The WeakAura's in-combat
+hitbox trick is not included (it closed open windows). **Disable the
+WeakAura** when using this, otherwise both move the plates.
+
+- **Direct layout** (instead of the aura's step-by-step creeping, which took
+  1-2 s for a tower of three): from the bottom up every plate gets the lowest
+  free spot at or above its own position, the pinned target first; a plate
+  overlapping the target from below is pushed up past it. The stacking order
+  follows the shown height, so it stays stable while mobs move.
+- **Soft movement** (option "Movement duration", default 0.5 s, replaces
+  "Speed"): plates glide to their spot as a critically damped spring - soft
+  start, soft stop, no overshoot, a new target mid-move keeps the momentum.
+  Runs every frame and is frame rate independent; ~90 % of a move is done
+  after the chosen duration.
 
 - **Two columns** (option "Two stacks from", default 6): plates that overlap
   horizontally form a tower; from the threshold on they split into a left and
-  a right column one plate width apart, the target stays pinned between them.
-  Sides are sticky (no jumping while mobs move), offsets glide in and are
-  applied with left/right clamp insets, so the mouseover area moves along.
+  a right column, the target stays pinned between them. Each plate stays on
+  the side of the tower its mob is on and only moves outwards, never across
+  its mob (columns may differ in height); it changes sides only once its mob
+  is clearly on the other side. Offsets are applied with left/right clamp
+  insets, so the mouseover area moves along.
+- **Column style** (option "Column style", default "Staggered"): staggered =
+  each side moves out as a whole only as far as needed for the sides to clear
+  each other, so plates keep the horizontal offsets of their mobs and stay as
+  close above them as possible; straight = the plates of a column are aligned.
 - **Only engaged enemies** (option "Only stack engaged enemies",
   default on): in combat, plates of enemies not fighting me, my pet or my group stay
   in place and push nobody. Engaged = target/mouseover, threat glow, or a
