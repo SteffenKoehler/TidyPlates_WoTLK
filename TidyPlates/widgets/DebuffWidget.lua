@@ -960,6 +960,10 @@ local function UpdateIconGrid(frame, guid)
 	end
 
 	wipe(DebuffCache)
+	-- Layout hook for the owner (e.g. Threat Plates moves its threat line above the rows)
+	if frame.OnGridChanged then
+		frame:OnGridChanged()
+	end
 end
 
 function UpdateWidget(frame)
@@ -979,6 +983,9 @@ function UpdateWidget(frame)
 
 		if not guid then
 			frame:Hide()
+			if frame.OnGridChanged then
+				frame:OnGridChanged()
+			end
 			return
 		end
 	end

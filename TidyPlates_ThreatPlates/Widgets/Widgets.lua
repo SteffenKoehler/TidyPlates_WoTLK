@@ -1853,6 +1853,47 @@ local function DebuffFilter(debuff)
 	db = TidyPlatesThreat.db.profile
 	return DebuffFilterModes[db.debuffWidget.mode](debuff, db.debuffWidget.filter)
 end
+-- Threat line above the auras. Plater-style auras sit where the threat line's own
+-- position would be, so it follows the top aura row (1 or 2 rows); without auras
+-- it takes the place of the first row. Line texture is 8 high (+-4 around the center).
+local THREAT_LINE_GAP = 6
+local THREAT_LINE_STACKS = 11 -- stack counts above the icons (not inside them)
+function ThreatPlatesWidgets.PlaceThreatLine(plate)
+	local w = plate.widgets
+	local line = w and w.ThreatLineWidget
+	if not line then
+		return
+	end
+	local p = TidyPlatesThreat.db.profile
+	local deb = w.WidgetDebuff
+	local x, y = p.threatWidget.x, p.threatWidget.y
+	if deb and deb.platerStyled then
+		-- widget offsets are in its own (scaled) units; icons 18 high, centered on the widget
+		local scale = deb:GetScale()
+		local icons = deb.AuraIconFrames
+		y = p.debuffWidget.y * scale
+		if deb:IsShown() and icons[1] and icons[1]:IsShown() then
+			local rowGap = deb.rowGap or 12
+			local second = icons[math.ceil(#icons / 2) + 1]
+			local rows = (second and second:IsShown()) and 2 or 1
+			y = (p.debuffWidget.y + 9 + (rows - 1) * (18 + rowGap)) * scale + THREAT_LINE_GAP
+			if rowGap > 2 then
+				y = y + THREAT_LINE_STACKS
+			end
+		end
+	end
+	if line.placedY ~= y or line.placedX ~= x then
+		line.placedX, line.placedY = x, y
+		line:ClearAllPoints()
+		line:SetPoint("CENTER", plate, "CENTER", x, y)
+	end
+end
+
+-- Debuff widget callback after its icons changed (widget parent = plate)
+local function PlaceThreatLineOverAuras(widget)
+	ThreatPlatesWidgets.PlaceThreatLine(widget:GetParent())
+end
+
 -- Widget position/size. Runs every time a nameplate is shown and on
 -- every option change (ForceUpdate -> OnInitialize), so not needed per update.
 local function ApplyLayout(plate)
@@ -1872,9 +1913,10 @@ local function ApplyLayout(plate)
 			w.ComboPoints:SetPoint("CENTER", plate, (db.comboWidget.x), db.comboWidget.y)
 		end
 	end
-	if w.ThreatLineWidget then
-		w.ThreatLineWidget:SetPoint("CENTER", plate, (db.threatWidget.x), db.threatWidget.y)
+	if w.WidgetDebuff then
+		w.WidgetDebuff.OnGridChanged = PlaceThreatLineOverAuras
 	end
+	ThreatPlatesWidgets.PlaceThreatLine(plate)
 	if w.SocialArt then
 		w.SocialArt:SetHeight(db.socialWidget.scale)
 		w.SocialArt:SetWidth(db.socialWidget.scale)

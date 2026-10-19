@@ -230,6 +230,10 @@ wiped on `RAID_TARGET_UPDATE` and used only when the plate's name matches.
   "Standard" (small original icons) or "Plater" (24x18 with 1 px border, large
   centered timer, stacks above). Without an explicit choice the Plater and
   Classic look use Plater icons, every other profile the standard ones.
+- Threat line (*Widgets* → *Threat Line*) with Plater-style auras: sits above
+  the top aura row (one or two rows, clear of stack counts above the icons) or
+  in the first row's place without auras. The Plater and Classic layouts had
+  moved the auras onto its position, so the icons covered name and bar.
 
 ## Stacking
 
