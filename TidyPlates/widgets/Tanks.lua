@@ -7,7 +7,7 @@
 -- in the combat log. An entry stays until a newer observation replaces it, the enemy
 -- dies or combat ends (a target swap of the tank no longer makes the old mob "loose").
 
-local TrackedUnitTargets = {} -- [guid] = name of the enemy's target (false = no target)
+local TrackedUnitTargets = {} -- [guid] = name of the enemy's last known target
 local NewTrackedUnitTargets = {}
 local TargetWatcher, CombatWatcher
 local TargetsDirty = false
@@ -50,9 +50,10 @@ local function RebuildTrackedTargets()
 	end
 
 	-- Merge into the memory; only update nameplates whose enemy has changed target.
-	-- Enemies nobody looks at right now keep their last known target.
+	-- Enemies nobody looks at right now keep their last known target, and so do enemies
+	-- without a target for a moment (casting, stunned, enraged, fleeing).
 	for guid, targetName in pairs(NewTrackedUnitTargets) do
-		if TrackedUnitTargets[guid] ~= targetName then
+		if targetName and TrackedUnitTargets[guid] ~= targetName then
 			TrackedUnitTargets[guid] = targetName
 			RequestPlateUpdate(guid)
 		end
@@ -127,29 +128,29 @@ local TankNames = {}
 local TankWatcher
 local PlayerName
 
--- Without any information (no GUID, never observed) the plate keeps its last result
--- instead of falling back to "not tanked"; unit is cleared when the plate hides.
+-- Without any information (no GUID, never observed, or the enemy has no target for a
+-- moment) the plate keeps its last result instead of falling back to "not tanked";
+-- unit is cleared when the plate hides.
 local function IsTankedByAnotherTank(unit)
 	local targetOf
 	PlayerName = PlayerName or UnitName("player")
 	local guid = unit.guid
-	if guid then
-		if unit.isTarget then
-			targetOf = UnitName("targettarget") or false -- Nameplate is a target
-			TrackedUnitTargets[guid] = targetOf
-		elseif unit.isMouseover then
-			targetOf = UnitName("mouseovertarget") or false -- Nameplate is a mouseover
-			TrackedUnitTargets[guid] = targetOf
-		else
-			targetOf = TrackedUnitTargets[guid]
-		end
+	if unit.isTarget then
+		targetOf = UnitName("targettarget") -- Nameplate is a target
+	elseif unit.isMouseover then
+		targetOf = UnitName("mouseovertarget") -- Nameplate is a mouseover
+	elseif guid then
+		targetOf = TrackedUnitTargets[guid]
+	end
+	if targetOf and guid and (unit.isTarget or unit.isMouseover) then
+		TrackedUnitTargets[guid] = targetOf
 	end
 
-	if targetOf == nil then
+	if not targetOf then
 		return unit.tankedLast == true
 	end
 	-- "Other" tank: yourself doesn't count (own aggro is shown by the threat color)
-	local tanked = targetOf and TankNames[targetOf] and targetOf ~= PlayerName and true or false
+	local tanked = TankNames[targetOf] and targetOf ~= PlayerName and true or false
 	unit.tankedLast = tanked
 	return tanked
 end
