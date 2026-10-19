@@ -1,12 +1,15 @@
 ------------------------------
 -- Target Tracker
 ------------------------------
--- Remembers for known enemies (by GUID) whom they currently have targeted.
--- Sources: own target, focus, pet and the targets of all party/raid members.
+-- Remembers for known enemies (by GUID) whom they have targeted.
+-- Sources: own target, focus, pet, the targets of all party/raid members, own target
+-- and mouseover while shown, and melee/ranged auto attacks of enemies on group members
+-- in the combat log. An entry stays until a newer observation replaces it, the enemy
+-- dies or combat ends (a target swap of the tank no longer makes the old mob "loose").
 
-local TrackedUnitTargets = {} -- [guid] = name of the enemy's target
+local TrackedUnitTargets = {} -- [guid] = name of the enemy's target (false = no target)
 local NewTrackedUnitTargets = {}
-local TargetWatcher
+local TargetWatcher, CombatWatcher
 local TargetsDirty = false
 
 local partyTargets, raidTargets = {}, {}
@@ -46,20 +49,51 @@ local function RebuildTrackedTargets()
 		end
 	end
 
-	-- Only update nameplates whose enemy has changed target
-	-- (previously: full update of all nameplates on every change)
+	-- Merge into the memory; only update nameplates whose enemy has changed target.
+	-- Enemies nobody looks at right now keep their last known target.
 	for guid, targetName in pairs(NewTrackedUnitTargets) do
 		if TrackedUnitTargets[guid] ~= targetName then
+			TrackedUnitTargets[guid] = targetName
 			RequestPlateUpdate(guid)
 		end
 	end
-	for guid in pairs(TrackedUnitTargets) do
-		if NewTrackedUnitTargets[guid] == nil then
-			RequestPlateUpdate(guid)
-		end
-	end
+end
 
-	TrackedUnitTargets, NewTrackedUnitTargets = NewTrackedUnitTargets, TrackedUnitTargets
+local function Remember(guid, targetName)
+	if TrackedUnitTargets[guid] ~= targetName then
+		TrackedUnitTargets[guid] = targetName
+		RequestPlateUpdate(guid)
+	end
+end
+
+local function ForgetAll()
+	for guid in pairs(TrackedUnitTargets) do
+		TrackedUnitTargets[guid] = nil
+		RequestPlateUpdate(guid)
+	end
+end
+
+-- Combat log: an enemy NPC auto attacking a group member has that member as its
+-- target (melee and ranged auto attacks only; spells may hit random or several players)
+local AUTO_ATTACKS = {SWING_DAMAGE = true, SWING_MISSED = true, RANGE_DAMAGE = true, RANGE_MISSED = true}
+local AFFILIATION_OURS = 0x00000007 -- MINE, PARTY, RAID
+local band = bit.band
+local function CombatWatcherEvents(self, event, timestamp, subevent, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
+	if event == "PLAYER_REGEN_ENABLED" then
+		ForgetAll()
+		return
+	end
+	if AUTO_ATTACKS[subevent] then
+		if sourceFlags and destFlags and destName
+			and band(destFlags, AFFILIATION_OURS) ~= 0
+			and band(sourceFlags, AFFILIATION_OURS) == 0
+			and band(sourceFlags, COMBATLOG_OBJECT_CONTROL_NPC) ~= 0
+			and band(sourceFlags, COMBATLOG_OBJECT_REACTION_FRIENDLY) == 0 then
+			Remember(sourceGUID, destName)
+		end
+	elseif subevent == "UNIT_DIED" and destGUID and TrackedUnitTargets[destGUID] ~= nil then
+		TrackedUnitTargets[destGUID] = nil
+	end
 end
 
 -- UNIT_TARGET/UNIT_THREAT_SITUATION_UPDATE fire practically every frame in raids:
@@ -93,24 +127,31 @@ local TankNames = {}
 local TankWatcher
 local PlayerName
 
+-- Without any information (no GUID, never observed) the plate keeps its last result
+-- instead of falling back to "not tanked"; unit is cleared when the plate hides.
 local function IsTankedByAnotherTank(unit)
 	local targetOf
 	PlayerName = PlayerName or UnitName("player")
-	if unit.guid then
+	local guid = unit.guid
+	if guid then
 		if unit.isTarget then
-			targetOf = UnitName("targettarget") -- Nameplate is a target
+			targetOf = UnitName("targettarget") or false -- Nameplate is a target
+			TrackedUnitTargets[guid] = targetOf
 		elseif unit.isMouseover then
-			targetOf = UnitName("mouseovertarget") -- Nameplate is a mouseover
+			targetOf = UnitName("mouseovertarget") or false -- Nameplate is a mouseover
+			TrackedUnitTargets[guid] = targetOf
 		else
-			targetOf = TrackedUnitTargets[unit.guid]
-		end
-
-		-- "Other" tank: yourself doesn't count (own aggro is shown by the threat color)
-		if targetOf and TankNames[targetOf] and targetOf ~= PlayerName then
-			return true
+			targetOf = TrackedUnitTargets[guid]
 		end
 	end
-	return false
+
+	if targetOf == nil then
+		return unit.tankedLast == true
+	end
+	-- "Other" tank: yourself doesn't count (own aggro is shown by the threat color)
+	local tanked = targetOf and TankNames[targetOf] and targetOf ~= PlayerName and true or false
+	unit.tankedLast = tanked
+	return tanked
 end
 
 -- In 3.3.5a UnitGroupRolesAssigned returns three booleans (isTank, isHealer, isDamage)
@@ -251,6 +292,13 @@ local function EnableTankWatch()
 	TargetWatcher:SetScript("OnEvent", TargetWatcherEvents)
 	RebuildTrackedTargets()
 
+	if not CombatWatcher then
+		CombatWatcher = CreateFrame("Frame")
+	end
+	CombatWatcher:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+	CombatWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+	CombatWatcher:SetScript("OnEvent", CombatWatcherEvents)
+
 	if not TankWatcher then
 		TankWatcher = CreateFrame("Frame")
 	end
@@ -273,6 +321,13 @@ local function DisableTankWatch()
 		TargetWatcher = nil
 		TargetsDirty = false
 	end
+
+	if CombatWatcher then
+		CombatWatcher:SetScript("OnEvent", nil)
+		CombatWatcher:UnregisterAllEvents()
+		CombatWatcher = nil
+	end
+	wipe(TrackedUnitTargets)
 
 	if TankWatcher then
 		TankWatcher:SetScript("OnEvent", nil)

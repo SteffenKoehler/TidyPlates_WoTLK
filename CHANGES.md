@@ -116,6 +116,13 @@ wiped on `RAID_TARGET_UPDATE` and used only when the plate's name matches.
 - `threat.alwaysTank` (default on): tank view on every spec.
 - Tank detection rewritten for 3.3.5a (`UnitGroupRolesAssigned` returns
   booleans, raid members, per-plate updates).
+- Blue (another tank holds the enemy) no longer needs someone targeting that
+  enemy right now: its last known target is remembered until a newer
+  observation, its death or the end of combat. Sources: target, mouseover,
+  focus, pet and group targets, and auto attacks (melee/ranged swings and
+  misses) of enemies on group members from the combat log, so AoE-tanked packs
+  turn blue as soon as they hit the tank. Without any information a plate
+  keeps its last color instead of turning red.
 
 ## Plater look (profile "Plater")
 
