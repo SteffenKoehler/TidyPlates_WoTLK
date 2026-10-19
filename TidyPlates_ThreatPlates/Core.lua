@@ -1432,6 +1432,22 @@ function TidyPlatesThreat:ApplyStacking()
 		top = math.max(top, (s.name.y or 0) + half)
 		bottom = math.min(bottom, (s.name.y or 0) - half)
 	end
+	-- Castbar (with spell name and icon) below the bottom edge used for the spacing:
+	-- extra room below a casting nameplate, so it doesn't run into the name below
+	local castExtra = 0
+	if s.castbar.show ~= false then
+		local castLow = (s.castbar.y or -15) - (s.castbar.height or 10) / 2
+		if s.spelltext.show ~= false then
+			castLow = math.min(castLow, (s.spelltext.y or 0) - (s.spelltext.size or 12) / 2)
+		end
+		if s.spellicon.show then
+			castLow = math.min(castLow, (s.spellicon.y or 0) - (s.spellicon.scale or 20) / 2)
+		end
+		castExtra = math.max(0, bottom - castLow + 2)
+	end
+	local function CastExtraBottom(extended)
+		return extended.unit and extended.unit.isCasting and castExtra or 0
+	end
 	TidyPlates:SetStacking({
 		enabled = true,
 		xspace = xspace,
@@ -1441,7 +1457,8 @@ function TidyPlatesThreat:ApplyStacking()
 		pinTarget = p.stacking.pinTarget,
 		columnsAt = p.stacking.columns and p.stacking.columnsAt or 0,
 		onlyEngaged = p.stacking.onlyEngaged and true or false,
-		extraTop = DebuffExtraTop
+		extraTop = DebuffExtraTop,
+		extraBottom = CastExtraBottom
 	})
 end
 -- Smooth scale change target <-> non-target (Classic look only)

@@ -264,6 +264,8 @@ the WeakAura** when using this, otherwise both move the plates.
   combat log exchange with us (by GUID; without GUID by name, and right after
   a pull the lowest plates on screen of that name). Out of combat everything
   stacks as before.
+- **Room for castbars**: while an enemy casts, its castbar (with spell name
+  and icon) below the plate is kept clear of the plate underneath.
 
 ## Commands and options
 

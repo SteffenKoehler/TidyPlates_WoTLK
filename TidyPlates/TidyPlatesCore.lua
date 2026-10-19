@@ -1915,6 +1915,7 @@ do
 		tallBossFix = true,
 		pinTarget = true,                                  -- target stays in place
 		extraTop = nil,                                    -- function(extended): extra space above the nameplate (e.g. debuffs)
+		extraBottom = nil,                                 -- function(extended): extra space below the nameplate (e.g. castbar)
 		columnsAt = 0,                                     -- two columns from this many nameplates in one tower (0 = off)
 		onlyEngaged = false                                -- in combat, only stack engaged enemies
 	}
@@ -2171,6 +2172,7 @@ do
 				if not p.extraAt or now >= p.extraAt then
 					p.extraAt = now + EXTRA_INTERVAL
 					p.extra = cfg.extraTop and cfg.extraTop(plate.extended) or 0
+					p.extraBottom = cfg.extraBottom and cfg.extraBottom(plate.extended) or 0
 				end
 			end
 		end
@@ -2258,12 +2260,13 @@ do
 					if p2.isTarget and ydiff < 0 and ydiff > -yspace then
 						ydiff = 0
 					end
-					-- If the nameplate below shows debuffs, it needs more room above:
-					-- its distance counts as smaller by that amount
-					if ydiff >= 0 and ydiff - p2.extra < min then
-						min = ydiff - p2.extra
+					-- If the nameplate below shows debuffs or this one a castbar below itself,
+					-- more room is needed: the distance counts as smaller by that amount
+					local extra = p2.extra + p1.extraBottom
+					if ydiff >= 0 and ydiff - extra < min then
+						min = ydiff - extra
 					end
-					if abs(p1.ypos - p2.ypos - p2.position) < yspace + p2.extra + 2 * delta then
+					if abs(p1.ypos - p2.ypos - p2.position) < yspace + extra + 2 * delta then
 						reset = false
 					end
 				end
