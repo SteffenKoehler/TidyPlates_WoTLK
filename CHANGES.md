@@ -2,7 +2,7 @@
 
 Changes for WoW 3.3.5a on top of the
 **Hypopheria Remaster** (TidyPlates 6.6.0 / Threat Plates 6.0).
-Current version of this fork: **TidyPlates 6.10.0 / Threat Plates 6.4**.
+Current version of this fork: **TidyPlates 6.10.1 / Threat Plates 6.4.1**.
 
 Based on:
 
